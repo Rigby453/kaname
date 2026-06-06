@@ -15,6 +15,9 @@ Coordinate their output. Never let agents step on each other's files.
 | Tests | QA agent | tests/CLAUDE.md |
 | AI prompts / Claude API | AI agent | docs/agents/ai-tasks.md |
 
+> These roles are now **registered sub-agents** in `.claude/agents/` — spawn them by name:
+> `backend`, `flutter`, `ai`, `qa`, `landing`. Each already knows what to read and what it owns.
+
 ## Agents
 
 ### Backend Agent
