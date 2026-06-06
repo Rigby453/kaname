@@ -1,0 +1,98 @@
+{
+  "$schema-note": "Design tokens for GLAVNOE. Single source of truth for colours, fonts, spacing and animation. Flutter and the landing page must read from here. Exact colours for themes 1-4 come from SPEC.md B2; values marked \"_placeholder\": true are reasonable defaults pending design sign-off (notably ember/semantic colours for calm/white and the whole contrast palette).",
+  "version": 1,
+  "animation": {
+    "fast_ms": 120,
+    "normal_ms": 200,
+    "slow_ms": 300,
+    "curve": "easeOut",
+    "modal_curve": "spring",
+    "note": "Per-tab character lives in motion specs, not tokens: Today=lift+spring, Plan=lateral, Health=fluid, Diary=calm/slower. All animations must be disableable in accessibility settings."
+  },
+  "spacing": { "xs": 4, "sm": 8, "md": 16, "lg": 24, "xl": 32, "xxl": 48 },
+  "radius": { "sm": 8, "md": 16, "lg": 24, "pill": 999 },
+  "font_scale": { "default": 1.0, "contrast": 1.15 },
+  "themes": {
+    "focus": {
+      "label": "Focus (warm dark, default)",
+      "mode": "dark",
+      "default": true,
+      "colors": {
+        "bg": "#141009",
+        "surface": "#241D11",
+        "text": "#F6EFE1",
+        "text_muted": "#9E9070",
+        "accent": "#D9F24B",
+        "ember": "#FF6A3D",
+        "border": "#3A3020"
+      },
+      "semantic": { "important": "#D9F24B", "urgent": "#FF6A3D", "done": "#D9F24B" },
+      "fonts": { "display": "Fraunces", "body": "Hanken Grotesk" }
+    },
+    "calm": {
+      "label": "Calm (low-saturation blue-green)",
+      "mode": "dark",
+      "colors": {
+        "bg": "#11171A",
+        "surface": "#18232A",
+        "text": "#E8F0F0",
+        "text_muted": "#8AA0A0",
+        "accent": "#6FB6A3",
+        "ember": "#E08A6B",
+        "border": "#243640"
+      },
+      "_placeholder_fields": ["text_muted", "ember", "border"],
+      "semantic": { "important": "#6FB6A3", "urgent": "#E08A6B", "done": "#6FB6A3" },
+      "fonts": { "display": "Newsreader", "body": "Mulish" }
+    },
+    "black": {
+      "label": "Black (OLED full-black)",
+      "mode": "dark",
+      "colors": {
+        "bg": "#000000",
+        "surface": "#0E0E0E",
+        "text": "#FFFFFF",
+        "text_muted": "#8A8A8A",
+        "accent": "#C8FF4D",
+        "ember": "#FF6A3D",
+        "border": "#1C1C1C"
+      },
+      "_placeholder_fields": ["text_muted", "ember", "border"],
+      "semantic": { "important": "#C8FF4D", "urgent": "#FF6A3D", "done": "#C8FF4D" },
+      "fonts": { "display": "Schibsted Grotesk", "body": "Schibsted Grotesk" }
+    },
+    "white": {
+      "label": "White (clean light)",
+      "mode": "light",
+      "colors": {
+        "bg": "#FFFFFF",
+        "surface": "#F5F4F1",
+        "text": "#16130E",
+        "text_muted": "#6B675F",
+        "accent": "#2B2A26",
+        "accent_alt": "#5B7CFA",
+        "ember": "#E5533A",
+        "border": "#E3E0DA"
+      },
+      "_placeholder_fields": ["text_muted", "ember", "border"],
+      "semantic": { "important": "#5B7CFA", "urgent": "#E5533A", "done": "#2B2A26" },
+      "fonts": { "display": "Instrument Serif", "body": "Geist" }
+    },
+    "contrast": {
+      "label": "Contrast (accessibility, large type)",
+      "mode": "dark",
+      "_placeholder": true,
+      "colors": {
+        "bg": "#000000",
+        "surface": "#0A0A0A",
+        "text": "#FFFFFF",
+        "text_muted": "#D0D0D0",
+        "accent": "#FFE600",
+        "ember": "#FF5230",
+        "border": "#FFFFFF"
+      },
+      "semantic": { "important": "#FFE600", "urgent": "#FF5230", "done": "#00E5A0" },
+      "fonts": { "display": "Atkinson Hyperlegible", "body": "Atkinson Hyperlegible" }
+    }
+  }
+}

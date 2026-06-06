@@ -1,0 +1,497 @@
+openapi: 3.0.3
+info:
+  title: GLAVNOE API
+  version: 0.1.0
+  description: >
+    REST API for GLAVNOE. Single source of truth for endpoints and schemas.
+    Payloads use snake_case. All protected routes require a Bearer JWT.
+    MVP scope = auth, items, streaks, sync, rule-based redistribute.
+    AI endpoints are Phase 1 (premium) and are tagged accordingly.
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://api.glavnoe.com
+    description: Production (placeholder)
+
+tags:
+  - name: Auth
+  - name: Items
+  - name: Streaks
+  - name: Sync
+  - name: Engine
+  - name: AI (Phase 1)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Auth]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the current user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/items:
+    get:
+      tags: [Items]
+      summary: List items in a date range
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+          description: Inclusive lower bound on scheduled_at
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+          description: Inclusive upper bound on scheduled_at
+      responses:
+        '200':
+          description: OK (empty array if none)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Item' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Items]
+      summary: Create an item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateItemRequest' }
+      responses:
+        '201':
+          description: Created. If priority=main, is_protected is forced true.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Item' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/items/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Items]
+      summary: Partially update an item (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateItemRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Item' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Items]
+      summary: Delete an item (owner only)
+      responses:
+        '204': { description: Deleted (no body) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/streaks:
+    get:
+      tags: [Streaks]
+      summary: Get the current user's streak (created with defaults if missing)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Streak' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/sync:
+    post:
+      tags: [Sync]
+      summary: Offline-first sync (last-write-wins by updated_at)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncRequest' }
+      responses:
+        '200':
+          description: Server-side changes the client does not yet have
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/redistribute:
+    post:
+      tags: [Engine]
+      summary: Rule-based redistribution proposal (free, MVP)
+      description: >
+        Returns a proposed plan only; nothing is saved. The client applies a
+        chosen plan via PATCH /items/{id}. Protected (is_protected) items are
+        never moved and appear in skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_date]
+              properties:
+                target_date:
+                  type: string
+                  format: date
+                  description: Day to redistribute pending items into (usually today)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedistributeResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/ai/redistribute:
+    post:
+      tags: [AI (Phase 1)]
+      summary: AI smart redistribution — 2-3 plan variants (premium, Sonnet)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_date]
+              properties:
+                target_date: { type: string, format: date }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    maxItems: 3
+                    items:
+                      type: object
+                      properties:
+                        label: { type: string, example: Balanced day }
+                        reason: { type: string }
+                        items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: string, format: uuid }
+                              scheduled_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/ai/morning-message:
+    post:
+      tags: [AI (Phase 1)]
+      summary: Tone-aware morning review message (premium, Haiku)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pending_count, tone]
+              properties:
+                pending_count: { type: integer }
+                tone: { $ref: '#/components/schemas/Tone' }
+                user_name: { type: string }
+      responses:
+        '200':
+          description: 1-2 sentence message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/ai/food-recognize:
+    post:
+      tags: [AI (Phase 1)]
+      summary: Identify food in a photo (premium, Haiku multimodal; max 3/day)
+      description: Claude identifies the dish only; КБЖУ comes from the food DB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_base64, media_type]
+              properties:
+                image_base64: { type: string }
+                media_type: { type: string, enum: [image/jpeg, image/png] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dish: { type: string }
+                  portion_description: { type: string }
+                  confidence: { type: number, minimum: 0, maximum: 1 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429':
+          description: Daily food-recognition limit reached
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/ai/diary-insight:
+    post:
+      tags: [AI (Phase 1)]
+      summary: Weekly diary insight from recent day logs (premium, Sonnet)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tone]
+              properties:
+                tone: { $ref: '#/components/schemas/Tone' }
+      responses:
+        '200':
+          description: 2-3 sentence insight
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  insight: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not allowed (e.g. free tier on a premium endpoint)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found (also returned for items owned by another user)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: Email already exists }
+
+    Tone:
+      type: string
+      enum: [gentle, harsh]
+
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        name: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    AuthResponse:
+      type: object
+      required: [access_token, user]
+      properties:
+        access_token: { type: string, description: JWT, 30d expiry }
+        user: { $ref: '#/components/schemas/User' }
+
+    User:
+      type: object
+      description: passwordHash is never returned
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        subscription_tier: { type: string, enum: [free, premium] }
+        theme: { type: string, enum: [focus, calm, black, white, contrast] }
+        tone_preference: { $ref: '#/components/schemas/Tone' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Item:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string, enum: [task, event, exam, deadline] }
+        priority: { type: string, enum: [low, medium, high, main] }
+        status: { type: string, enum: [pending, done, skipped] }
+        scheduled_at: { type: string, format: date-time }
+        duration_minutes: { type: integer, default: 30 }
+        is_protected: { type: boolean }
+        recurrence_rule: { type: string, nullable: true, description: iCal RRULE }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateItemRequest:
+      type: object
+      required: [title, type, scheduled_at]
+      properties:
+        title: { type: string }
+        type: { type: string, enum: [task, event, exam, deadline] }
+        priority: { type: string, enum: [low, medium, high, main], default: medium }
+        scheduled_at: { type: string, format: date-time }
+        duration_minutes: { type: integer, default: 30 }
+        is_protected: { type: boolean }
+        recurrence_rule: { type: string, nullable: true }
+
+    UpdateItemRequest:
+      type: object
+      description: All fields optional; only present fields are updated.
+      properties:
+        title: { type: string }
+        type: { type: string, enum: [task, event, exam, deadline] }
+        priority: { type: string, enum: [low, medium, high, main] }
+        status: { type: string, enum: [pending, done, skipped] }
+        scheduled_at: { type: string, format: date-time }
+        duration_minutes: { type: integer }
+        is_protected: { type: boolean }
+        recurrence_rule: { type: string, nullable: true }
+
+    Streak:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        current: { type: integer }
+        longest: { type: integer }
+        last_completed_date: { type: string, format: date, nullable: true }
+        freeze_count: { type: integer }
+
+    SyncRequest:
+      type: object
+      required: [items, last_sync_at]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Item' }
+        last_sync_at: { type: string, format: date-time }
+
+    SyncResponse:
+      type: object
+      properties:
+        updated_items:
+          type: array
+          items: { $ref: '#/components/schemas/Item' }
+
+    RedistributeResponse:
+      type: object
+      properties:
+        proposed:
+          type: array
+          items: { $ref: '#/components/schemas/Item' }
+        skipped:
+          type: array
+          items: { $ref: '#/components/schemas/Item' }
