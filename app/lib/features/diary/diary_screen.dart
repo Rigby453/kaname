@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database_providers.dart';
+import '../../services/api/api_client.dart';
+import '../auth/auth_controller.dart';
 
 /// Метки тегов "What went wrong?" — ключ (хранится) → подпись (показывается)
 const Map<String, String> _issueLabels = {
@@ -33,6 +35,7 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
   int? _mood; // 1..5
   final Set<String> _issues = {};
   bool _loaded = false;
+  bool _insightLoading = false;
 
   @override
   void initState() {
@@ -90,6 +93,46 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Day saved')),
       );
+    }
+  }
+
+  /// AI-инсайт по дневнику (premium). Результат показываем в диалоге.
+  Future<void> _getInsight() async {
+    final premium = await ref.read(isPremiumProvider.future);
+    if (!mounted) return;
+    if (!premium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Premium feature — upgrade for AI insights'),
+        ),
+      );
+      return;
+    }
+    setState(() => _insightLoading = true);
+    try {
+      final insight =
+          await ref.read(apiClientProvider).aiDiaryInsight('gentle');
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Insight'),
+          content: Text(insight),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _insightLoading = false);
     }
   }
 
@@ -186,6 +229,21 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
             child: FilledButton(
               onPressed: _save,
               child: const Text('Save Day'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: _insightLoading
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Get insight (Premium)'),
+              onPressed: _insightLoading ? null : _getInsight,
             ),
           ),
         ],

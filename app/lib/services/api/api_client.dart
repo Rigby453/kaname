@@ -317,6 +317,53 @@ class ApiClient {
       _throw(e);
     }
   }
+
+  /// Tone-aware утреннее сообщение (premium). Возвращает текст.
+  Future<String> aiMorningMessage({
+    required int pendingCount,
+    required String tone,
+    String? userName,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/ai/morning-message',
+        data: {
+          'pending_count': pendingCount,
+          'tone': tone,
+          'user_name': ?userName,
+        },
+      );
+      return (response.data?['message'] as String?) ?? '';
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Умное перераспределение (premium). Возвращает список планов { label, reason, items }.
+  Future<List<dynamic>> aiRedistribute(String targetDate) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/ai/redistribute',
+        data: {'target_date': targetDate},
+      );
+      return (response.data?['plans'] as List<dynamic>?) ?? <dynamic>[];
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Инсайт по дневнику (premium). Возвращает текст.
+  Future<String> aiDiaryInsight(String tone) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/ai/diary-insight',
+        data: {'tone': tone},
+      );
+      return (response.data?['insight'] as String?) ?? '';
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
