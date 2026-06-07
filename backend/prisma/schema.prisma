@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String     @id @default(uuid())
+  email            String     @unique
+  passwordHash     String
+  name             String
+  subscriptionTier String     @default("free")
+  theme            String     @default("focus")
+  tonePreference   String     @default("gentle")
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  items            Item[]
+  streak           Streak?
+  dayLogs          DayLog[]
+  waterLogs        WaterLog[]
+}
+
+model Item {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  title           String
+  type            String
+  priority        String   @default("medium")
+  status          String   @default("pending")
+  scheduledAt     DateTime
+  durationMinutes Int      @default(30)
+  isProtected     Boolean  @default(false)
+  recurrenceRule  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Streak {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id])
+  current           Int       @default(0)
+  longest           Int       @default(0)
+  lastCompletedDate DateTime?
+  freezeCount       Int       @default(0)
+}
+
+model DayLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime @db.Date
+  mood      Int?
+  note      String?
+  insight   String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model WaterLog {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  amountMl Int
+  loggedAt DateTime @default(now())
+}

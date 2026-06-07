@@ -344,6 +344,46 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /api/v1/ai/schedule-import:
+    post:
+      tags: [AI (Phase 1)]
+      summary: Parse a timetable photo into schedule items (premium, Haiku multimodal)
+      description: >
+        Claude reads a photo of a timetable/schedule and returns structured items
+        (title + scheduled_at) placed on target_date. The client confirms before
+        saving (via POST /items). Premium only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_base64, media_type, target_date]
+              properties:
+                image_base64: { type: string }
+                media_type: { type: string, enum: [image/jpeg, image/png] }
+                target_date:
+                  type: string
+                  format: date
+                  description: Day to place the parsed items on
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        scheduled_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
 components:
   securitySchemes:
     bearerAuth:

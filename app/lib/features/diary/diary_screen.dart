@@ -1,0 +1,195 @@
+// FL-DIARY-01: Форма дневника за сегодня.
+// - Настроение 1-5 (эмодзи), свободная заметка, мульти-выбор "What went wrong?".
+// - Сохранение — upsert в Drift через DayLogsDao (один ряд на день).
+// - Теги "What went wrong" кодируются в note (отдельной колонки в схеме нет).
+// Локальное эфемерное состояние формы → StatefulWidget; данные идут через Riverpod.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/database/database_providers.dart';
+
+/// Метки тегов "What went wrong?" — ключ (хранится) → подпись (показывается)
+const Map<String, String> _issueLabels = {
+  'social_media': 'Social media',
+  'went_out': 'Went out',
+  'was_tired': 'Was tired',
+  'sick': 'Sick',
+  'other': 'Other',
+};
+
+const List<String> _moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
+const String _issuesPrefix = '\n\nIssues: ';
+
+class DiaryScreen extends ConsumerStatefulWidget {
+  const DiaryScreen({super.key});
+
+  @override
+  ConsumerState<DiaryScreen> createState() => _DiaryScreenState();
+}
+
+class _DiaryScreenState extends ConsumerState<DiaryScreen> {
+  final TextEditingController _noteController = TextEditingController();
+  int? _mood; // 1..5
+  final Set<String> _issues = {};
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExisting();
+  }
+
+  /// Загружаем запись за сегодня (если есть) и заполняем форму.
+  Future<void> _loadExisting() async {
+    final dao = ref.read(dayLogsDaoProvider);
+    final existing = await dao.getForDate(DateTime.now());
+    if (existing != null) {
+      _mood = existing.mood;
+      _parseNote(existing.note);
+    }
+    if (mounted) setState(() => _loaded = true);
+  }
+
+  /// Разбираем note на свободный текст и закодированные теги Issues.
+  void _parseNote(String? note) {
+    if (note == null) return;
+    final idx = note.indexOf(_issuesPrefix);
+    if (idx == -1) {
+      _noteController.text = note;
+      return;
+    }
+    _noteController.text = note.substring(0, idx);
+    final tagsPart = note.substring(idx + _issuesPrefix.length);
+    for (final raw in tagsPart.split(',')) {
+      final key = raw.trim();
+      if (_issueLabels.containsKey(key)) _issues.add(key);
+    }
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final dao = ref.read(dayLogsDaoProvider);
+    final freeText = _noteController.text.trim();
+    final issuesSuffix =
+        _issues.isEmpty ? '' : '$_issuesPrefix${_issues.join(', ')}';
+    final combined = '$freeText$issuesSuffix';
+
+    await dao.saveForDate(
+      date: DateTime.now(),
+      mood: _mood,
+      note: combined.isEmpty ? null : combined,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Day saved')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (!_loaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('How was today?', style: textTheme.headlineSmall),
+          const SizedBox(height: 16),
+
+          // Настроение 1..5
+          Text('Mood', style: textTheme.labelMedium),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(5, (i) {
+              final value = i + 1;
+              final selected = _mood == value;
+              return GestureDetector(
+                onTap: () => setState(() => _mood = value),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120), // fast
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected
+                        ? colorScheme.primary.withValues(alpha: 0.25)
+                        : Colors.transparent,
+                    border: Border.all(
+                      color: selected
+                          ? colorScheme.primary
+                          : colorScheme.outline,
+                    ),
+                  ),
+                  child: Text(
+                    _moodEmojis[i],
+                    style: const TextStyle(fontSize: 24),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 24),
+
+          // Свободная заметка
+          Text('Anything interesting today?', style: textTheme.labelMedium),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _noteController,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Write a few words…',
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // What went wrong — мульти-выбор
+          Text('What went wrong?', style: textTheme.labelMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _issueLabels.entries.map((e) {
+              final selected = _issues.contains(e.key);
+              return FilterChip(
+                label: Text(e.value),
+                selected: selected,
+                onSelected: (on) => setState(() {
+                  if (on) {
+                    _issues.add(e.key);
+                  } else {
+                    _issues.remove(e.key);
+                  }
+                }),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 32),
+
+          // Сохранить день
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _save,
+              child: const Text('Save Day'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

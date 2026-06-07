@@ -48,3 +48,38 @@
 ---
 
 <!-- Add new ADRs below this line -->
+
+## ADR-015: New AI endpoint /api/v1/ai/schedule-import (Phase 1, premium)
+**Date:** 2026-06
+**Decision:** Added `POST /api/v1/ai/schedule-import` to `api-spec.yaml`: a premium (Phase 1) multimodal endpoint that takes `{ image_base64, media_type, target_date }`, has Claude (Haiku, multimodal) read a timetable photo, and returns `{ items: [{ title, scheduled_at }] }`. Nothing is saved server-side — the client confirms and creates items via `POST /items`.
+**Reason:** The user requested photo-based schedule import as a paid feature. There was no existing endpoint for "photo → schedule items" (the existing `ai/food-recognize` is for the Food module). Per project rules the Claude call lives only in `backend/src/ai/`; the route enforces the premium gate (free tier → 403). Adding a new endpoint (vs. changing an existing one) keeps the contract backward-compatible. Live verification requires a real `ANTHROPIC_API_KEY` (the `.env` currently holds a placeholder) and a premium user, so tests mock `backend/src/ai/`.
+
+## ADR-014: 404 (not 403) for non-owned items on PATCH and DELETE
+**Date:** 2026-06
+**Decision:** When PATCH `/api/v1/items/:id` or DELETE `/api/v1/items/:id` is called and the item does not exist **or** exists but belongs to a different user, the server returns `404 { error: "Not found" }`. A `403 Forbidden` is never returned for these two endpoints.
+**Reason:** `/docs/api-spec.yaml` is the single source of truth for HTTP contracts. For both PATCH and DELETE it lists only `401` and `404` as possible error codes, and the `NotFound` response description explicitly reads "also returned for items owned by another user". `/docs/agents/backend-tasks.md` (ITEMS-03) mentions 403 for non-owned items, but that contradicts the spec. The spec wins (per global rule: "API responses must match api-spec.yaml"). Returning 404 also avoids leaking the existence of items owned by other users (information-exposure mitigation).
+
+## ADR-012: JWT type augmentation via ambient .d.ts, not runtime import
+**Date:** 2026-06
+**Decision:** `src/types/fastify-jwt.d.ts` augments `@fastify/jwt` with `FastifyJWT { payload, user }`. It is included automatically via `"include": ["src/**/*"]` in tsconfig and is never imported at runtime.
+**Reason:** TypeScript module augmentation in `.d.ts` files emits no JavaScript. Importing a `.d.ts` path at runtime causes a `MODULE_NOT_FOUND` error. The ambient approach gives full type safety (`req.user: { userId: string; email: string }`, no `any`) without a runtime artifact.
+
+## ADR-013: serializeUser as an explicit mapping function (no Omit/Pick hacks)
+**Date:** 2026-06
+**Decision:** `src/models/user.ts` exports `serializeUser(user: User): SerializedUser` which explicitly lists every field and renames camelCase Prisma fields to snake_case API fields. `passwordHash` is simply not mapped.
+**Reason:** Relying on `Omit<User, 'passwordHash'>` or spread would still produce camelCase keys in the JSON response, violating `api-spec.yaml`. An explicit return object is the only way to guarantee both the correct key names and the absence of sensitive fields. TypeScript enforces completeness via the `SerializedUser` return type.
+
+## ADR-009: Prisma 5 (not 7) — downgrade from npm resolution
+**Date:** 2026-06
+**Decision:** Pin `prisma` and `@prisma/client` at `^5.22.0` despite npm resolving to 7.x.
+**Reason:** Prisma 7 removes `url = env(...)` from `datasource db {}` and requires a `prisma.config.ts` file — incompatible with the schema in `/docs/data-model.md` (written for Prisma 5). Downgrading keeps the schema verbatim and avoids changing a shared contract.
+
+## ADR-010: TypeScript module=Node16 / moduleResolution=node16 with CommonJS output
+**Date:** 2026-06
+**Decision:** `tsconfig.json` uses `"module": "Node16"` and `"moduleResolution": "node16"`. TypeScript emits CommonJS (`.js` files, `require` calls at runtime).
+**Reason:** TypeScript 6 deprecated `moduleResolution: node` (alias for node10) and produces an error with it. `Node16` is the correct pairing for projects targeting Node.js 22 with CommonJS output; it satisfies TypeScript 6 and ts-node-dev 2 without top-level-await issues.
+
+## ADR-011: migrate dev succeeded on Neon cloud DB (no fallback needed)
+**Date:** 2026-06
+**Decision:** Used `prisma migrate dev --name init` directly. No fallback to `migrate deploy` or `db push` was needed.
+**Reason:** Neon's serverless PostgreSQL allowed Prisma to create the shadow database. Migration SQL is recorded under `prisma/migrations/20260606183848_init/migration.sql` and the schema is in sync.

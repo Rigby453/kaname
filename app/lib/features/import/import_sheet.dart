@@ -1,0 +1,262 @@
+// Импорт расписания вставкой текста (MVP-вариант "paste"/"template").
+// Пользователь вставляет строки вида "HH:MM Заголовок" (по одной на строку),
+// выбирает день — задачи создаются локально в Drift.
+// Фото/голос-импорт требуют AI и относятся к Phase 1.
+
+import 'dart:convert';
+
+import 'package:drift/drift.dart' show Value;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+
+import '../../core/database/database.dart';
+import '../../core/database/database_providers.dart';
+import '../../core/utils/id.dart';
+import '../../services/api/api_client.dart';
+import '../auth/auth_controller.dart';
+
+/// Строка расписания: "9:00 Math lecture" или "09:30 Gym"
+final _lineRegex = RegExp(r'^\s*(\d{1,2}):(\d{2})\s+(.+?)\s*$');
+
+const _templateExample = '''09:00 Math lecture
+11:00 Library study
+14:30 Gym
+18:00 Project work''';
+
+class _ParsedLine {
+  const _ParsedLine(this.hour, this.minute, this.title);
+  final int hour;
+  final int minute;
+  final String title;
+}
+
+Future<void> showImportSheet(
+  BuildContext context, {
+  required DateTime day,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: ImportSheet(day: day),
+    ),
+  );
+}
+
+class ImportSheet extends ConsumerStatefulWidget {
+  const ImportSheet({required this.day, super.key});
+
+  final DateTime day;
+
+  @override
+  ConsumerState<ImportSheet> createState() => _ImportSheetState();
+}
+
+class _ImportSheetState extends ConsumerState<ImportSheet> {
+  final _controller = TextEditingController();
+  late DateTime _day;
+  bool _recognizing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _day = widget.day;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<_ParsedLine> _parse(String text) {
+    final result = <_ParsedLine>[];
+    for (final raw in text.split('\n')) {
+      final m = _lineRegex.firstMatch(raw);
+      if (m == null) continue;
+      final hour = int.parse(m.group(1)!);
+      final minute = int.parse(m.group(2)!);
+      if (hour > 23 || minute > 59) continue;
+      result.add(_ParsedLine(hour, minute, m.group(3)!));
+    }
+    return result;
+  }
+
+  Future<void> _pickDay() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) setState(() => _day = picked);
+  }
+
+  Future<void> _import() async {
+    final parsed = _parse(_controller.text);
+    if (parsed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No valid "HH:MM Title" lines found')),
+      );
+      return;
+    }
+
+    final dao = ref.read(itemsDaoProvider);
+    final now = DateTime.now();
+    for (final line in parsed) {
+      await dao.insertItem(
+        ItemsTableCompanion(
+          id: Value(uuidV4()),
+          userId: const Value('local'),
+          title: Value(line.title),
+          type: const Value('task'),
+          priority: const Value('medium'),
+          status: const Value('pending'),
+          scheduledAt: Value(
+            DateTime(_day.year, _day.month, _day.day, line.hour, line.minute),
+          ),
+          durationMinutes: const Value(30),
+          isProtected: const Value(false),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+    }
+
+    if (mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported ${parsed.length} tasks')),
+      );
+    }
+  }
+
+  /// Phase 1 (premium): распознать расписание с фото через бэкенд-AI.
+  /// Результат подставляется в текстовое поле — пользователь проверяет и жмёт Import.
+  Future<void> _importFromPhoto() async {
+    final premium = await ref.read(isPremiumProvider.future);
+    if (!mounted) return;
+    if (!premium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Premium feature — upgrade to import from a photo'),
+        ),
+      );
+      return;
+    }
+
+    final picked =
+        await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    final mediaType =
+        picked.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+    setState(() => _recognizing = true);
+    try {
+      final items =
+          await ref.read(apiClientProvider).scheduleImportFromPhoto(
+                imageBase64: base64Encode(bytes),
+                mediaType: mediaType,
+                targetDate: DateFormat('yyyy-MM-dd').format(_day),
+              );
+      // Превращаем { title, scheduled_at } в строки "HH:MM Title" для проверки
+      final lines = items.map((dynamic e) {
+        final map = e as Map<String, dynamic>;
+        final dt = DateTime.tryParse(map['scheduled_at'] as String? ?? '')
+            ?.toLocal();
+        final time = dt != null ? DateFormat.Hm().format(dt) : '09:00';
+        return '$time ${map['title']}';
+      }).join('\n');
+
+      if (!mounted) return;
+      _controller.text =
+          _controller.text.trim().isEmpty ? lines : '${_controller.text}\n$lines';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Recognized ${items.length} items — review & Import')),
+      );
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _recognizing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Import schedule', style: textTheme.headlineSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Paste lines like "09:00 Math lecture", one per line.',
+              style: textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              maxLines: 8,
+              minLines: 4,
+              decoration: const InputDecoration(
+                hintText: '09:00 Math lecture\n14:30 Gym',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.lightbulb_outline, size: 18),
+                  label: const Text('Example'),
+                  onPressed: () => _controller.text = _templateExample,
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                  label: Text(DateFormat.yMMMd().format(_day)),
+                  onPressed: _pickDay,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: _recognizing
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.photo_camera_outlined, size: 18),
+                label: const Text('From photo (Premium)'),
+                onPressed: _recognizing ? null : _importFromPhoto,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _import,
+                child: const Text('Import'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

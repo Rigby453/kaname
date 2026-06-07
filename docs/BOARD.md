@@ -12,37 +12,43 @@
 - [x] Orchestration + agent guides — `AGENTS.md`, `*/CLAUDE.md`
 
 ## Backend (see docs/agents/backend-tasks.md)
-- [ ] SETUP-01 Project scaffolding (Fastify + TS)
-- [ ] SETUP-02 Prisma schema + migration
-- [ ] SETUP-03 Fastify server + health check
-- [ ] AUTH-01..04 Register / Login / JWT middleware / Me
-- [ ] ITEMS-01..04 CRUD + ownership
-- [ ] STREAK-01..02 Get streak + update helper
-- [ ] SYNC-01 Sync endpoint (last-write-wins)
-- [ ] ENGINE-01 Rule redistribution (POST /api/v1/redistribute)
+- [x] SETUP-01 Project scaffolding (Fastify + TS)
+- [x] SETUP-02 Prisma schema + migration
+- [x] SETUP-03 Fastify server + health check
+- [x] AUTH-01..04 Register / Login / JWT middleware / Me
+- [x] ITEMS-01..04 CRUD + ownership
+- [x] STREAK-01..02 Get streak + update helper
+- [x] SYNC-01 Sync endpoint (last-write-wins)
+- [x] ENGINE-01 Rule redistribution (POST /api/v1/redistribute)
 
 ## Flutter (see docs/agents/flutter-tasks.md)
-- [ ] FL-SETUP-01..03 Project + Focus theme + 4-tab nav (profile = AppBar leading)
-- [ ] FL-DB-01..02 Drift schema + DAOs
-- [ ] FL-TODAY-01..05 Today screen (ring, streak, list, add sheet)
-- [ ] FL-PLAN-01..02 Week strip + day timeline
-- [ ] FL-DIARY-01 Diary form
-- [ ] FL-API-01 / FL-SYNC-01 Dio client + sync service
-- [ ] Themes Black + White; schedule import (template/photo/paste/voice); home widget
+- [x] FL-SETUP-01..03 Project + Focus theme + 4-tab nav (profile = AppBar leading)
+- [x] FL-DB-01..02 Drift schema + DAOs
+- [x] FL-TODAY-01..05 Today screen (ring, streak, list, add sheet)
+- [x] FL-PLAN-01..02 Week strip + day timeline
+- [x] FL-DIARY-01 Diary form + morning review carry-over card
+- [x] FL-API-01 / FL-SYNC-01 Dio client + sync service
+- [x] Auth screen (login/register + offline mode) + router redirect + live sync on login
+- [x] Themes Black + White (+ theme picker in Profile); Focus default. calm/contrast = stubs
+- [x] Schedule import — paste/template (text → tasks) via Plan. photo/voice = AI Phase 1
+- [x] Onboarding flow (first-run 3-slide intro → auth)
+- [x] All 5 themes (Focus/Calm/Black/White/Contrast, contrast 1.15 type scale) + picker
+- [x] Home widget (Android) — native AppWidgetProvider + MethodChannel bridge; verified on a real device (shows main progress + streak, tap opens app). iOS widget needs a Mac.
 
 ## QA (see docs/agents/qa-tasks.md)
-- [ ] QA-01 Auth flow
-- [ ] QA-02 Items CRUD
-- [ ] QA-03 Streaks
-- [ ] QA-04 Redistribution engine
-- [ ] QA-05 Sync conflict resolution
-- [ ] DoD: all suites pass, ≥80% coverage on src/engine/, ai/ fully mocked
+- [x] QA-01 Auth flow
+- [x] QA-02 Items CRUD
+- [x] QA-03 Streaks
+- [x] QA-04 Redistribution engine
+- [x] QA-05 Sync conflict resolution
+- [x] DoD: 36/36 tests pass (Jest+inject); engine coverage 100% lines (≥80% req); no AI calls (no ai/ code in MVP)
 
 ## Landing (see landing/CLAUDE.md)
-- [ ] index.html — hero, problem/solution, features, pricing, footer
-- [ ] Smart [Download] button (platform detection)
+- [x] index.html — hero, problem/solution, features, pricing, footer
+- [x] Smart [Download] button (platform detection)
 
-## AI — Phase 1 (not MVP; see docs/agents/ai-tasks.md)
+## AI — Phase 1 (paid; see docs/agents/ai-tasks.md)
+- [x] AI-06 Schedule import from photo (premium): /api/v1/ai/schedule-import + Claude Haiku multimodal in src/ai/ + premium gate + Flutter photo button. Tests mock ai/ (4/4). Live run needs real ANTHROPIC_API_KEY + a premium user.
 - [ ] AI-01 Smart redistribute · AI-02 morning message · AI-03 food photo · AI-04 diary insight · AI-05 weekly wrapped
 
 ## MVP Definition of Done
