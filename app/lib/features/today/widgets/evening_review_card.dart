@@ -1,14 +1,9 @@
-// FL-TODAY (morning review): карточка утреннего разбора — ядро продукта.
-// Если есть просроченные невыполненные задачи (с прошлых дней), показываем
-// карточку и лист, где пользователь ПОДТВЕРЖДАЕТ перенос несделанного на сегодня
-// или отмечает пропуск.
-//
-// Два уровня:
-// - Free (rule-based, локально): варианты раскладки + перенос (Drift).
-// - Premium (AI, через бэкенд): tone-aware сообщение (/ai/morning-message) и
-//   умные варианты плана (/ai/redistribute).
-// Общая логика разбора вынесена в review_engine.dart (переиспользуется
-// вечерним разбором).
+// FL-TODAY (evening review, SPEC C3): вечерний разбор завтрашнего дня.
+// Показывается вечером (с 17:00). Помогает перенести сегодняшнее незакрытое на
+// завтра и разложить его по свободным слотам:
+// - Free (rule-based, локально): варианты раскладки на завтра + перенос.
+// - Premium (AI): умные варианты (/ai/redistribute, target_date = завтра).
+// Общая логика — в review_engine.dart (как у утреннего разбора).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,68 +17,41 @@ import '../../auth/auth_controller.dart';
 import 'review_engine.dart';
 import 'review_variant_card.dart';
 
-/// Просроченные невыполненные задачи (реактивно)
-final overduePendingProvider =
-    StreamProvider.autoDispose<List<ItemsTableData>>((ref) {
-  return ref.watch(itemsDaoProvider).watchOverduePending(DateTime.now());
-});
+/// Час, с которого показываем вечерний разбор.
+const int _eveningHour = 17;
 
-/// Задачи сегодня (для определения занятых слотов при построении вариантов)
-final _todayItemsForReviewProvider =
-    StreamProvider.autoDispose<List<ItemsTableData>>((ref) {
-  return ref.watch(itemsDaoProvider).watchTodayItems(DateTime.now());
-});
-
-class MorningReviewCard extends ConsumerStatefulWidget {
-  const MorningReviewCard({super.key});
-
-  @override
-  ConsumerState<MorningReviewCard> createState() => _MorningReviewCardState();
+DateTime _tomorrow() {
+  final t = DateTime.now().add(const Duration(days: 1));
+  return DateTime(t.year, t.month, t.day);
 }
 
-class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
-  // AI tone-aware утреннее сообщение (premium). null = ещё не запрашивали.
-  String? _aiMessage;
-  bool _messageLoading = false;
-
-  Future<void> _getAiMessage(int pendingCount) async {
-    final premium = await ref.read(isPremiumProvider.future);
-    if (!mounted) return;
-    if (!premium) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Premium feature — upgrade for AI nudges')),
+/// Сегодняшние невыполненные задачи (кандидаты на перенос на завтра).
+final _todayPendingProvider =
+    StreamProvider.autoDispose<List<ItemsTableData>>((ref) {
+  return ref.watch(itemsDaoProvider).watchTodayItems(DateTime.now()).map(
+        (items) => items.where((i) => i.status == 'pending').toList(),
       );
-      return;
-    }
-    setState(() => _messageLoading = true);
-    try {
-      final tone = ref.read(toneProvider) == AppTone.harsh ? 'harsh' : 'gentle';
-      final message = await ref.read(apiClientProvider).aiMorningMessage(
-            pendingCount: pendingCount,
-            tone: tone,
-          );
-      if (!mounted) return;
-      setState(() => _aiMessage = message.isEmpty ? null : message);
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    } finally {
-      if (mounted) setState(() => _messageLoading = false);
-    }
-  }
+});
+
+/// Задачи, уже запланированные на завтра (для занятых слотов).
+final _tomorrowItemsProvider =
+    StreamProvider.autoDispose<List<ItemsTableData>>((ref) {
+  return ref.watch(itemsDaoProvider).watchTodayItems(_tomorrow());
+});
+
+class EveningReviewCard extends ConsumerWidget {
+  const EveningReviewCard({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final overdue = ref.watch(overduePendingProvider).valueOrNull ??
-        const <ItemsTableData>[];
-    if (overdue.isEmpty) return const SizedBox.shrink();
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Только вечером (ритуал «разбор на завтра»).
+    if (DateTime.now().hour < _eveningHour) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final count = overdue.length;
     final tone = ref.watch(toneProvider);
+    final pending = ref.watch(_todayPendingProvider).valueOrNull ??
+        const <ItemsTableData>[];
 
     return Card(
       child: Padding(
@@ -93,36 +61,22 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
           children: [
             Row(
               children: [
-                Icon(Icons.wb_twilight, color: colorScheme.secondary),
+                Icon(Icons.bedtime_outlined, color: colorScheme.secondary),
                 const SizedBox(width: 8),
-                Text('Morning review', style: textTheme.titleMedium),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'AI nudge (Premium)',
-                  visualDensity: VisualDensity.compact,
-                  icon: _messageLoading
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.auto_awesome, size: 18),
-                  onPressed:
-                      _messageLoading ? null : () => _getAiMessage(count),
-                ),
+                Text('Plan tomorrow', style: textTheme.titleMedium),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              _aiMessage ?? ToneCopy.morningReview(tone, count),
+              ToneCopy.eveningReview(tone, pending.length),
               style: textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: () => _showMorningReviewSheet(context),
-                child: const Text('Review'),
+                onPressed: () => _showEveningReviewSheet(context),
+                child: const Text('Plan'),
               ),
             ),
           ],
@@ -132,23 +86,23 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
   }
 }
 
-Future<void> _showMorningReviewSheet(BuildContext context) {
+Future<void> _showEveningReviewSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => const _MorningReviewSheet(),
+    builder: (_) => const _EveningReviewSheet(),
   );
 }
 
-class _MorningReviewSheet extends ConsumerStatefulWidget {
-  const _MorningReviewSheet();
+class _EveningReviewSheet extends ConsumerStatefulWidget {
+  const _EveningReviewSheet();
 
   @override
-  ConsumerState<_MorningReviewSheet> createState() =>
-      _MorningReviewSheetState();
+  ConsumerState<_EveningReviewSheet> createState() =>
+      _EveningReviewSheetState();
 }
 
-class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
+class _EveningReviewSheetState extends ConsumerState<_EveningReviewSheet> {
   List<PlanVariant>? _aiPlans;
   bool _aiLoading = false;
 
@@ -163,14 +117,14 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
     }
     setState(() => _aiLoading = true);
     try {
-      final targetDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final targetDate = DateFormat('yyyy-MM-dd').format(_tomorrow());
       final raw = await ref.read(apiClientProvider).aiRedistribute(targetDate);
       final mapped = mapAiPlans(raw);
       if (!mounted) return;
       setState(() => _aiPlans = mapped);
       if (mapped.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI had nothing to reschedule')),
+          const SnackBar(content: Text('AI had nothing to schedule')),
         );
       }
     } on ApiException catch (e) {
@@ -190,13 +144,14 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final overdue = ref.watch(overduePendingProvider).valueOrNull ??
+    final pending = ref.watch(_todayPendingProvider).valueOrNull ??
         const <ItemsTableData>[];
-    final today = ref.watch(_todayItemsForReviewProvider).valueOrNull ??
+    final tomorrowItems = ref.watch(_tomorrowItemsProvider).valueOrNull ??
         const <ItemsTableData>[];
-    final variants = overdue.isEmpty
+    final tomorrow = _tomorrow();
+    final variants = pending.isEmpty
         ? <PlanVariant>[]
-        : buildVariants(overdue, today, DateTime.now());
+        : buildVariants(pending, tomorrowItems, tomorrow);
     final textTheme = Theme.of(context).textTheme;
     final aiPlans = _aiPlans;
 
@@ -210,16 +165,15 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Carry over', style: textTheme.headlineSmall),
-                if (overdue.isNotEmpty)
+                Text('Plan tomorrow', style: textTheme.headlineSmall),
+                if (pending.isNotEmpty)
                   TextButton(
                     onPressed: () async {
-                      final now = DateTime.now();
-                      for (final item in overdue) {
-                        await moveToDay(ref, item, now);
+                      for (final item in pending) {
+                        await moveToDay(ref, item, tomorrow);
                       }
                     },
-                    child: const Text('Move all to today'),
+                    child: const Text('Move all to tomorrow'),
                   ),
               ],
             ),
@@ -255,21 +209,22 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
               ],
               const Divider(height: 24),
             ],
-            if (overdue.isEmpty)
+            if (pending.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Center(
-                  child: Text("All caught up 🎉", style: textTheme.bodyLarge),
+                  child: Text("Nothing left for today 🎉",
+                      style: textTheme.bodyLarge),
                 ),
               )
             else
               Flexible(
                 child: ListView.separated(
                   shrinkWrap: true,
-                  itemCount: overdue.length,
+                  itemCount: pending.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) =>
-                      _OverdueRow(item: overdue[index]),
+                      _PendingRow(item: pending[index], tomorrow: tomorrow),
                 ),
               ),
           ],
@@ -279,10 +234,11 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
   }
 }
 
-class _OverdueRow extends ConsumerWidget {
-  const _OverdueRow({required this.item});
+class _PendingRow extends ConsumerWidget {
+  const _PendingRow({required this.item, required this.tomorrow});
 
   final ItemsTableData item;
+  final DateTime tomorrow;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -292,15 +248,15 @@ class _OverdueRow extends ConsumerWidget {
       contentPadding: EdgeInsets.zero,
       title: Text(item.title, style: textTheme.bodyLarge),
       subtitle: Text(
-        '${DateFormat.MMMd().format(item.scheduledAt)} · ${item.priority}',
+        '${DateFormat.Hm().format(item.scheduledAt)} · ${item.priority}',
         style: textTheme.bodySmall,
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextButton(
-            onPressed: () => moveToDay(ref, item, DateTime.now()),
-            child: const Text('Today'),
+            onPressed: () => moveToDay(ref, item, tomorrow),
+            child: const Text('Tomorrow'),
           ),
           IconButton(
             tooltip: 'Skip',

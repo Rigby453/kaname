@@ -48,4 +48,16 @@ class ToneCopy {
   static String allDone(AppTone tone) => tone == AppTone.harsh
       ? 'Everything done. Don’t get cocky.'
       : 'Everything that mattered — done. Proud of you.';
+
+  /// Вечерний разбор завтрашнего дня (SPEC B6).
+  static String eveningReview(AppTone tone, int pending) {
+    if (tone == AppTone.harsh) {
+      return pending == 0
+          ? 'Plan tomorrow now, or wing it and panic. Your call.'
+          : "$pending left over today. Plan tomorrow now or wing it and panic.";
+    }
+    return pending == 0
+        ? 'Want tomorrow handled? I’ve got a plan ready.'
+        : "$pending unfinished today — want me to fit them into tomorrow?";
+  }
 }

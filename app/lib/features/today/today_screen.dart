@@ -14,6 +14,7 @@ import '../../services/streak/streak_service.dart';
 import '../../services/widget/widget_service.dart';
 import 'widgets/add_task_sheet.dart';
 import 'widgets/celebration_overlay.dart';
+import 'widgets/evening_review_card.dart';
 import 'widgets/morning_review_card.dart';
 import 'widgets/progress_ring.dart';
 import 'widgets/streak_row.dart';
@@ -93,6 +94,7 @@ class TodayScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               const MorningReviewCard(),
+              const EveningReviewCard(),
               const SizedBox(height: 8),
               Center(child: ProgressRing(items: mainItems)),
               const SizedBox(height: 24),
