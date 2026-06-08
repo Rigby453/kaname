@@ -9,6 +9,7 @@ import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/text_scale_provider.dart';
 import '../../core/settings/tone_provider.dart';
+import '../../services/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/api/api_client.dart';
@@ -140,8 +141,39 @@ class ProfileScreen extends ConsumerWidget {
             const _ToneSetting(),
             const SizedBox(height: 16),
             const _TextSizeSetting(),
+            const SizedBox(height: 8),
+            const _NotificationsSetting(),
           ],
         );
+  }
+}
+
+/// Переключатель ежедневных напоминаний (утренний/вечерний разбор).
+class _NotificationsSetting extends ConsumerWidget {
+  const _NotificationsSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(notificationsEnabledProvider);
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Daily reminders'),
+      subtitle: const Text('Morning & evening review nudges'),
+      value: enabled,
+      onChanged: (want) async {
+        final result = await ref
+            .read(notificationsEnabledProvider.notifier)
+            .setEnabled(want);
+        // Если включали, но разрешение не выдали — подсказываем.
+        if (want && !result && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Enable notifications in system settings to use reminders'),
+            ),
+          );
+        }
+      },
+    );
   }
 }
 

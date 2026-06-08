@@ -13,6 +13,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'features/auth/auth_controller.dart';
 import 'services/api/api_client.dart';
+import 'services/notifications/notification_service.dart';
 import 'services/sync/sync_service.dart';
 import 'services/widget/widget_service.dart';
 
@@ -64,6 +65,12 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
         );
       },
     );
+
+    // Перепланируем ежедневные напоминания при запуске (если включены) —
+    // расписание может сброситься после обновления приложения. Fire-and-forget.
+    if (ref.read(notificationsEnabledProvider)) {
+      ref.read(notificationServiceProvider).scheduleDailyReviews();
+    }
   }
 
   @override
