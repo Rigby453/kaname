@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../models/prisma.js";
 import { serializeItem } from "../models/item.js";
 import { serializeWaterLog } from "../models/waterLog.js";
+import { serializeDayLog } from "../models/dayLog.js";
 import { requireAuth } from "./middleware/auth.js";
 import { checkAndUpdateStreak } from "../engine/streaks.js";
 
@@ -34,10 +35,22 @@ const syncWaterLogSchema = z.object({
   logged_at: z.string().datetime({ offset: true }),
 });
 
+// Zod-схема для одного DayLog (запись дневника; ключ — userId+date)
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
+const syncDayLogSchema = z.object({
+  id: z.string().uuid().optional(),
+  user_id: z.string().optional(),
+  date: dateOnly,
+  mood: z.number().int().min(1).max(5).nullable().optional(),
+  note: z.string().nullable().optional(),
+  updated_at: z.string().datetime({ offset: true }),
+});
+
 // Zod-схема для тела sync-запроса
 const syncRequestSchema = z.object({
   items: z.array(syncItemSchema),
   water_logs: z.array(syncWaterLogSchema).optional(),
+  day_logs: z.array(syncDayLogSchema).optional(),
   // id задач, удалённых на клиенте (offline-first tombstones) — сервер их удаляет
   deleted_item_ids: z.array(z.string().uuid()).optional(),
   last_sync_at: z.string().datetime({ offset: true }),
@@ -59,6 +72,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
       const {
         items: incomingItems,
         water_logs: incomingWater,
+        day_logs: incomingDayLogs,
         deleted_item_ids: deletedItemIds,
         last_sync_at,
       } = parsed.data;
@@ -231,6 +245,39 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
+      // DayLog — одна запись на (userId, date); last-write-wins по updated_at.
+      if (incomingDayLogs && incomingDayLogs.length > 0) {
+        for (const d of incomingDayLogs) {
+          const incomingUpdatedAt = new Date(d.updated_at);
+          if (isNaN(incomingUpdatedAt.getTime())) continue;
+          const dateObj = new Date(`${d.date}T00:00:00.000Z`);
+          const existing = await prisma.dayLog.findUnique({
+            where: { userId_date: { userId, date: dateObj } },
+          });
+          if (existing) {
+            // Обновляем, только если входящая версия новее серверной.
+            if (incomingUpdatedAt > existing.updatedAt) {
+              await prisma.dayLog.update({
+                where: { id: existing.id },
+                data: {
+                  ...(d.mood !== undefined ? { mood: d.mood } : {}),
+                  ...(d.note !== undefined ? { note: d.note } : {}),
+                },
+              });
+            }
+          } else {
+            await prisma.dayLog.create({
+              data: {
+                userId,
+                date: dateObj,
+                mood: d.mood ?? null,
+                note: d.note ?? null,
+              },
+            });
+          }
+        }
+      }
+
       // Удаления с клиента: убираем только свои задачи (ownership через userId).
       if (deletedItemIds && deletedItemIds.length > 0) {
         await prisma.item.deleteMany({
@@ -256,9 +303,19 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         orderBy: { loggedAt: "asc" },
       });
 
+      // DayLog, изменённые после last_sync_at
+      const serverUpdatedDayLogs = await prisma.dayLog.findMany({
+        where: {
+          userId,
+          updatedAt: { gt: lastSyncDate },
+        },
+        orderBy: { date: "asc" },
+      });
+
       return reply.status(200).send({
         updated_items: serverUpdated.map(serializeItem),
         updated_water_logs: serverUpdatedWater.map(serializeWaterLog),
+        updated_day_logs: serverUpdatedDayLogs.map(serializeDayLog),
       });
     }
   );

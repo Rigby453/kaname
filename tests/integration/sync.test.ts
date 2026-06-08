@@ -4,6 +4,7 @@
 import { randomUUID } from 'crypto';
 import { buildServer } from '../../backend/src/app';
 import type { FastifyInstance } from 'fastify';
+import prisma from '../../backend/src/models/prisma';
 import { registerUser, createItem, cleanupUser } from '../helpers';
 
 let app: FastifyInstance;
@@ -320,4 +321,81 @@ test("deleted_item_ids cannot delete another user's item", async () => {
     headers: { Authorization: `Bearer ${owner.token}` },
   });
   expect(get.json<Array<{ id: string }>>().some((i) => i.id === item.id)).toBe(true);
+});
+
+// --- DayLog sync (upsert by user+date, last-write-wins) ---
+
+const DAY_LOG_DATE = '2026-07-26';
+
+function postDayLog(
+  token: string,
+  log: { date: string; mood?: number | null; note?: string | null; updated_at: string }
+) {
+  return app.inject({
+    method: 'POST',
+    url: '/api/v1/sync',
+    headers: { Authorization: `Bearer ${token}` },
+    payload: { items: [], day_logs: [log], last_sync_at: EPOCH },
+  });
+}
+
+test('day log synced → upserted by date and returned in updated_day_logs', async () => {
+  const user = await registerUser(app);
+  userIds.push(user.userId);
+
+  const res = await postDayLog(user.token, {
+    date: DAY_LOG_DATE,
+    mood: 4,
+    note: 'good day',
+    updated_at: '2026-07-26T20:00:00.000Z',
+  });
+  expect(res.statusCode).toBe(200);
+
+  const logs = res.json<{
+    updated_day_logs: Array<{ date: string; mood: number; note: string; user_id: string }>;
+  }>().updated_day_logs;
+  const found = logs.find((l) => l.date === DAY_LOG_DATE);
+  expect(found).toBeDefined();
+  expect(found?.mood).toBe(4);
+  expect(found?.note).toBe('good day');
+  expect(found?.user_id).toBe(user.userId);
+});
+
+test('day log LWW: stale update ignored, newer update applied', async () => {
+  const user = await registerUser(app);
+  userIds.push(user.userId);
+  const dateObj = new Date(`${DAY_LOG_DATE}T00:00:00.000Z`);
+
+  // Создаём (mood=3). После create серверный updatedAt = реальное "сейчас".
+  await postDayLog(user.token, {
+    date: DAY_LOG_DATE,
+    mood: 3,
+    note: 'first',
+    updated_at: '2026-07-26T10:00:00.000Z',
+  });
+
+  // Устаревшее обновление (2000 < серверного now) — игнорируется.
+  await postDayLog(user.token, {
+    date: DAY_LOG_DATE,
+    mood: 1,
+    note: 'stale',
+    updated_at: '2000-01-01T00:00:00.000Z',
+  });
+  let dl = await prisma.dayLog.findUnique({
+    where: { userId_date: { userId: user.userId, date: dateObj } },
+  });
+  expect(dl?.mood).toBe(3);
+
+  // Более новое (2030 > серверного now) — применяется.
+  await postDayLog(user.token, {
+    date: DAY_LOG_DATE,
+    mood: 5,
+    note: 'final',
+    updated_at: '2030-01-01T00:00:00.000Z',
+  });
+  dl = await prisma.dayLog.findUnique({
+    where: { userId_date: { userId: user.userId, date: dateObj } },
+  });
+  expect(dl?.mood).toBe(5);
+  expect(dl?.note).toBe('final');
 });

@@ -49,6 +49,7 @@
 | note       | text     | nullable       |
 | insight    | text     | AI, nullable   |
 | created_at | timestamp|                |
+| updated_at | timestamp| LWW sync       |
 
 ## WaterLogs
 | Column     | Type     | Notes       |
@@ -116,6 +117,7 @@ model DayLog {
   note      String?
   insight   String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
   @@unique([userId, date])
 }
 model WaterLog {

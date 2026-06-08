@@ -544,6 +544,19 @@ components:
         amount_ml: { type: integer }
         logged_at: { type: string, format: date-time }
 
+    DayLog:
+      type: object
+      description: One diary entry per (user, date). Synced last-write-wins by updated_at.
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        mood: { type: integer, nullable: true, minimum: 1, maximum: 5 }
+        note: { type: string, nullable: true }
+        insight: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
     SyncRequest:
       type: object
       required: [items, last_sync_at]
@@ -555,6 +568,10 @@ components:
           type: array
           description: Optional. Water intake events created since last_sync_at.
           items: { $ref: '#/components/schemas/WaterLog' }
+        day_logs:
+          type: array
+          description: Optional. Diary entries changed since last_sync_at (LWW by updated_at; keyed by date).
+          items: { $ref: '#/components/schemas/DayLog' }
         deleted_item_ids:
           type: array
           description: Optional. Item ids deleted locally; the server deletes them (owner only).
@@ -571,6 +588,10 @@ components:
           type: array
           description: Water logs changed on the server since last_sync_at.
           items: { $ref: '#/components/schemas/WaterLog' }
+        updated_day_logs:
+          type: array
+          description: Diary entries changed on the server since last_sync_at.
+          items: { $ref: '#/components/schemas/DayLog' }
 
     RedistributeResponse:
       type: object

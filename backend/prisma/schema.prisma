@@ -58,6 +58,7 @@ model DayLog {
   note      String?
   insight   String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([userId, date])
 }
