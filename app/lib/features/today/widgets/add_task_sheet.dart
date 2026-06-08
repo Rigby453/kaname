@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
+import '../../../core/settings/recent_subjects.dart';
 import '../../../core/utils/id.dart';
 
 const List<String> _types = ['task', 'event', 'exam', 'deadline'];
@@ -160,6 +161,11 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     // main-задачи всегда защищены от автопереноса
     final isProtected = _priority == 'main';
 
+    // Запоминаем названия занятий/экзаменов для быстрого повторного ввода (C4).
+    if (_type == 'event' || _type == 'exam') {
+      await ref.read(recentSubjectsProvider).add(title);
+    }
+
     if (_isEditing) {
       await dao.updateItem(
         widget.existing!.id,
@@ -235,6 +241,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                   .toList(),
             ),
             const SizedBox(height: 16),
+
+            // Недавние предметы — быстрый ввод для занятий/экзаменов (C4)
+            if (_type == 'event' || _type == 'exam')
+              Builder(
+                builder: (context) {
+                  final recents = ref.read(recentSubjectsProvider).all;
+                  if (recents.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Recent subjects', style: textTheme.labelMedium),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: recents
+                            .map((s) => ActionChip(
+                                  label: Text(s),
+                                  onPressed: () => setState(
+                                      () => _titleController.text = s),
+                                ))
+                            .toList(),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                },
+              ),
 
             // Приоритет
             Text('Priority', style: textTheme.labelMedium),
