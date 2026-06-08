@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/database/database_providers.dart';
 import 'core/router/app_router.dart';
+import 'core/settings/text_scale_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'features/auth/auth_controller.dart';
@@ -75,9 +76,11 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
   Widget build(BuildContext context) {
     final theme = ref.watch(themeDataProvider);
     final router = ref.watch(routerProvider);
-    // Contrast-тема: крупный шрифт (×1.15) через системный textScaler — безопасно.
+    // Итоговый масштаб текста = пользовательская настройка × бонус Contrast-темы.
     final isContrast =
         ref.watch(themeNotifierProvider) == AppThemeKey.contrast;
+    final userScale = ref.watch(textScaleProvider).scale;
+    final scale = userScale * (isContrast ? 1.15 : 1.0);
 
     return MaterialApp.router(
       title: 'Kaizen',
@@ -85,10 +88,11 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
       theme: theme,
       routerConfig: router,
       builder: (context, child) {
-        if (!isContrast || child == null) return child ?? const SizedBox.shrink();
+        if (child == null) return const SizedBox.shrink();
+        if (scale == 1.0) return child;
         final mq = MediaQuery.of(context);
         return MediaQuery(
-          data: mq.copyWith(textScaler: const TextScaler.linear(1.15)),
+          data: mq.copyWith(textScaler: TextScaler.linear(scale)),
           child: child,
         );
       },

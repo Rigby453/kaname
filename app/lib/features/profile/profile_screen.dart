@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/settings/text_scale_provider.dart';
+import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/api/api_client.dart';
@@ -47,7 +49,37 @@ class ProfileScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            userAsync.when(
+            Expanded(
+              child: ListView(
+                children: [
+                  _buildHeader(context, ref, userAsync, textTheme, streak),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () async {
+                await ref.read(authControllerProvider.notifier).logout();
+              },
+              child: Text(isAuthenticated ? 'Sign out' : 'Sign in / Sign up'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<Map<String, dynamic>?> userAsync,
+    TextTheme textTheme,
+    StreakTableData? streak,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        userAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (_, _) => const SizedBox.shrink(),
               data: (user) {
@@ -99,17 +131,14 @@ class ProfileScreen extends ConsumerWidget {
             Text('Appearance', style: textTheme.titleMedium),
             const SizedBox(height: 8),
             const _ThemePicker(),
-            const Spacer(),
-            FilledButton(
-              onPressed: () async {
-                await ref.read(authControllerProvider.notifier).logout();
-              },
-              child: Text(isAuthenticated ? 'Sign out' : 'Sign in / Sign up'),
-            ),
+            const SizedBox(height: 24),
+            Text('Preferences', style: textTheme.titleMedium),
+            const SizedBox(height: 8),
+            const _ToneSetting(),
+            const SizedBox(height: 16),
+            const _TextSizeSetting(),
           ],
-        ),
-      ),
-    );
+        );
   }
 }
 
@@ -139,6 +168,61 @@ class _ThemePicker extends ConsumerWidget {
               ref.read(themeNotifierProvider.notifier).setTheme(key),
         );
       }).toList(),
+    );
+  }
+}
+
+/// Тон по умолчанию (gentle/harsh) — тот же toneProvider, что и тумблер на Today.
+class _ToneSetting extends ConsumerWidget {
+  const _ToneSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tone = ref.watch(toneProvider);
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text('Default tone', style: textTheme.bodyLarge),
+        SegmentedButton<AppTone>(
+          segments: const [
+            ButtonSegment(value: AppTone.gentle, label: Text('Gentle')),
+            ButtonSegment(value: AppTone.harsh, label: Text('Harsh')),
+          ],
+          selected: {tone},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) =>
+              ref.read(toneProvider.notifier).set(s.first),
+        ),
+      ],
+    );
+  }
+}
+
+/// Размер шрифта (доступность) — влияет на весь интерфейс.
+class _TextSizeSetting extends ConsumerWidget {
+  const _TextSizeSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(textScaleProvider);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Text size', style: textTheme.bodyLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: TextSizePref.values.map((p) {
+            return ChoiceChip(
+              label: Text(p.label),
+              selected: current == p,
+              onSelected: (_) => ref.read(textScaleProvider.notifier).set(p),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 }
