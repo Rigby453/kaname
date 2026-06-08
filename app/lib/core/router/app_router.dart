@@ -11,6 +11,7 @@ import '../theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/paywall/paywall_screen.dart';
 import '../../features/today/today_screen.dart';
 import '../../features/plan/plan_screen.dart';
 import '../../features/health/health_screen.dart';
@@ -138,6 +139,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/wrapped',
         builder: (context, state) => const WrappedScreen(),
+      ),
+
+      // /paywall — подписка Premium (из профиля и AI-апселлов), вне оболочки
+      GoRoute(
+        path: '/paywall',
+        builder: (context, state) => const PaywallScreen(),
       ),
     ],
   );

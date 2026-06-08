@@ -171,6 +171,20 @@ class ApiClient {
     }
   }
 
+  /// DEV-переключение тарифа (только не-production бэкенд). Возвращает пользователя.
+  /// Реальные платежи появятся в Phase 1; до тех пор так включаем premium для теста AI.
+  Future<Map<String, dynamic>> devUpgrade({String tier = 'premium'}) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/subscription/dev-upgrade',
+        data: {'tier': tier},
+      );
+      return response.data!;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
   /// Данные текущего авторизованного пользователя.
   Future<Map<String, dynamic>> me() async {
     try {

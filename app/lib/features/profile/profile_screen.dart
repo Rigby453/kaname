@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
@@ -127,7 +128,9 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
+            const _PremiumCard(),
+            const SizedBox(height: 24),
             Text('Appearance', style: textTheme.titleMedium),
             const SizedBox(height: 8),
             const _ThemePicker(),
@@ -168,6 +171,38 @@ class _ThemePicker extends ConsumerWidget {
               ref.read(themeNotifierProvider.notifier).setTheme(key),
         );
       }).toList(),
+    );
+  }
+}
+
+/// Карточка статуса подписки: показывает Free/Premium и ведёт на пейволл.
+class _PremiumCard extends ConsumerWidget {
+  const _PremiumCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final isPremium = ref.watch(isPremiumProvider).valueOrNull ?? false;
+
+    return Card(
+      color: colorScheme.primary.withValues(alpha: 0.10),
+      child: ListTile(
+        leading: Icon(
+          isPremium ? Icons.workspace_premium : Icons.workspace_premium_outlined,
+          color: colorScheme.primary,
+        ),
+        title: Text(isPremium ? 'Kaizen Premium' : 'Free plan',
+            style: textTheme.titleSmall),
+        subtitle: Text(
+          isPremium ? 'AI features unlocked' : 'Unlock AI — \$10/mo',
+          style: textTheme.bodySmall,
+        ),
+        trailing: isPremium
+            ? null
+            : const Icon(Icons.chevron_right),
+        onTap: isPremium ? null : () => context.push('/paywall'),
+      ),
     );
   }
 }

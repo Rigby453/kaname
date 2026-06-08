@@ -11,6 +11,7 @@ import streaksRoutes from "./routes/streaks.js";
 import syncRoutes from "./routes/sync.js";
 import redistributeRoutes from "./routes/redistribute.js";
 import aiRoutes from "./routes/ai.js";
+import subscriptionRoutes from "./routes/subscription.js";
 
 /**
  * Собирает и конфигурирует экземпляр Fastify (без вызова listen).
@@ -71,6 +72,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Регистрируем AI-маршруты (Phase 1, premium): фото-импорт расписания
   await fastify.register(aiRoutes);
+
+  // Регистрируем маршруты подписки (dev-upgrade; реальные платежи — Phase 1)
+  await fastify.register(subscriptionRoutes);
 
   return fastify;
 }

@@ -19,6 +19,7 @@ import '../../../core/database/database_providers.dart';
 import '../../../core/settings/tone_provider.dart';
 import '../../../services/api/api_client.dart';
 import '../../auth/auth_controller.dart';
+import '../../paywall/paywall_screen.dart';
 import 'review_engine.dart';
 import 'review_variant_card.dart';
 
@@ -50,9 +51,7 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
     final premium = await ref.read(isPremiumProvider.future);
     if (!mounted) return;
     if (!premium) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Premium feature — upgrade for AI nudges')),
-      );
+      showPremiumUpsell(context, 'AI nudges');
       return;
     }
     setState(() => _messageLoading = true);
@@ -156,9 +155,7 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
     final premium = await ref.read(isPremiumProvider.future);
     if (!mounted) return;
     if (!premium) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Premium feature — upgrade for AI plans')),
-      );
+      showPremiumUpsell(context, 'AI plans');
       return;
     }
     setState(() => _aiLoading = true);

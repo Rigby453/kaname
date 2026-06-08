@@ -49,6 +49,11 @@
 
 <!-- Add new ADRs below this line -->
 
+## ADR-018: Dev-only subscription upgrade endpoint (test premium before payments)
+**Date:** 2026-06
+**Decision:** Added `POST /api/v1/subscription/dev-upgrade` (auth required) that sets the current user's `subscriptionTier` to `premium`/`free`. It returns **404 when `NODE_ENV=production`** — usable only in dev/test/staging. The Flutter paywall exposes it only under `kDebugMode` ("Dev: unlock premium"); the real "Subscribe" CTA is a placeholder until payments exist.
+**Reason:** AI features are premium-gated server-side (`subscriptionTier==='premium'`), but real payments (RevenueCat) are Phase 1 and not built. Without a way to flip the tier, premium/AI is untestable from the app except by hand-editing the DB. A non-production endpoint is the standard, low-risk way to exercise the paid path end-to-end; the hard `NODE_ENV` gate keeps it out of production. Documented in `api-spec.yaml` under a `Subscription` tag so the contract stays the source of truth. Replace with a real receipt-validation flow in Phase 1. See [[ADR-015]] (premium gate) — same gate this toggles.
+
 ## ADR-017: Water logs sync via the existing /sync endpoint (append-only, no schema change)
 **Date:** 2026-06
 **Decision:** Extend `POST /api/v1/sync` (not a new endpoint) to also carry water logs: `SyncRequest.water_logs` (optional) and `SyncResponse.updated_water_logs`. Water logs are treated as **append-only immutable events**: the server upserts by `id` (creates if absent, owned by the JWT user; never updates an existing row), and returns the user's water logs with `loggedAt > last_sync_at`. The client sends local water logs with `loggedAt > last_sync_at` and merges the response by `id`. No `updatedAt` column and **no Drift/Prisma migration** were needed (client `WaterLogsTable` stays `id/amountMl/loggedAt`; it does not store `userId` — the server assigns it from the token).

@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/database_providers.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
+import '../paywall/paywall_screen.dart';
 import 'diary_insight.dart';
 
 /// Метки тегов "What went wrong?" — ключ (хранится) → подпись (показывается)
@@ -106,11 +107,7 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
     final premium = await ref.read(isPremiumProvider.future);
     if (!mounted) return;
     if (!premium) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Premium feature — upgrade for AI insights'),
-        ),
-      );
+      showPremiumUpsell(context, 'AI insights');
       return;
     }
     setState(() => _insightLoading = true);

@@ -384,6 +384,31 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /api/v1/subscription/dev-upgrade:
+    post:
+      tags: [Subscription]
+      summary: DEV ONLY — set the current user's subscription tier (non-production)
+      description: >
+        Flips subscription_tier without real payment so premium features (AI)
+        can be tested before payments (RevenueCat, Phase 1) are integrated.
+        Returns 404 when NODE_ENV=production.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tier: { type: string, enum: [free, premium], default: premium }
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Not available (production) }
+
 components:
   securitySchemes:
     bearerAuth:
