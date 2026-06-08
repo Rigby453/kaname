@@ -47,6 +47,7 @@
 - [x] QA-04 Redistribution engine
 - [x] QA-05 Sync conflict resolution
 - [x] DoD: 36/36 tests pass (Jest+inject); engine coverage 100% lines (≥80% req); no AI calls (no ai/ code in MVP)
+- [x] First Flutter unit tests: review_engine (slots, AI-plan mapping) + diary_insight (weekly insight, issue parsing) — 12 tests via flutter_test
 
 ## Landing (see landing/CLAUDE.md)
 - [x] index.html — hero, problem/solution, features, pricing, footer
