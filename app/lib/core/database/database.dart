@@ -116,6 +116,39 @@ class DayLogsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Записи о съеденном (Food). Локально; числа КБЖУ уже посчитаны на грамм порции.
+/// Добавлено в schemaVersion 3.
+class FoodLogsTable extends Table {
+  @override
+  String get tableName => 'food_logs';
+
+  TextColumn get id => text()();
+
+  // День (UTC-полночь), как у других дневных сущностей
+  DateTimeColumn get date => dateTime()();
+
+  // Приём пищи: breakfast / lunch / dinner / snack
+  TextColumn get meal => text().withDefault(const Constant('snack'))();
+
+  TextColumn get name => text()();
+
+  // Сколько грамм съедено
+  RealColumn get grams => real().withDefault(const Constant(100))();
+
+  // Абсолютные значения для этой порции (per100g * grams/100); null если неизвестно
+  RealColumn get calories => real().nullable()();
+  RealColumn get protein => real().nullable()();
+  RealColumn get fat => real().nullable()();
+  RealColumn get carbs => real().nullable()();
+  RealColumn get sugar => real().nullable()();
+  RealColumn get fiber => real().nullable()();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Очередь синхронизации: записи, ожидающие отправки на сервер
 /// id — autoincrement int (локальный, не синхронизируется)
 class SyncQueueTable extends Table {
@@ -149,6 +182,7 @@ class SyncQueueTable extends Table {
     StreakTable,
     WaterLogsTable,
     DayLogsTable,
+    FoodLogsTable,
     SyncQueueTable,
   ],
 )
@@ -156,7 +190,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -165,6 +199,10 @@ class AppDatabase extends _$AppDatabase {
           // v2: добавлен day_logs.updated_at (для синхронизации дневника).
           if (from < 2) {
             await m.addColumn(dayLogsTable, dayLogsTable.updatedAt);
+          }
+          // v3: добавлена таблица food_logs (модуль «Еда»).
+          if (from < 3) {
+            await m.createTable(foodLogsTable);
           }
         },
       );

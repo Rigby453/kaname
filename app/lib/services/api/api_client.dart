@@ -322,6 +322,35 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------------------
+  // Food (Open Food Facts через бэкенд)
+  // ---------------------------------------------------------------------------
+
+  /// Текстовый поиск продуктов. Возвращает список { code, name, brand, per_100g }.
+  Future<List<dynamic>> foodSearch(String query) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/food/search',
+        queryParameters: {'q': query},
+      );
+      return (response.data?['products'] as List<dynamic>?) ?? <dynamic>[];
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Поиск продукта по штрихкоду. Возвращает продукт или null (404).
+  Future<Map<String, dynamic>?> foodBarcode(String code) async {
+    try {
+      final response =
+          await _dio.get<Map<String, dynamic>>('/api/v1/food/barcode/$code');
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      _throw(e);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // AI (Phase 1, premium)
   // ---------------------------------------------------------------------------
 

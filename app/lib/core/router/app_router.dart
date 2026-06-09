@@ -17,6 +17,7 @@ import '../../features/plan/plan_screen.dart';
 import '../../features/health/health_screen.dart';
 import '../../features/diary/diary_screen.dart';
 import '../../features/focus/focus_screen.dart';
+import '../../features/food/food_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/wrapped/wrapped_screen.dart';
 import 'scaffold_with_nav_bar.dart';
@@ -133,6 +134,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/focus',
         builder: (context, state) => const FocusScreen(),
+      ),
+
+      // /food — модуль еды (из Health), вне оболочки
+      GoRoute(
+        path: '/food',
+        builder: (context, state) => const FoodScreen(),
       ),
 
       // /wrapped — weekly wrapped (из Diary), вне оболочки

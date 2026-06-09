@@ -97,6 +97,18 @@ class HealthScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
 
+        // --- Еда ---
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.restaurant_outlined, color: colorScheme.primary),
+            title: const Text('Food'),
+            subtitle: const Text('Log meals · KБЖУ from Open Food Facts'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/food'),
+          ),
+        ),
+        const SizedBox(height: 16),
+
         // --- Фокус-сессии ---
         Card(
           child: ListTile(
