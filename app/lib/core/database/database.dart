@@ -107,6 +107,11 @@ class DayLogsTable extends Table {
 
   DateTimeColumn get createdAt => dateTime()();
 
+  // Время последнего изменения — для синхронизации (last-write-wins).
+  // Добавлено в schemaVersion 2 (миграция addColumn).
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -151,7 +156,18 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v2: добавлен day_logs.updated_at (для синхронизации дневника).
+          if (from < 2) {
+            await m.addColumn(dayLogsTable, dayLogsTable.updatedAt);
+          }
+        },
+      );
 }
 
 /// Открывает соединение с БД через drift_flutter

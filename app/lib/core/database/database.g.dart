@@ -1378,6 +1378,18 @@ class $DayLogsTableTable extends DayLogsTable
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1386,6 +1398,7 @@ class $DayLogsTableTable extends DayLogsTable
     note,
     insight,
     createdAt,
+    updatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1438,6 +1451,12 @@ class $DayLogsTableTable extends DayLogsTable
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -1471,6 +1490,10 @@ class $DayLogsTableTable extends DayLogsTable
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
     );
   }
 
@@ -1488,6 +1511,7 @@ class DayLogsTableData extends DataClass
   final String? note;
   final String? insight;
   final DateTime createdAt;
+  final DateTime updatedAt;
   const DayLogsTableData({
     required this.id,
     required this.date,
@@ -1495,6 +1519,7 @@ class DayLogsTableData extends DataClass
     this.note,
     this.insight,
     required this.createdAt,
+    required this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1511,6 +1536,7 @@ class DayLogsTableData extends DataClass
       map['insight'] = Variable<String>(insight);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -1524,6 +1550,7 @@ class DayLogsTableData extends DataClass
           ? const Value.absent()
           : Value(insight),
       createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -1539,6 +1566,7 @@ class DayLogsTableData extends DataClass
       note: serializer.fromJson<String?>(json['note']),
       insight: serializer.fromJson<String?>(json['insight']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -1551,6 +1579,7 @@ class DayLogsTableData extends DataClass
       'note': serializer.toJson<String?>(note),
       'insight': serializer.toJson<String?>(insight),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -1561,6 +1590,7 @@ class DayLogsTableData extends DataClass
     Value<String?> note = const Value.absent(),
     Value<String?> insight = const Value.absent(),
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) => DayLogsTableData(
     id: id ?? this.id,
     date: date ?? this.date,
@@ -1568,6 +1598,7 @@ class DayLogsTableData extends DataClass
     note: note.present ? note.value : this.note,
     insight: insight.present ? insight.value : this.insight,
     createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
   );
   DayLogsTableData copyWithCompanion(DayLogsTableCompanion data) {
     return DayLogsTableData(
@@ -1577,6 +1608,7 @@ class DayLogsTableData extends DataClass
       note: data.note.present ? data.note.value : this.note,
       insight: data.insight.present ? data.insight.value : this.insight,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -1588,13 +1620,15 @@ class DayLogsTableData extends DataClass
           ..write('mood: $mood, ')
           ..write('note: $note, ')
           ..write('insight: $insight, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, date, mood, note, insight, createdAt);
+  int get hashCode =>
+      Object.hash(id, date, mood, note, insight, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1604,7 +1638,8 @@ class DayLogsTableData extends DataClass
           other.mood == this.mood &&
           other.note == this.note &&
           other.insight == this.insight &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
@@ -1614,6 +1649,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
   final Value<String?> note;
   final Value<String?> insight;
   final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const DayLogsTableCompanion({
     this.id = const Value.absent(),
@@ -1622,6 +1658,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
     this.note = const Value.absent(),
     this.insight = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DayLogsTableCompanion.insert({
@@ -1631,6 +1668,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
     this.note = const Value.absent(),
     this.insight = const Value.absent(),
     required DateTime createdAt,
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        date = Value(date),
@@ -1642,6 +1680,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
     Expression<String>? note,
     Expression<String>? insight,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1651,6 +1690,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
       if (note != null) 'note': note,
       if (insight != null) 'insight': insight,
       if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1662,6 +1702,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
     Value<String?>? note,
     Value<String?>? insight,
     Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
     return DayLogsTableCompanion(
@@ -1671,6 +1712,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
       note: note ?? this.note,
       insight: insight ?? this.insight,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1696,6 +1738,9 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1711,6 +1756,7 @@ class DayLogsTableCompanion extends UpdateCompanion<DayLogsTableData> {
           ..write('note: $note, ')
           ..write('insight: $insight, ')
           ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2843,6 +2889,7 @@ typedef $$DayLogsTableTableCreateCompanionBuilder =
       Value<String?> note,
       Value<String?> insight,
       required DateTime createdAt,
+      Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 typedef $$DayLogsTableTableUpdateCompanionBuilder =
@@ -2853,6 +2900,7 @@ typedef $$DayLogsTableTableUpdateCompanionBuilder =
       Value<String?> note,
       Value<String?> insight,
       Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 
@@ -2892,6 +2940,11 @@ class $$DayLogsTableTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2934,6 +2987,11 @@ class $$DayLogsTableTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DayLogsTableTableAnnotationComposer
@@ -2962,6 +3020,9 @@ class $$DayLogsTableTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$DayLogsTableTableTableManager
@@ -3001,6 +3062,7 @@ class $$DayLogsTableTableTableManager
                 Value<String?> note = const Value.absent(),
                 Value<String?> insight = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayLogsTableCompanion(
                 id: id,
@@ -3009,6 +3071,7 @@ class $$DayLogsTableTableTableManager
                 note: note,
                 insight: insight,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3019,6 +3082,7 @@ class $$DayLogsTableTableTableManager
                 Value<String?> note = const Value.absent(),
                 Value<String?> insight = const Value.absent(),
                 required DateTime createdAt,
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DayLogsTableCompanion.insert(
                 id: id,
@@ -3027,6 +3091,7 @@ class $$DayLogsTableTableTableManager
                 note: note,
                 insight: insight,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

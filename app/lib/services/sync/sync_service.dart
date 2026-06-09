@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/database/daos/day_logs_dao.dart';
 import '../api/api_client.dart';
 
 class SyncService {
@@ -77,9 +78,15 @@ class SyncService {
       final deletedItemIds =
           deleteRows.map((r) => r.recordId).toSet().toList();
 
+      // Исходящие записи дневника (изменённые после lastSyncAt)
+      final dayLogsDao = DayLogsDao(_db);
+      final localDayLogs = await dayLogsDao.changedSince(lastSyncDate);
+      final outgoingDayLogs = localDayLogs.map(_dayLogToSnakeCase).toList();
+
       debugPrint(
         '[SyncService] Syncing ${outgoing.length} items, '
         '${outgoingWater.length} water logs, '
+        '${outgoingDayLogs.length} day logs, '
         '${deletedItemIds.length} deletions, lastSyncAt=$lastSyncAt',
       );
 
@@ -89,6 +96,7 @@ class SyncService {
         outgoingWater,
         lastSyncAt,
         deletedItemIds: deletedItemIds,
+        dayLogs: outgoingDayLogs,
       );
 
       // Удаления доставлены — очищаем обработанные tombstones
@@ -130,6 +138,32 @@ class SyncService {
           }
         });
         debugPrint('[SyncService] Merged ${updatedWater.length} water logs');
+      }
+
+      // Шаг 5c: мержим записи дневника от сервера (ключ — дата; LWW)
+      final updatedDayLogs =
+          (response['updated_day_logs'] as List<dynamic>?) ?? <dynamic>[];
+      if (updatedDayLogs.isNotEmpty) {
+        for (final raw in updatedDayLogs) {
+          if (raw is! Map<String, dynamic>) continue;
+          final dateStr = raw['date'] as String?;
+          if (dateStr == null) continue;
+          final date = DateTime.tryParse(dateStr);
+          if (date == null) continue;
+          await dayLogsDao.upsertFromServerByDate(
+            date: date,
+            mood: (raw['mood'] as num?)?.toInt(),
+            note: raw['note'] as String?,
+            insight: raw['insight'] as String?,
+            createdAt:
+                DateTime.tryParse(raw['created_at'] as String? ?? '') ??
+                    DateTime.now(),
+            updatedAt:
+                DateTime.tryParse(raw['updated_at'] as String? ?? '') ??
+                    DateTime.now(),
+          );
+        }
+        debugPrint('[SyncService] Merged ${updatedDayLogs.length} day logs');
       }
 
       // Шаг 6: сохраняем метку успешной синхронизации
@@ -211,6 +245,23 @@ class SyncService {
       amountMl: Value((m['amount_ml'] as num).toInt()),
       loggedAt: Value(DateTime.parse(m['logged_at'] as String)),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // DayLog → snake_case (для отправки). Дата — YYYY-MM-DD; user_id ставит сервер.
+  // ---------------------------------------------------------------------------
+
+  Map<String, dynamic> _dayLogToSnakeCase(DayLogsTableData d) {
+    final u = d.date.toUtc();
+    final dateStr = '${u.year.toString().padLeft(4, '0')}-'
+        '${u.month.toString().padLeft(2, '0')}-'
+        '${u.day.toString().padLeft(2, '0')}';
+    return {
+      'date': dateStr,
+      'mood': d.mood,
+      'note': d.note,
+      'updated_at': d.updatedAt.toUtc().toIso8601String(),
+    };
   }
 }
 

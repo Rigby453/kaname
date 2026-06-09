@@ -59,24 +59,76 @@ class DayLogsDao extends DatabaseAccessor<AppDatabase> with _$DayLogsDaoMixin {
     final normalizedDate = DateTime.utc(date.year, date.month, date.day);
     final existing = await getForDate(date);
 
+    final now = DateTime.now();
     if (existing != null) {
-      // Строка уже есть — обновляем только mood и note
+      // Строка уже есть — обновляем mood, note и метку изменения
       await (update(dayLogsTable)..where((t) => t.id.equals(existing.id)))
           .write(
         DayLogsTableCompanion(
           mood: Value(mood),
           note: Value(note),
+          updatedAt: Value(now),
         ),
       );
     } else {
-      // Новая запись — генерируем UUID, фиксируем createdAt
+      // Новая запись — генерируем UUID, фиксируем createdAt/updatedAt
       await into(dayLogsTable).insert(
         DayLogsTableCompanion(
           id: Value(uuidV4()),
           date: Value(normalizedDate),
           mood: Value(mood),
           note: Value(note),
-          createdAt: Value(DateTime.now()),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Синхронизация
+  // ---------------------------------------------------------------------------
+
+  /// Записи, изменённые после [since] — исходящая дельта синка.
+  Future<List<DayLogsTableData>> changedSince(DateTime since) {
+    return (select(dayLogsTable)
+          ..where((t) => t.updatedAt.isBiggerThanValue(since)))
+        .get();
+  }
+
+  /// Слить запись дневника с сервера. Ключ — ДАТА (не id), т.к. на разных
+  /// устройствах для одного дня свой uuid. Если запись за дату есть — обновляем
+  /// поля; иначе создаём новую с локальным uuid.
+  Future<void> upsertFromServerByDate({
+    required DateTime date,
+    int? mood,
+    String? note,
+    String? insight,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) async {
+    final normalizedDate = DateTime.utc(date.year, date.month, date.day);
+    final existing = await getForDate(normalizedDate);
+    if (existing != null) {
+      await (update(dayLogsTable)..where((t) => t.id.equals(existing.id)))
+          .write(
+        DayLogsTableCompanion(
+          mood: Value(mood),
+          note: Value(note),
+          insight: Value(insight),
+          updatedAt: Value(updatedAt),
+        ),
+      );
+    } else {
+      await into(dayLogsTable).insert(
+        DayLogsTableCompanion(
+          id: Value(uuidV4()),
+          date: Value(normalizedDate),
+          mood: Value(mood),
+          note: Value(note),
+          insight: Value(insight),
+          createdAt: Value(createdAt),
+          updatedAt: Value(updatedAt),
         ),
       );
     }
