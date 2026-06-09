@@ -399,3 +399,57 @@ test('day log LWW: stale update ignored, newer update applied', async () => {
   expect(dl?.mood).toBe(5);
   expect(dl?.note).toBe('final');
 });
+
+// --- Combined: all sections in one /sync request coexist ---
+
+test('combined sync: item-done + water + day_log + delete + streak together', async () => {
+  const user = await registerUser(app);
+  userIds.push(user.userId);
+  const toDelete = await createItem(app, user.token, { title: 'Delete me' });
+  const mainItem = await createItem(app, user.token, {
+    title: 'Main',
+    priority: 'main',
+    scheduled_at: '2026-08-01T09:00:00.000Z',
+  });
+  const waterId = randomUUID();
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/sync',
+    headers: { Authorization: `Bearer ${user.token}` },
+    payload: {
+      items: [
+        {
+          id: mainItem.id,
+          priority: 'main',
+          status: 'done',
+          scheduled_at: '2026-08-01T09:00:00.000Z',
+          updated_at: '2030-01-01T00:00:00.000Z',
+        },
+      ],
+      water_logs: [
+        { id: waterId, amount_ml: 300, logged_at: '2026-08-01T10:00:00.000Z' },
+      ],
+      day_logs: [
+        { date: '2026-08-01', mood: 5, note: 'great', updated_at: '2026-08-01T20:00:00.000Z' },
+      ],
+      deleted_item_ids: [toDelete.id],
+      last_sync_at: EPOCH,
+    },
+  });
+  expect(res.statusCode).toBe(200);
+
+  const body = res.json<{
+    updated_items: Array<{ id: string; status: string }>;
+    updated_water_logs: Array<{ id: string }>;
+    updated_day_logs: Array<{ date: string; mood: number }>;
+  }>();
+
+  expect(body.updated_items.find((i) => i.id === mainItem.id)?.status).toBe('done');
+  expect(body.updated_items.some((i) => i.id === toDelete.id)).toBe(false); // удалён
+  expect(body.updated_water_logs.some((w) => w.id === waterId)).toBe(true);
+  expect(body.updated_day_logs.find((d) => d.date === '2026-08-01')?.mood).toBe(5);
+
+  const streak = await getStreak(user.token);
+  expect(streak.current).toBe(1);
+});
