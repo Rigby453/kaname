@@ -12,6 +12,7 @@ import syncRoutes from "./routes/sync.js";
 import redistributeRoutes from "./routes/redistribute.js";
 import aiRoutes from "./routes/ai.js";
 import subscriptionRoutes from "./routes/subscription.js";
+import foodRoutes from "./routes/food.js";
 
 /**
  * Собирает и конфигурирует экземпляр Fastify (без вызова listen).
@@ -75,6 +76,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Регистрируем маршруты подписки (dev-upgrade; реальные платежи — Phase 1)
   await fastify.register(subscriptionRoutes);
+
+  // Регистрируем маршруты Food (Open Food Facts: barcode/search)
+  await fastify.register(foodRoutes);
 
   return fastify;
 }

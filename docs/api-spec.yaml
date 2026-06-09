@@ -409,6 +409,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { description: Not available (production) }
 
+  /api/v1/food/barcode/{code}:
+    get:
+      tags: [Food]
+      summary: Look up a product by barcode (Open Food Facts; KБЖУ per 100g)
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FoodProduct' }
+        '400': { description: Invalid barcode }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Not found }
+        '502': { description: Food database unavailable }
+
+  /api/v1/food/search:
+    get:
+      tags: [Food]
+      summary: Text search for products (Open Food Facts)
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Matching products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items: { $ref: '#/components/schemas/FoodProduct' }
+        '400': { description: Missing query }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502': { description: Food database unavailable }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -556,6 +600,23 @@ components:
         insight: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    FoodProduct:
+      type: object
+      description: A product from Open Food Facts; nutrition is per 100 g (null if unknown).
+      properties:
+        code: { type: string }
+        name: { type: string }
+        brand: { type: string, nullable: true }
+        per_100g:
+          type: object
+          properties:
+            calories: { type: number, nullable: true }
+            protein: { type: number, nullable: true }
+            fat: { type: number, nullable: true }
+            carbs: { type: number, nullable: true }
+            sugar: { type: number, nullable: true }
+            fiber: { type: number, nullable: true }
 
     SyncRequest:
       type: object
