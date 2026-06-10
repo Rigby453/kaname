@@ -1,0 +1,165 @@
+// Блок 6: виджет-тесты Today / Plan / Diary с мок-БД (in-memory Drift).
+// Без сети: sharedPreferencesProvider замокан, БД — NativeDatabase.memory().
+// Цель — экраны рендерятся без ошибок и реагируют на данные из Drift.
+
+import 'package:app/core/database/database.dart';
+import 'package:app/core/database/database_providers.dart';
+import 'package:app/core/theme/theme_provider.dart'
+    show sharedPreferencesProvider;
+import 'package:app/core/utils/id.dart';
+import 'package:app/features/diary/diary_screen.dart';
+import 'package:app/features/plan/plan_screen.dart';
+import 'package:app/features/today/today_screen.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  late AppDatabase db;
+  late SharedPreferences prefs;
+
+  setUp(() async {
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  Widget harness(Widget screen) {
+    return ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        appDatabaseProvider.overrideWithValue(db),
+      ],
+      // Scaffold — потому что в приложении экраны живут внутри
+      // ScaffoldWithNavBar; без него TextField в Diary не находит Material.
+      child: MaterialApp(home: Scaffold(body: screen)),
+    );
+  }
+
+  // Drift при отписке стримов создаёт zero-duration таймер (markAsClosed).
+  // flutter_test падает, если таймер остаётся после теста. Поэтому в конце
+  // каждого теста размонтируем дерево (dispose ProviderScope) и прокачиваем
+  // кадр, чтобы таймер успел сработать ВНУТРИ тела теста.
+  Future<void> unmountAndFlush(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  }
+
+  Future<void> insertTask(
+    String title, {
+    String priority = 'medium',
+    String status = 'pending',
+    DateTime? scheduledAt,
+  }) async {
+    final now = DateTime.now();
+    await db.into(db.itemsTable).insert(
+          ItemsTableCompanion(
+            id: Value(uuidV4()),
+            userId: const Value('local'),
+            title: Value(title),
+            type: const Value('task'),
+            priority: Value(priority),
+            status: Value(status),
+            scheduledAt: Value(scheduledAt ?? now),
+            durationMinutes: const Value(30),
+            isProtected: Value(priority == 'main'),
+            createdAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+  }
+
+  group('TodayScreen', () {
+    testWidgets('renders greeting, ring and main task from DB',
+        (tester) async {
+      // Реальный async Drift внутри fakeAsync-зоны теста дедлочится —
+      // прямые обращения к БД выполняем через tester.runAsync (реальный IO).
+      await tester.runAsync(() => insertTask('Write essay', priority: 'main'));
+
+      await tester.pumpWidget(harness(const TodayScreen()));
+      // Дать стримам Drift доставить данные (runAsync — реальные микротаски)
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.textContaining('Good '), findsOneWidget); // приветствие
+      expect(find.text('Main today'), findsOneWidget);
+      expect(find.text('Write essay'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(find.text('0/1'), findsOneWidget); // кольцо: main не закрыт
+
+      await unmountAndFlush(tester);
+    });
+
+    testWidgets('empty DB → empty-state hint', (tester) async {
+      await tester.pumpWidget(harness(const TodayScreen()));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.textContaining('Nothing planned yet'), findsOneWidget);
+
+      await unmountAndFlush(tester);
+    });
+  });
+
+  group('PlanScreen', () {
+    testWidgets('renders view switcher, FAB and a scheduled task',
+        (tester) async {
+      await tester.runAsync(() => insertTask('Lecture: Algebra'));
+
+      await tester.pumpWidget(harness(const PlanScreen()));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // Переключатель День/Неделя/Месяц
+      expect(find.byType(SegmentedButton<dynamic>), findsNothing);
+      expect(find.text('Day'), findsOneWidget);
+      expect(find.text('Week'), findsOneWidget);
+      expect(find.text('Month'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      // Задача на сегодня видна в таймлайне дня
+      expect(find.text('Lecture: Algebra'), findsOneWidget);
+
+      await unmountAndFlush(tester);
+    });
+  });
+
+  group('DiaryScreen', () {
+    testWidgets('mood + save writes a DayLog row to Drift', (tester) async {
+      await tester.pumpWidget(harness(const DiaryScreen()));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Выбираем настроение 🙂 (4/5) и сохраняем
+      await tester.tap(find.text('🙂'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Save Day'));
+      await tester.tap(find.text('Save Day'));
+      // Запись в Drift — реальный IO; даём ему завершиться в runAsync
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final rows =
+          await tester.runAsync(() => db.select(db.dayLogsTable).get());
+      expect(rows, isNotNull);
+      expect(rows!, hasLength(1));
+      expect(rows.first.mood, 4);
+
+      await unmountAndFlush(tester);
+    });
+  });
+}
