@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/settings/nutrition_goals_provider.dart';
 import '../../services/api/api_client.dart';
+import 'food_balance.dart';
 import 'food_nutrition.dart';
 
 const List<String> _meals = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -51,6 +53,11 @@ class FoodScreen extends ConsumerWidget {
         children: [
           _TotalsCard(totals: totals),
           const SizedBox(height: 16),
+          // Баланс рациона (SPEC C5, rule-based) — только если что-то съедено
+          if (logs.isNotEmpty) ...[
+            _BalanceCard(totals: totals),
+            const SizedBox(height: 16),
+          ],
           if (logs.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 48),
@@ -65,6 +72,68 @@ class FoodScreen extends ConsumerWidget {
           else
             ...logs.map((l) => _FoodRow(log: l)),
         ],
+      ),
+    );
+  }
+}
+
+/// Карточка «Баланс рациона» — мягкий вердикт + конкретные подсказки (C5).
+class _BalanceCard extends ConsumerWidget {
+  const _BalanceCard({required this.totals});
+  final Nutrition totals;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final balance = evaluateDayBalance(
+      totals,
+      calorieGoal: ref.watch(calorieGoalProvider),
+      proteinGoalG: ref.watch(proteinGoalProvider),
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  balance.balanced
+                      ? Icons.check_circle_outline
+                      : Icons.tips_and_updates_outlined,
+                  size: 20,
+                  color: balance.balanced
+                      ? Colors.green
+                      : colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text('Balance', style: textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (balance.balanced)
+              Text(
+                'Nicely balanced today — calories, protein, fiber and sugar all on track.',
+                style: textTheme.bodyMedium,
+              )
+            else
+              ...balance.hints.map(
+                (h) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('· ', style: textTheme.bodyMedium),
+                      Expanded(child: Text(h, style: textTheme.bodyMedium)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
