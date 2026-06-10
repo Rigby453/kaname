@@ -49,7 +49,10 @@
 
 <!-- Add new ADRs below this line -->
 
-## ADR-025: Gemini default model bumped to gemini-2.5-flash-lite
+## ADR-026: Wrapped AI summary is on-demand, not Sunday cron+Batch
+**Date:** 2026-06-10
+**Decision:** AI-05 ships as `POST /api/v1/ai/wrapped-summary` (premium): the **client computes all stats** (tasks/main done, avg mood, water, top setback — code, never the model) from its local Drift DB and sends them; the model only writes a <60-word tone-aware paragraph. The ai-tasks.md design (Sunday 20:00 cron + Anthropic Batch over all users, stored server-side) is deferred.
+**Reason:** The app is offline-first — the client's local DB is the most complete source of the user's week, and the stats pipeline already exists on the client (rule-based wrapped). A cron+Batch pipeline needs job infrastructure, a WeekLog store and enough users to benefit from −50% Batch pricing; none exist yet. On-demand keeps one code path, zero infra, and the same cost order at current scale. Revisit Batch when wrapped generation becomes a scheduled push feature.
 **Date:** 2026-06-10
 **Decision:** The Gemini-path default in `backend/src/ai/provider.ts` (and the `GEMINI_MODEL` value in `backend/.env`) changes from `gemini-2.0-flash-lite` to **`gemini-2.5-flash-lite`**.
 **Reason:** Live verification with the user's new API key returned `429 quota exceeded` with limit 0 for `gemini-2.0-flash-lite` — the 2.0 line is retired for new keys — while `gemini-2.5-flash-lite`, `gemini-flash-lite-latest` and `gemini-2.5-flash` all answered 200 (probed directly). 2.5-flash-lite is the cheapest working tier, same role as before. All four AI endpoints were then verified live end-to-end (morning-message, redistribute 3 variants, diary-insight, schedule-import reading a generated timetable PNG). Builds on [[ADR-022]].

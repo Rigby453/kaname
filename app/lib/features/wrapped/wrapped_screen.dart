@@ -1,10 +1,14 @@
-// Weekly wrapped (SPEC Ф1, rule-based): сводка за 7 дней из локальной БД.
-// Без AI — все числа считаются кодом. «Неделя одним абзацем» (AI) — позже.
+// Wrapped (SPEC Ф1): сводка за Неделю/Месяц из локальной БД (rule-based,
+// числа считает код) + «период одним абзацем» от AI (premium, AI-05/ADR-026).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/database/database_providers.dart';
+import '../../core/settings/tone_provider.dart';
+import '../../services/api/api_client.dart';
+import '../auth/auth_controller.dart';
 
 const Map<String, String> _issueLabels = {
   'social_media': 'Social media',
@@ -35,12 +39,14 @@ class WeeklyStats {
   final String? topIssue;
 }
 
-final weeklyStatsProvider = FutureProvider.autoDispose<WeeklyStats>((ref) async {
+/// Статистика за последние [days] дней (7 — неделя, 30 — месяц).
+final wrappedStatsProvider =
+    FutureProvider.autoDispose.family<WeeklyStats, int>((ref, days) async {
   final now = DateTime.now();
   final from = DateTime(now.year, now.month, now.day)
-      .subtract(const Duration(days: 6));
-  final to = DateTime(now.year, now.month, now.day)
-      .add(const Duration(days: 1));
+      .subtract(Duration(days: days - 1));
+  final to =
+      DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
 
   final items = await ref.read(itemsDaoProvider).itemsInRange(from, to);
   final logs = await ref.read(dayLogsDaoProvider).since(from);
@@ -50,9 +56,8 @@ final weeklyStatsProvider = FutureProvider.autoDispose<WeeklyStats>((ref) async 
   final main = items.where((i) => i.priority == 'main').toList();
 
   final moods = logs.map((l) => l.mood).whereType<int>().toList();
-  final avgMood = moods.isEmpty
-      ? null
-      : moods.reduce((a, b) => a + b) / moods.length;
+  final avgMood =
+      moods.isEmpty ? null : moods.reduce((a, b) => a + b) / moods.length;
 
   // Топ-причина срывов из закодированных в note тегов "Issues: ..."
   final counts = <String, int>{};
@@ -85,33 +90,83 @@ final weeklyStatsProvider = FutureProvider.autoDispose<WeeklyStats>((ref) async 
   );
 });
 
-class WrappedScreen extends ConsumerWidget {
+class WrappedScreen extends ConsumerStatefulWidget {
   const WrappedScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(weeklyStatsProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('This week')),
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load: $e')),
-        data: (s) => _StatsView(s: s),
-      ),
-    );
-  }
+  ConsumerState<WrappedScreen> createState() => _WrappedScreenState();
 }
 
-class _StatsView extends StatelessWidget {
-  const _StatsView({required this.s});
-  final WeeklyStats s;
+class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+  int _days = 7;
+
+  // AI-абзац за выбранный период (premium)
+  String? _summary;
+  bool _summaryLoading = false;
+
+  Future<void> _aiRecap(WeeklyStats s) async {
+    final premium = await ref.read(isPremiumProvider.future);
+    if (!mounted) return;
+    if (!premium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Premium feature — AI writes your recap'),
+          action: SnackBarAction(
+            label: 'Upgrade',
+            onPressed: () => context.push('/paywall'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _summaryLoading = true);
+    try {
+      final tone = ref.read(toneProvider) == AppTone.harsh ? 'harsh' : 'gentle';
+      final summary = await ref.read(apiClientProvider).aiWrappedSummary(
+            periodDays: _days,
+            tasksDone: s.tasksDone,
+            tasksTotal: s.tasksTotal,
+            mainDone: s.mainDone,
+            mainTotal: s.mainTotal,
+            avgMood: s.avgMood,
+            waterMl: s.waterMl,
+            topIssue: s.topIssue,
+            tone: tone,
+          );
+      if (mounted) setState(() => _summary = summary);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _summaryLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final async = ref.watch(wrappedStatsProvider(_days));
+    return Scaffold(
+      appBar: AppBar(title: Text(_days == 7 ? 'This week' : 'This month')),
+      body: async.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Failed to load: $e')),
+        data: (s) => _buildStats(context, s),
+      ),
+    );
+  }
+
+  Widget _buildStats(BuildContext context, WeeklyStats s) {
     final textTheme = Theme.of(context).textTheme;
     final moodStr = s.avgMood == null ? '—' : s.avgMood!.toStringAsFixed(1);
     final tiles = <(IconData, String, String)>[
-      (Icons.check_circle_outline, 'Tasks done', '${s.tasksDone} / ${s.tasksTotal}'),
+      (
+        Icons.check_circle_outline,
+        'Tasks done',
+        '${s.tasksDone} / ${s.tasksTotal}'
+      ),
       (Icons.shield_outlined, 'Main done', '${s.mainDone} / ${s.mainTotal}'),
       (Icons.sentiment_satisfied_alt, 'Avg mood', '$moodStr / 5'),
       (Icons.water_drop, 'Water', '${s.waterMl} ml'),
@@ -121,7 +176,22 @@ class _StatsView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Your last 7 days', style: textTheme.headlineMedium),
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 7, label: Text('Week')),
+            ButtonSegment(value: 30, label: Text('Month')),
+          ],
+          selected: {_days},
+          onSelectionChanged: (sel) => setState(() {
+            _days = sel.first;
+            _summary = null; // абзац относится к старому периоду
+          }),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Your last $_days days',
+          style: textTheme.headlineMedium,
+        ),
         const SizedBox(height: 16),
         ...tiles.map((t) {
           final (icon, label, value) = t;
@@ -133,6 +203,39 @@ class _StatsView extends StatelessWidget {
             ),
           );
         }),
+        const SizedBox(height: 16),
+        if (_summary != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_awesome, size: 18),
+                      const SizedBox(width: 8),
+                      Text('In a paragraph', style: textTheme.titleMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(_summary!, style: textTheme.bodyMedium),
+                ],
+              ),
+            ),
+          )
+        else
+          OutlinedButton.icon(
+            icon: _summaryLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome, size: 18),
+            label: const Text('AI recap (Premium)'),
+            onPressed: _summaryLoading ? null : () => _aiRecap(s),
+          ),
       ],
     );
   }

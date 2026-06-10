@@ -7,6 +7,7 @@ import { generateMorningMessage } from "../ai/morningMessage.js";
 import { generateSmartPlans } from "../ai/smartRedistribute.js";
 import { generateDiaryInsight } from "../ai/diaryInsight.js";
 import { recognizeFood } from "../ai/foodRecognize.js";
+import { generateWrappedSummary } from "../ai/wrappedSummary.js";
 import { searchProducts } from "../food/openFoodFacts.js";
 import type { FoodProduct } from "../food/openFoodFacts.js";
 
@@ -30,6 +31,17 @@ const diaryInsightSchema = z.object({ tone: toneSchema });
 const foodRecognizeSchema = z.object({
   image_base64: z.string().min(1),
   media_type: z.enum(["image/jpeg", "image/png"]),
+});
+const wrappedSummarySchema = z.object({
+  period_days: z.number().int().min(1).max(366),
+  tasks_done: z.number().int().min(0),
+  tasks_total: z.number().int().min(0),
+  main_done: z.number().int().min(0),
+  main_total: z.number().int().min(0),
+  avg_mood: z.number().min(1).max(5).nullable().optional(),
+  water_ml: z.number().int().min(0),
+  top_issue: z.string().nullable().optional(),
+  tone: toneSchema,
 });
 
 // --- Лимит фото-распознаваний: 3 на пользователя в день (AI-03) ---
@@ -179,6 +191,39 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
         });
       } catch (err) {
         return aiError(fastify, reply, err, "food-recognize");
+      }
+    }
+  );
+
+  // AI-05: wrapped-сводка одним абзацем (premium). Числа считает клиент
+  // (код, не модель); on-demand вместо cron+Batch — ADR-026.
+  fastify.post(
+    "/api/v1/ai/wrapped-summary",
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const parsed = wrappedSummarySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: parsed.error.issues[0]?.message ?? "Validation error",
+        });
+      }
+      if (!(await ensurePremium(request, reply))) return reply;
+
+      try {
+        const { summary } = await generateWrappedSummary({
+          periodDays: parsed.data.period_days,
+          tasksDone: parsed.data.tasks_done,
+          tasksTotal: parsed.data.tasks_total,
+          mainDone: parsed.data.main_done,
+          mainTotal: parsed.data.main_total,
+          avgMood: parsed.data.avg_mood ?? null,
+          waterMl: parsed.data.water_ml,
+          topIssue: parsed.data.top_issue ?? null,
+          tone: parsed.data.tone,
+        });
+        return reply.status(200).send({ summary });
+      } catch (err) {
+        return aiError(fastify, reply, err, "wrapped-summary");
       }
     }
   );

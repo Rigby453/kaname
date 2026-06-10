@@ -373,6 +373,39 @@ class ApiClient {
     }
   }
 
+  /// Wrapped-сводка одним абзацем (premium). Числа считает клиент (код).
+  Future<String> aiWrappedSummary({
+    required int periodDays,
+    required int tasksDone,
+    required int tasksTotal,
+    required int mainDone,
+    required int mainTotal,
+    double? avgMood,
+    required int waterMl,
+    String? topIssue,
+    required String tone,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/ai/wrapped-summary',
+        data: {
+          'period_days': periodDays,
+          'tasks_done': tasksDone,
+          'tasks_total': tasksTotal,
+          'main_done': mainDone,
+          'main_total': mainTotal,
+          'avg_mood': avgMood,
+          'water_ml': waterMl,
+          'top_issue': topIssue,
+          'tone': tone,
+        },
+      );
+      return (response.data?['summary'] as String?) ?? '';
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
   /// Распознать расписание с фото (premium). Возвращает список { title, scheduled_at }.
   /// [mediaType] — 'image/jpeg' или 'image/png'; [targetDate] — 'YYYY-MM-DD'.
   Future<List<dynamic>> scheduleImportFromPhoto({

@@ -325,6 +325,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /api/v1/ai/wrapped-summary:
+    post:
+      tags: [AI (Phase 1)]
+      summary: One-paragraph wrapped recap of a period (premium)
+      description: >
+        AI-05. The client computes all numbers from its local DB (code, never
+        the model) and sends them; the model only writes a tone-aware
+        paragraph (<60 words). On-demand instead of a Sunday cron+Batch
+        (ADR-026).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period_days, tasks_done, tasks_total, main_done, main_total, water_ml, tone]
+              properties:
+                period_days: { type: integer, minimum: 1, maximum: 366 }
+                tasks_done: { type: integer }
+                tasks_total: { type: integer }
+                main_done: { type: integer }
+                main_total: { type: integer }
+                avg_mood: { type: number, nullable: true, minimum: 1, maximum: 5 }
+                water_ml: { type: integer }
+                top_issue: { type: string, nullable: true }
+                tone: { $ref: '#/components/schemas/Tone' }
+      responses:
+        '200':
+          description: One upbeat paragraph
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /api/v1/ai/diary-insight:
     post:
       tags: [AI (Phase 1)]

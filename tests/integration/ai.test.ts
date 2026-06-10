@@ -28,6 +28,11 @@ jest.mock('../../backend/src/ai/smartRedistribute', () => ({
 jest.mock('../../backend/src/ai/diaryInsight', () => ({
   generateDiaryInsight: jest.fn().mockResolvedValue({ insight: 'You journal most on Sundays.' }),
 }));
+jest.mock('../../backend/src/ai/wrappedSummary', () => ({
+  generateWrappedSummary: jest
+    .fn()
+    .mockResolvedValue({ summary: 'A strong week: 12 of 15 tasks done.' }),
+}));
 jest.mock('../../backend/src/ai/foodRecognize', () => ({
   recognizeFood: jest.fn().mockResolvedValue({
     dish: 'greek salad',
@@ -137,6 +142,24 @@ test('food-recognize: 403 free / 200 premium with dish + products', async () => 
       const per = products[0]?.['per_100g'] as Record<string, unknown>;
       expect(per['calories']).toBe(101); // числа из food DB, не из модели
     }
+  );
+});
+
+test('wrapped-summary: 403 free / 200 premium with paragraph', async () => {
+  await expectGated(
+    '/api/v1/ai/wrapped-summary',
+    {
+      period_days: 7,
+      tasks_done: 12,
+      tasks_total: 15,
+      main_done: 6,
+      main_total: 7,
+      avg_mood: 3.8,
+      water_ml: 9000,
+      top_issue: 'Social media',
+      tone: 'gentle',
+    },
+    (b) => expect(typeof b['summary']).toBe('string')
   );
 });
 
