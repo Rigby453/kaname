@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/database/database_providers.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
@@ -237,12 +238,9 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
+              // Во время запроса AI — пульс вместо спиннера (§7.1)
               icon: _insightLoading
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const AiPulseDot(size: 10)
                   : const Icon(Icons.auto_awesome, size: 18),
               label: const Text('Get insight (Premium)'),
               onPressed: _insightLoading ? null : _getInsight,

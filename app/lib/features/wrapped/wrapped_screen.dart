@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/animations/ai_insight_reveal.dart';
+import '../../core/animations/ai_pulse_dot.dart';
+import '../../core/animations/ai_skeleton.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../services/api/api_client.dart';
@@ -205,6 +208,30 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
         }),
         const SizedBox(height: 16),
         if (_summary != null)
+          // Готовый абзац от AI — появляется с fade-in + slide (§7.3)
+          AiInsightReveal(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_awesome, size: 18),
+                        const SizedBox(width: 8),
+                        Text('In a paragraph', style: textTheme.titleMedium),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_summary!, style: textTheme.bodyMedium),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (_summaryLoading)
+          // Скелетон пока AI пишет (§7.2) — карточка с shimmer + подпись
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -213,28 +240,24 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.auto_awesome, size: 18),
-                      const SizedBox(width: 8),
-                      Text('In a paragraph', style: textTheme.titleMedium),
+                      AiPulseDot(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Text('AI is writing…', style: textTheme.bodyMedium),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(_summary!, style: textTheme.bodyMedium),
+                  const SizedBox(height: 16),
+                  const AiSkeleton(lines: 3),
                 ],
               ),
             ),
           )
         else
           OutlinedButton.icon(
-            icon: _summaryLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.auto_awesome, size: 18),
+            icon: const Icon(Icons.auto_awesome, size: 18),
             label: const Text('AI recap (Premium)'),
-            onPressed: _summaryLoading ? null : () => _aiRecap(s),
+            onPressed: () => _aiRecap(s),
           ),
       ],
     );

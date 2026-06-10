@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/animations/ai_insight_reveal.dart';
+import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
@@ -351,15 +353,20 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                // Во время запроса AI — пульс вместо иконки (§7.1)
+                icon: _loading
+                    ? const AiPulseDot(size: 10)
+                    : const Icon(Icons.camera_alt_outlined, size: 18),
                 label: const Text('AI photo (Premium)'),
                 onPressed: _loading ? null : _aiPhoto,
               ),
             ),
             if (_aiNote != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(_aiNote!, style: textTheme.bodySmall),
+              AiInsightReveal(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(_aiNote!, style: textTheme.bodySmall),
+                ),
               ),
             const SizedBox(height: 4),
             if (_loading)

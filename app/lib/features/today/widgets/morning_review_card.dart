@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/ai_insight_reveal.dart';
+import '../../../core/animations/ai_pulse_dot.dart';
 import '../../../core/animations/app_sheet.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
@@ -97,15 +99,12 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
                 const SizedBox(width: 8),
                 Text('Morning review', style: textTheme.titleMedium),
                 const Spacer(),
+                // AI-nudge кнопка: во время загрузки — пульс вместо спиннера (§7.1)
                 IconButton(
                   tooltip: 'AI nudge (Premium)',
                   visualDensity: VisualDensity.compact,
                   icon: _messageLoading
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const AiPulseDot(size: 10)
                       : const Icon(Icons.auto_awesome, size: 18),
                   onPressed:
                       _messageLoading ? null : () => _getAiMessage(count),
@@ -113,10 +112,16 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              _aiMessage ?? ToneCopy.morningReview(tone, count),
-              style: textTheme.bodyMedium,
-            ),
+            // AI-сообщение появляется с reveal (§7.3); fallback — rule-based текст без анимации
+            if (_aiMessage != null)
+              AiInsightReveal(
+                child: Text(_aiMessage!, style: textTheme.bodyMedium),
+              )
+            else
+              Text(
+                ToneCopy.morningReview(tone, count),
+                style: textTheme.bodyMedium,
+              ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
@@ -233,12 +238,9 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
+                    // Во время загрузки AI — пульс вместо спиннера (§7.1)
                     icon: _aiLoading
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const AiPulseDot(size: 10)
                         : const Icon(Icons.auto_awesome, size: 18),
                     label: const Text('Smarter plan with AI (Premium)'),
                     onPressed: _aiLoading ? null : _getAiPlans,
@@ -247,8 +249,14 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
               else ...[
                 Text('AI plans', style: textTheme.titleSmall),
                 const SizedBox(height: 8),
+                // AI-варианты плана появляются с reveal (§7.3)
                 ...aiPlans.map(
-                  (v) => ReviewVariantCard(variant: v, onApply: () => _apply(v)),
+                  (v) => AiInsightReveal(
+                    child: ReviewVariantCard(
+                      variant: v,
+                      onApply: () => _apply(v),
+                    ),
+                  ),
                 ),
               ],
               const Divider(height: 24),

@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/ai_insight_reveal.dart';
+import '../../../core/animations/ai_pulse_dot.dart';
 import '../../../core/animations/app_sheet.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
@@ -189,12 +191,9 @@ class _EveningReviewSheetState extends ConsumerState<_EveningReviewSheet> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
+                    // Во время загрузки AI — пульс вместо спиннера (§7.1)
                     icon: _aiLoading
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const AiPulseDot(size: 10)
                         : const Icon(Icons.auto_awesome, size: 18),
                     label: const Text('Smarter plan with AI (Premium)'),
                     onPressed: _aiLoading ? null : _getAiPlans,
@@ -203,8 +202,14 @@ class _EveningReviewSheetState extends ConsumerState<_EveningReviewSheet> {
               else ...[
                 Text('AI plans', style: textTheme.titleSmall),
                 const SizedBox(height: 8),
+                // AI-варианты плана появляются с reveal (§7.3)
                 ...aiPlans.map(
-                  (v) => ReviewVariantCard(variant: v, onApply: () => _apply(v)),
+                  (v) => AiInsightReveal(
+                    child: ReviewVariantCard(
+                      variant: v,
+                      onApply: () => _apply(v),
+                    ),
+                  ),
                 ),
               ],
               const Divider(height: 24),
