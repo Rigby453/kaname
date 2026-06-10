@@ -12,6 +12,11 @@
 ревью-фиксов пользователь сделает позже (кабель).
 
 ## В работе
+- [x] Аудит всего проекта (2026-06-10): полный отчёт — **docs/AUDIT.md** (реализовано/в процессе/не начато/баги/техдолг)
+- [x] Ф1 — Water: анимированный стакан §4.2 + график 7 дней + настраиваемая норма (2026-06-10)
+- [x] Ф1 — Food: баланс рациона (rule-based, unit-тесты) + сканер штрихкода + поиск OFF (2026-06-10)
+- [x] Ф1 — AI-03 еда по фото: бэк (premium, 3/день) + Flutter UI камера/галерея (2026-06-10, 47fa586)
+- [x] Ф1 — Wrapped Неделя/Месяц + AI-05 абзац on-demand (ADR-026) (2026-06-10, 6542c90)
 - [x] Миссия 0: аудит и наведение порядка в доках (2026-06-10) — см. «Решения» ниже
 - [x] Блок 1 — AI живой (2026-06-10): ключ добавлен пользователем; дефолтная gemini-2.0-flash-lite отдавала 429 quota=0 (модель выведена для новых ключей) → дефолт и .env подняты до gemini-2.5-flash-lite (ADR-025). Все 4 эндпоинта проверены вживую premium-пользователем: /ai/morning-message (тон harsh, персонально) · /ai/redistribute (3 валидных варианта плана по реальным item id) · /ai/diary-insight (инсайт по паттернам настроения) · /ai/schedule-import (multimodal: прочитал все 4 пары из сгенерированного PNG-расписания). Модели по ТЗ: на Gemini-пути обе ступени = дешёвая модель (ADR-022); Anthropic-путь (haiku/sonnet) активируется ключом
 - [x] Блок 2 — сеть на телефоне: scripts/run-phone.ps1 (LAN IP → --dart-define=API_BASE_URL) + START.md; IP-детект и health-check проверены, телефон 2311DRK48G виден flutter (2026-06-10)
@@ -102,8 +107,9 @@
 - [x] AI-06 Schedule import from photo (premium): /api/v1/ai/schedule-import + Claude Haiku multimodal in src/ai/ + premium gate + Flutter photo button. Tests mock ai/ (4/4). Live run needs real ANTHROPIC_API_KEY + a premium user.
 - [x] AI-01 smart redistribute (/ai/redistribute, Sonnet, 2-3 plan variants) · AI-02 morning message (/ai/morning-message, Haiku, tone-aware) · AI-04 diary insight (/ai/diary-insight, Sonnet) — premium-gated, src/ai/, tests mock ai/ (44/44). Live run needs ANTHROPIC_API_KEY + premium user.
 - [x] AI wired into Today UI: morning-review card now has "Smarter plan with AI (Premium)" (→ /ai/redistribute, applies variants locally) + "AI nudge" message button (→ /ai/morning-message). Premium-gated via isPremiumProvider; graceful snackbar for free/errors. (diary insight + photo import were already wired.)
-- [ ] AI-03 food photo (needs food DB) · AI-05 weekly wrapped
-- [~] Food module (Phase 1, C5): backend OFF integration (src/food/) + /food/barcode + /food/search (6 tests). Client: Drift food_logs (v3 migration), Food screen (search → grams/meal → log; day totals ккал/Б/Ж/У + sugar/fiber) in Health hub. Pure nutrition calc unit-tested. Next: barcode scanner (camera), AI photo/menu (premium), food-log sync.
+- [x] AI-03 food photo (2026-06-10, 47fa586): /ai/food-recognize (vision → блюдо+порция, числа из OFF, лимит 3/день) + Flutter «AI photo (Premium)» (камера/галерея). Тесты: гейтинг + 429 на 4-й вызов.
+- [x] AI-05 wrapped summary (2026-06-10, 6542c90): /ai/wrapped-summary on-demand (ADR-026, числа считает клиент) + кнопка «AI recap» в Wrapped (Неделя/Месяц toggle).
+- [x] Food module (Phase 1, C5): OFF integration (src/food/) + /food/barcode + /food/search · Drift food_logs + sync (ADR-024) · Food screen (поиск → граммы/приём → лог; итоги дня ккал/Б/Ж/У + сахар/клетчатка) · баланс рациона rule-based (unit-тесты) · сканер штрихкода · AI-фото. Осталось из C5: список покупок, рецепты/меню ИИ, ресторан, голос.
 - [x] AI provider abstraction (src/ai/provider.ts): Gemini (REST, cheap model via GEMINI_MODEL) or Anthropic, chosen by which key is set — swap by .env. All 4 features refactored; tests still green (mock features).
 - [x] Paywall UI (C7): /paywall screen ($10/mo, benefits) + Profile premium card + AI upsell snackbars link to it. Real payments = Phase 1; dev-only POST /subscription/dev-upgrade (404 in prod, kDebugMode button) flips tier so AI is testable. 50/50 backend tests.
 

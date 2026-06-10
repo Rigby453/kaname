@@ -1,0 +1,95 @@
+# Аудит проекта Kaizen («Главное») — 2026-06-10
+
+> Полная сверка кодовой базы с ТЗ (docs/SPEC.md) и статус-бордом (docs/BOARD.md).
+> Проведён Explore-агентом + перепроверен оркестратором по коду (две находки агента
+> опровергнуты, см. «Поправки» внизу). Обновлять при закрытии каждого блока.
+
+---
+
+## 1. Реализовано ✅
+
+### MVP — полностью закрыт (блоки 1–6, коммит 8888f9c и далее)
+| Область | Что есть | Где |
+|---|---|---|
+| Backend-ядро | Fastify + Prisma + PostgreSQL (Neon), health check | `backend/src/` |
+| Auth | Регистрация/вход email+пароль, JWT 30d, /me | `backend/src/routes/auth.ts` |
+| Items CRUD | Create/Read/Update/Delete, ownership (404 для чужих, ADR-014) | `backend/src/routes/items.ts` |
+| Стрики + заморозка | Идемпотентный пересчёт на бэке и офлайн на клиенте (зеркальная логика) | `backend/src/engine/streaks.ts`, `app/.../streak_service.dart` |
+| Rule-перераспределение | Слоты 30 мин 08:00–22:00, приоритеты, protected → skipped; 100% coverage | `backend/src/engine/redistributor.ts` |
+| Синхронизация | LWW для items/day_logs, append-only для water/food, tombstones для удалений **в обе стороны** | `backend/src/routes/sync.ts`, `app/.../sync_service.dart` |
+| Экраны | Today (кольцо, стрик, разборы утро/вечер), Plan (день/неделя/месяц, клон недели), Diary (настроение+чипы срывов), Health, Profile | `app/lib/features/` |
+| Онбординг | Слайды → auth → setup из 6 шагов (интересы, импорт, время разборов, тон, тема, вода) | `app/lib/features/onboarding/` |
+| Темы | Все 5: Focus/Calm/Black/White/Contrast (+авто, +размер текста) | `app/lib/core/theme/` |
+| Анимации MVP | Pressable, AnimatedCheck, 3 тоста (+Undo), кольцо с пружиной, кроссфейд вкладок, шиты 320/220, reduce-motion | `app/lib/core/animations/`, спека `docs/ANIMATIONS.md` |
+| Уведомления | Локальные утро/вечер (08:00/20:00), toggle в профиле, часы из setup | `app/.../notification_service.dart` |
+| Импорт расписания | Текст/шаблон, клон недели (rule-based, free) + фото (AI, premium) | `app/lib/features/import/` |
+| Виджет | Android home widget (нативный, проверен на устройстве); iOS ждёт Mac | `app/android/.../widget/` |
+| Фокус-сессии | Пресеты 25/5…90/20 + фирменный 67/15, трение при выходе | `app/lib/features/focus/` |
+| Лендинг | index.html: hero, фичи, прайсинг, умная кнопка Download | `landing/index.html` |
+
+### Фаза 1 — сделано на сегодня
+| Фича | Статус | Где |
+|---|---|---|
+| Water | Анимированный стакан (§4.2), настраиваемая норма, график 7 дней | `app/.../health_screen.dart` |
+| Food: поиск | Open Food Facts (search-a-licious), КБЖУ+сахар+клетчатка на 100 г | `backend/src/food/openFoodFacts.ts` |
+| Food: штрихкод | Сканер EAN/UPC (mobile_scanner) → lookup OFF | `app/.../barcode_scanner_screen.dart` |
+| Food: баланс дня | Rule-based карточка (коридор калорий, белок, клетчатка, сахар), мягкие подсказки, unit-тесты | `app/lib/features/food/food_balance.dart` |
+| Food: синхрон | food_logs append-only через /sync (ADR-024), миграция применена на Neon | `backend/src/routes/sync.ts` |
+| AI-провайдер | Gemini (текущий, gemini-2.5-flash-lite, ADR-025) ⇄ Anthropic — смена через .env (ADR-022) | `backend/src/ai/provider.ts` |
+| AI-01 умный план | /ai/redistribute, 2–3 варианта, применяется локально | `backend/src/ai/smartRedistribute.ts` |
+| AI-02 утреннее сообщение | tone-aware, кнопка в карточке разбора | `backend/src/ai/morningMessage.ts` |
+| AI-04 инсайт дневника | по 7 дням логов | `backend/src/ai/diaryInsight.ts` |
+| AI-06 расписание с фото | multimodal, проверен вживую на PNG-расписании | `backend/src/ai/scheduleImport.ts` |
+| AI-03 еда по фото | **готов целиком**: бэк (3/день, premium) + Flutter UI (камера/галерея → блюдо → продукты OFF) | `backend/src/ai/foodRecognize.ts`, `food_screen.dart:346-437` |
+| AI-05 wrapped-абзац | **готов целиком**: on-demand (ADR-026), кнопка в Wrapped | `backend/src/ai/wrappedSummary.ts`, `wrapped_screen.dart` |
+| Wrapped | Неделя/Месяц toggle, статистика из локальной БД | `app/.../wrapped_screen.dart` |
+| Paywall | Экран $10/mo + dev-upgrade для теста (404 в prod, ADR-018) | `app/.../paywall_screen.dart` |
+
+### Тесты — всё зелёное
+- Backend (Jest): **67/67** — auth, items, streaks, sync, engine (100% строк), food, все AI с моками.
+- Flutter: **35/35** — виджет-смоуки Today/Plan/Diary (in-memory Drift) + юниты (review_engine, food_balance, nutrition, diary_insight, recent_subjects); `flutter analyze` — 0.
+- Ни одного живого вызова AI/HTTP в тестах (правило QA соблюдено).
+
+---
+
+## 2. В процессе / частично 🔶
+
+- **OAuth Google/Apple** — кнопки-заглушки («coming soon»), email/пароль работает. Реальные провайдеры — Ф1.
+- **Норма воды** — настраивается вручную в setup; расчёт «из параметров пользователя» — в бэклоге по указанию пользователя (после всего ТЗ).
+- **Повторы событий** — поле `recurrenceRule` в схемах есть, парсера/UI нет.
+- **Реферал/шеринг в профиле** — UI-кнопки есть, бэкенда нет (Ф3).
+
+## 3. Не начато ❌
+
+**Фаза 1 (ближайшее):**
+- Список покупок (C5) — следующий блок.
+- Анимации Ф1: §5 «День завершён» (полноэкранный оверлей), §7 AI skeleton/pulse.
+- RevenueCat (реальные платежи) — пока dev-upgrade.
+- Рецепты + «Собрать меню ИИ», ресторанные меню, голосовой ввод еды.
+
+**Фаза 2:** Workouts · осанка · дыхание/медитации · Sleep · Health Connect/Apple Health · долгосрочные цели (C4) · юзабилити-прогон Contrast.
+
+**Фаза 3:** веб-шеринг /share/:token · копирование планов · co-study (группы, лидерборд) · интеграция доставки · реклама на free.
+
+## 4. Баги и проблемы 🐞
+
+- **Лимит фото еды (3/день) — in-memory** (`backend/src/routes/ai.ts`): сбрасывается при рестарте сервера. Для прода нужна таблица AiUsage. Некритично сейчас.
+- **iOS-виджет и iOS-сборка** — не проверялись (нужен Mac).
+- **Уведомления** — срабатывание на устройстве проверено не до конца (inexact alarms).
+- Из ревью пользователя (отложено им самим): тайминги анимаций/конфетти на реальном устройстве; стрелка «назад» в setup.
+
+## 5. Технический долг 🧰
+
+| Долг | Где | Приоритет |
+|---|---|---|
+| `npm run dev` сломан (ts-node-dev не понимает .js-спецификаторы Node16) — обход: `npx tsc && node dist/index.js`; план: перейти на tsx | `backend/package.json` | High (след. хозработы) |
+| Лимит AI-фото в памяти → в БД | `backend/src/routes/ai.ts` | Medium |
+| Шрифт Geist — временная замена, ждём пакет | `app/.../app_theme.dart` | Low |
+| Ссылки сторов/Privacy/Terms на лендинге — плейсхолдеры | `landing/index.html` | Medium (к релизу) |
+| `widget_test.dart` — пустышка (реальные тесты в screens_smoke_test.dart) | `app/test/` | Low |
+| BOARD.md строка «calm/contrast = stubs» устарела (темы готовы, см. ниже же строку «All 5 themes») | `docs/BOARD.md` | исправлено этим аудитом |
+
+## Поправки к отчёту Explore-агента (перепроверено по коду)
+1. Агент: «AI-03 нет Flutter UI» — **неверно**: `food_screen.dart:346-437` (`_aiPhoto`, кнопка «AI photo (Premium)», коммит 47fa586).
+2. Агент: «входящие удаления не применяются на клиенте» — **неверно**: `sync_service.dart:195` применяет `deleted_item_ids` из ответа /sync; локальная Tombstone-таблица не нужна (BOARD: «Closes the ADR-019 limitation»).
+3. Агент: «AI-05 кнопка не довязана» — **неверно**: `wrapped_screen.dart::_aiRecap` полностью вызывает `/ai/wrapped-summary`.
