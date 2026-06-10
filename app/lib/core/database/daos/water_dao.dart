@@ -41,6 +41,32 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
     return row.read(sumExpr) ?? 0;
   }
 
+  /// Суммы по дням за последние [days] дней, включая [day].
+  /// Индекс 0 — самый старый день, последний — сегодня. Реактивно.
+  Stream<List<int>> watchDailyTotals(DateTime day, int days) {
+    final todayStart = DateTime.utc(day.year, day.month, day.day);
+    final start = todayStart.subtract(Duration(days: days - 1));
+    final end = todayStart.add(const Duration(days: 1));
+    return (select(waterLogsTable)
+          ..where(
+            (t) =>
+                t.loggedAt.isBiggerOrEqualValue(start) &
+                t.loggedAt.isSmallerThanValue(end),
+          ))
+        .watch()
+        .map((rows) {
+      final totals = List<int>.filled(days, 0);
+      for (final r in rows) {
+        // Бакет дня — по тем же полям даты, что и в watchTodayTotalMl
+        final bucket =
+            DateTime.utc(r.loggedAt.year, r.loggedAt.month, r.loggedAt.day);
+        final idx = bucket.difference(start).inDays;
+        if (idx >= 0 && idx < days) totals[idx] += r.amountMl;
+      }
+      return totals;
+    });
+  }
+
   /// Добавить порцию воды (мл).
   Future<void> addWater(int amountMl) {
     return into(waterLogsTable).insert(

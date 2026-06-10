@@ -1,17 +1,24 @@
 // Экран Health — хаб здоровья.
-// Рабочий модуль: трекер воды (Phase 1). Остальное (тренировки/сон/дыхание/
-// осанка) — Phase 2, показываем плитками «скоро».
+// Рабочий модуль: трекер воды (Phase 1: анимированный бар §4.2 + график
+// 7 дней). Остальное (тренировки/сон/дыхание/осанка) — Phase 2, плитки «скоро».
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/animations/app_toast.dart';
+import '../../core/animations/constants.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/water_goal_provider.dart';
 
 /// Сумма выпитого за сегодня (реактивно).
 final todayWaterProvider = StreamProvider.autoDispose<int>((ref) {
   return ref.watch(waterDaoProvider).watchTodayTotalMl(DateTime.now());
+});
+
+/// Суммы по дням за последние 7 дней (индекс 6 — сегодня), реактивно.
+final weekWaterProvider = StreamProvider.autoDispose<List<int>>((ref) {
+  return ref.watch(waterDaoProvider).watchDailyTotals(DateTime.now(), 7);
 });
 
 class HealthScreen extends ConsumerWidget {
@@ -57,14 +64,7 @@ class HealthScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 10,
-                    backgroundColor: colorScheme.onSurface.withValues(alpha: 0.12),
-                  ),
-                ),
+                _AnimatedWaterBar(progress: progress),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -91,6 +91,9 @@ class HealthScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                // График: последние 7 дней относительно нормы
+                _WeekWaterChart(goalMl: waterGoalMl),
               ],
             ),
           ),
@@ -139,6 +142,125 @@ class HealthScreen extends ConsumerWidget {
           );
         }),
       ],
+    );
+  }
+}
+
+/// Прогресс-бар воды — ANIMATIONS.md §4.2: полоса плавно растёт до нового %
+/// за 500 мс (easeOutCubic); при достижении 100% через 600 мс — тост.
+class _AnimatedWaterBar extends StatefulWidget {
+  const _AnimatedWaterBar({required this.progress});
+
+  final double progress;
+
+  @override
+  State<_AnimatedWaterBar> createState() => _AnimatedWaterBarState();
+}
+
+class _AnimatedWaterBarState extends State<_AnimatedWaterBar> {
+  double _prev = 0;
+
+  @override
+  void didUpdateWidget(_AnimatedWaterBar old) {
+    super.didUpdateWidget(old);
+    if (old.progress == widget.progress) return;
+    _prev = old.progress;
+    // §4.2: норма достигнута → задержка 600 мс → тост
+    if (old.progress < 1.0 && widget.progress >= 1.0) {
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) {
+          showAppToast(
+            context,
+            variant: AppToastVariant.done,
+            message: 'Water goal reached 💧',
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    // 500 мс — точное значение §4.2 (между kDurationSlow и kDurationNormal)
+    final duration =
+        effectiveDuration(context, const Duration(milliseconds: 500));
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: _prev, end: widget.progress),
+      duration: duration,
+      curve: kCurveLift,
+      builder: (context, value, _) => ClipRRect(
+        borderRadius: BorderRadius.circular(999),
+        child: LinearProgressIndicator(
+          value: value,
+          minHeight: 10,
+          backgroundColor: colorScheme.onSurface.withValues(alpha: 0.12),
+        ),
+      ),
+    );
+  }
+}
+
+/// Мини-график воды за последние 7 дней (высота столбца — доля от нормы).
+class _WeekWaterChart extends ConsumerWidget {
+  const _WeekWaterChart({required this.goalMl});
+
+  final int goalMl;
+
+  static const _chartHeight = 56.0;
+  static const _letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final totals = ref.watch(weekWaterProvider).valueOrNull;
+    if (totals == null || totals.length != 7) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final today = DateTime.now();
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(7, (i) {
+        final day = today.subtract(Duration(days: 6 - i));
+        final frac =
+            goalMl <= 0 ? 0.0 : (totals[i] / goalMl).clamp(0.0, 1.0);
+        final isToday = i == 6;
+        final reached = totals[i] >= goalMl && goalMl > 0;
+
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: (_chartHeight * frac).clamp(3.0, _chartHeight),
+                  decoration: BoxDecoration(
+                    color: reached
+                        ? colorScheme.primary
+                        : colorScheme.primary.withValues(
+                            alpha: isToday ? 0.8 : 0.35,
+                          ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _letters[day.weekday - 1],
+                  style: textTheme.bodySmall?.copyWith(
+                    fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                    color: isToday
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
     );
   }
 }
