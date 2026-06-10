@@ -149,6 +149,34 @@ class FoodLogsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Список покупок (SPEC C5, Phase 1). Локальный, без синхронизации (Ф3).
+/// id — UUID, генерируется клиентом. Добавлено в schemaVersion 4.
+class ShoppingItemsTable extends Table {
+  @override
+  String get tableName => 'shopping_items';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Название продукта/позиции
+  TextColumn get name => text()();
+
+  // Количество в свободной форме: «2 шт», «500 г», null = не указано
+  TextColumn get quantity => text().nullable()();
+
+  // Отмечен как купленный
+  BoolColumn get checked => boolean().withDefault(const Constant(false))();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  // Время изменения (для сортировки и будущей синхронизации)
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Очередь синхронизации: записи, ожидающие отправки на сервер
 /// id — autoincrement int (локальный, не синхронизируется)
 class SyncQueueTable extends Table {
@@ -184,6 +212,7 @@ class SyncQueueTable extends Table {
     DayLogsTable,
     FoodLogsTable,
     SyncQueueTable,
+    ShoppingItemsTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -193,7 +222,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -206,6 +235,10 @@ class AppDatabase extends _$AppDatabase {
           // v3: добавлена таблица food_logs (модуль «Еда»).
           if (from < 3) {
             await m.createTable(foodLogsTable);
+          }
+          // v4: добавлена таблица shopping_items (список покупок, SPEC C5).
+          if (from < 4) {
+            await m.createTable(shoppingItemsTable);
           }
         },
       );

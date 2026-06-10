@@ -48,7 +48,16 @@ class FoodScreen extends ConsumerWidget {
     final totals = sumNutrition(logs.map(_logToNutrition));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Food')),
+      appBar: AppBar(
+        title: const Text('Food'),
+        actions: [
+          IconButton(
+            tooltip: 'Shopping list',
+            icon: const Icon(Icons.shopping_cart_outlined),
+            onPressed: () => context.push('/shopping'),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showSearchSheet(context),
         icon: const Icon(Icons.add),

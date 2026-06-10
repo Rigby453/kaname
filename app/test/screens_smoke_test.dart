@@ -8,6 +8,7 @@ import 'package:app/core/theme/theme_provider.dart'
     show sharedPreferencesProvider;
 import 'package:app/core/utils/id.dart';
 import 'package:app/features/diary/diary_screen.dart';
+import 'package:app/features/food/shopping_list_screen.dart';
 import 'package:app/features/plan/plan_screen.dart';
 import 'package:app/features/today/today_screen.dart';
 import 'package:drift/drift.dart' show Value;
@@ -131,6 +132,42 @@ void main() {
       expect(find.byType(FloatingActionButton), findsOneWidget);
       // Задача на сегодня видна в таймлайне дня
       expect(find.text('Lecture: Algebra'), findsOneWidget);
+
+      await unmountAndFlush(tester);
+    });
+  });
+
+  group('ShoppingListScreen', () {
+    testWidgets('empty state renders shopping cart icon', (tester) async {
+      await tester.pumpWidget(harness(const ShoppingListScreen()));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byIcon(Icons.shopping_cart_outlined), findsOneWidget);
+      expect(find.textContaining('Nothing here yet'), findsOneWidget);
+
+      await unmountAndFlush(tester);
+    });
+
+    testWidgets('adding an item via TextField shows it in the list',
+        (tester) async {
+      await tester.pumpWidget(harness(const ShoppingListScreen()));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Вводим название и нажимаем кнопку добавления
+      await tester.enterText(find.byType(TextField), 'Apples');
+      await tester.tap(find.byIcon(Icons.add));
+      // Ждём записи в Drift и обновления стрима
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Apples'), findsOneWidget);
+      // Поле ввода очищается после добавления
+      expect(find.widgetWithText(TextField, 'Apples'), findsNothing);
 
       await unmountAndFlush(tester);
     });

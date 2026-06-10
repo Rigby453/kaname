@@ -23,6 +23,7 @@ import '../../features/focus/focus_screen.dart';
 import '../../features/food/food_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/wrapped/wrapped_screen.dart';
+import '../../features/food/shopping_list_screen.dart';
 import 'scaffold_with_nav_bar.dart';
 
 /// Индексы табов
@@ -197,6 +198,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/paywall',
         builder: (context, state) => const PaywallScreen(),
+      ),
+
+      // /shopping — список покупок (SPEC C5, Phase 1), вне оболочки
+      GoRoute(
+        path: '/shopping',
+        builder: (context, state) => const ShoppingListScreen(),
       ),
     ],
   );
