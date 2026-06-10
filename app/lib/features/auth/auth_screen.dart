@@ -72,6 +72,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     await ref.read(authControllerProvider.notifier).continueOffline();
   }
 
+  /// Заглушка соц-входа: OAuth не входит в MVP (email/password only).
+  void _socialStub(String provider) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$provider sign-in is coming soon.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -159,6 +166,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     ),
                   ),
                   const Divider(height: 32),
+                  // Google/Apple Sign-In — заглушки (SPEC C1). OAuth — не MVP
+                  // (глобальное правило: email/password only). TODO(phase1):
+                  // подключить google_sign_in / sign_in_with_apple SDK и
+                  // бэкенд-обмен токена.
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.g_mobiledata, size: 28),
+                    label: const Text('Continue with Google'),
+                    onPressed: _loading ? null : () => _socialStub('Google'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.apple),
+                    label: const Text('Continue with Apple'),
+                    onPressed: _loading ? null : () => _socialStub('Apple'),
+                  ),
+                  const SizedBox(height: 8),
                   TextButton(
                     onPressed: _loading ? null : _continueOffline,
                     child: const Text('Continue offline'),

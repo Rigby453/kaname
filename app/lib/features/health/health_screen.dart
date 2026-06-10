@@ -7,9 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/database/database_providers.dart';
-
-/// Дневная цель по воде, мл.
-const int _waterGoalMl = 2000;
+import '../../core/settings/water_goal_provider.dart';
 
 /// Сумма выпитого за сегодня (реактивно).
 final todayWaterProvider = StreamProvider.autoDispose<int>((ref) {
@@ -31,7 +29,9 @@ class HealthScreen extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final total = ref.watch(todayWaterProvider).valueOrNull ?? 0;
-    final progress = (total / _waterGoalMl).clamp(0.0, 1.0);
+    // Норма из настроек (онбординг-шаг «нормы»; по умолчанию 2000 мл)
+    final waterGoalMl = ref.watch(waterGoalProvider);
+    final progress = (total / waterGoalMl).clamp(0.0, 1.0);
     final dao = ref.read(waterDaoProvider);
 
     return ListView(
@@ -53,7 +53,7 @@ class HealthScreen extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Text('Water', style: textTheme.titleMedium),
                     const Spacer(),
-                    Text('$total / $_waterGoalMl ml', style: textTheme.titleMedium),
+                    Text('$total / $waterGoalMl ml', style: textTheme.titleMedium),
                   ],
                 ),
                 const SizedBox(height: 12),

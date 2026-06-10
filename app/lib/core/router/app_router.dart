@@ -13,6 +13,7 @@ import '../theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/onboarding/setup_flow.dart';
 import '../../features/paywall/paywall_screen.dart';
 import '../../features/today/today_screen.dart';
 import '../../features/plan/plan_screen.dart';
@@ -65,8 +66,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!canEnter) {
         return loc == '/auth' ? null : '/auth';
       }
-      // Вошли — уводим с экранов входа/онбординга в приложение
-      if (loc == '/auth' || loc == '/onboarding') return '/today';
+
+      // 3) Настройка после входа (SPEC C1: единый поток) — один раз
+      final setupDone = prefs.getBool(setupDoneKey) ?? false;
+      if (!setupDone) {
+        return loc == '/setup' ? null : '/setup';
+      }
+
+      // Вошли и настроились — уводим со служебных экранов в приложение
+      if (loc == '/auth' || loc == '/onboarding' || loc == '/setup') {
+        return '/today';
+      }
       return null;
     },
     routes: [
@@ -80,6 +90,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth',
         builder: (context, state) => const AuthScreen(),
+      ),
+
+      // Настройка после входа: интересы → импорт → время разборов → тон →
+      // тема → нормы (SPEC C1, единый поток)
+      GoRoute(
+        path: '/setup',
+        builder: (context, state) => const SetupFlowScreen(),
       ),
 
       // Оболочка с нижней навигацией — 4 таба через StatefulShellRoute.

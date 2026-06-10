@@ -1,0 +1,365 @@
+// Настройка после онбординга и входа (SPEC C1, единый поток):
+// интересы → импорт расписания → время разборов → тон → тема → нормы.
+// Каждый шаг можно пропустить; всё сохраняется в SharedPreferences/провайдеры.
+// Флаг 'setup_done' держит пользователя на /setup через redirect роутера.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/animations/constants.dart';
+import '../../core/settings/tone_provider.dart';
+import '../../core/settings/water_goal_provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider, themeProvider
+import '../../services/notifications/notification_service.dart';
+import '../import/import_sheet.dart';
+
+const setupDoneKey = 'setup_done';
+const reviewMorningHourKey = 'review_morning_hour';
+const reviewEveningHourKey = 'review_evening_hour';
+const interestsKey = 'interests';
+
+const _interests = <String>[
+  'University',
+  'Exams',
+  'Side projects',
+  'Fitness',
+  'Nutrition',
+  'Sleep',
+  'Focus',
+  'Reading',
+];
+
+class SetupFlowScreen extends ConsumerStatefulWidget {
+  const SetupFlowScreen({super.key});
+
+  @override
+  ConsumerState<SetupFlowScreen> createState() => _SetupFlowScreenState();
+}
+
+class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
+  final _pageController = PageController();
+  int _page = 0;
+  static const _pageCount = 6;
+
+  // Локальное состояние шагов (сохраняется при Finish)
+  final Set<String> _selectedInterests = {};
+  int _morningHour = kMorningHour; // 8
+  int _eveningHour = kEveningHour; // 20
+  int _waterGoal = kDefaultWaterGoalMl;
+
+  @override
+  void initState() {
+    super.initState();
+    _waterGoal = ref.read(waterGoalProvider);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _finish() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setStringList(interestsKey, _selectedInterests.toList());
+    await prefs.setInt(reviewMorningHourKey, _morningHour);
+    await prefs.setInt(reviewEveningHourKey, _eveningHour);
+    await ref.read(waterGoalProvider.notifier).set(_waterGoal);
+
+    // Если напоминания уже включены — перепланируем под выбранные часы.
+    if (ref.read(notificationsEnabledProvider)) {
+      try {
+        await ref.read(notificationServiceProvider).scheduleDailyReviews(
+              morningHour: _morningHour,
+              eveningHour: _eveningHour,
+            );
+      } catch (_) {
+        // Уведомления не должны блокировать завершение настройки.
+      }
+    }
+
+    await prefs.setBool(setupDoneKey, true);
+    if (mounted) context.go('/today');
+  }
+
+  void _next() {
+    if (_page < _pageCount - 1) {
+      _pageController.nextPage(
+        duration: kDurationFast,
+        curve: kCurveSnap,
+      );
+    } else {
+      _finish();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final isLast = _page == _pageCount - 1;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: Row(
+                children: [
+                  Text(
+                    'Set up · ${_page + 1}/$_pageCount',
+                    style: textTheme.labelMedium,
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _finish,
+                    child: const Text('Skip all'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (i) => setState(() => _page = i),
+                children: [
+                  _interestsStep(textTheme),
+                  _importStep(textTheme),
+                  _reviewTimeStep(textTheme),
+                  _toneStep(textTheme),
+                  _themeStep(textTheme, colorScheme),
+                  _normsStep(textTheme),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _next,
+                  child: Text(isLast ? 'Start' : 'Continue'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _step({
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
+    final textTheme = Theme.of(context).textTheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(subtitle, style: textTheme.bodyMedium),
+          const SizedBox(height: 24),
+          child,
+        ],
+      ),
+    );
+  }
+
+  // --- Шаг 1: интересы ---
+  Widget _interestsStep(TextTheme textTheme) {
+    return _step(
+      title: 'What matters to you?',
+      subtitle: 'Pick areas you want to keep on track. This shapes defaults.',
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _interests.map((label) {
+          final selected = _selectedInterests.contains(label);
+          return FilterChip(
+            label: Text(label),
+            selected: selected,
+            onSelected: (v) => setState(() {
+              if (v) {
+                _selectedInterests.add(label);
+              } else {
+                _selectedInterests.remove(label);
+              }
+            }),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // --- Шаг 2: импорт расписания ---
+  Widget _importStep(TextTheme textTheme) {
+    return _step(
+      title: 'Bring your timetable',
+      subtitle:
+          'Paste your class schedule as text and Kaizen turns it into events. '
+          'You can always do it later from the Plan tab.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.content_paste_go),
+            label: const Text('Import now'),
+            onPressed: () => showImportSheet(context, day: DateTime.now()),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Photo import with AI is available on Premium.',
+            style: textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Шаг 3: время разборов ---
+  Widget _reviewTimeStep(TextTheme textTheme) {
+    Future<void> pick(bool morning) async {
+      final initial = TimeOfDay(
+        hour: morning ? _morningHour : _eveningHour,
+        minute: 0,
+      );
+      final picked = await showTimePicker(context: context, initialTime: initial);
+      if (picked != null) {
+        setState(() {
+          // Напоминания планируются по часам (inexact) — минуты отбрасываем.
+          if (morning) {
+            _morningHour = picked.hour;
+          } else {
+            _eveningHour = picked.hour;
+          }
+        });
+      }
+    }
+
+    Widget tile(String label, int hour, bool morning) => ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(label),
+          trailing: OutlinedButton(
+            onPressed: () => pick(morning),
+            child: Text('${hour.toString().padLeft(2, '0')}:00'),
+          ),
+        );
+
+    return _step(
+      title: 'When should we check in?',
+      subtitle:
+          'Morning review re-plans yesterday\'s loose ends; evening review '
+          'prepares tomorrow.',
+      child: Column(
+        children: [
+          tile('Morning review', _morningHour, true),
+          tile('Evening review', _eveningHour, false),
+        ],
+      ),
+    );
+  }
+
+  /// Селектор-плитка (вместо deprecated RadioListTile).
+  Widget _choiceTile({
+    required bool selected,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: selected
+              ? colorScheme.primary
+              : colorScheme.onSurface.withValues(alpha: 0.15),
+        ),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        title: Text(title),
+        subtitle: subtitle != null ? Text(subtitle) : null,
+        trailing: selected
+            ? Icon(Icons.check_circle, color: colorScheme.primary)
+            : const Icon(Icons.circle_outlined),
+      ),
+    );
+  }
+
+  // --- Шаг 4: тон ---
+  Widget _toneStep(TextTheme textTheme) {
+    final tone = ref.watch(toneProvider);
+    return _step(
+      title: 'Pick your tone',
+      subtitle: 'How should Kaizen talk to you? You can switch any time.',
+      child: Column(
+        children: [
+          _choiceTile(
+            selected: tone == AppTone.gentle,
+            title: 'Gentle',
+            subtitle: '"Yesterday left 3 loose ends — I tucked them into '
+                'today around what matters."',
+            onTap: () => ref.read(toneProvider.notifier).set(AppTone.gentle),
+          ),
+          _choiceTile(
+            selected: tone == AppTone.harsh,
+            title: 'Harsh',
+            subtitle: '"3 tasks ghosted you yesterday. I sorted them. '
+                "Don't ghost them again.\"",
+            onTap: () => ref.read(toneProvider.notifier).set(AppTone.harsh),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Шаг 5: тема ---
+  Widget _themeStep(TextTheme textTheme, ColorScheme colorScheme) {
+    final current = ref.watch(themeNotifierProvider);
+    return _step(
+      title: 'Choose a theme',
+      subtitle: 'Each theme has its own face and typography.',
+      child: Column(
+        children: AppThemeKey.values.map((key) {
+          return _choiceTile(
+            selected: current == key,
+            title: key.label,
+            onTap: () =>
+                ref.read(themeNotifierProvider.notifier).setTheme(key),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // --- Шаг 6: нормы ---
+  Widget _normsStep(TextTheme textTheme) {
+    return _step(
+      title: 'Daily water goal',
+      subtitle: 'A gentle baseline — adjust it to your day.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$_waterGoal ml', style: textTheme.headlineSmall),
+          Slider(
+            value: _waterGoal.toDouble(),
+            min: 1000,
+            max: 4000,
+            divisions: 12, // шаг 250 мл
+            label: '$_waterGoal ml',
+            onChanged: (v) => setState(() => _waterGoal = v.round()),
+          ),
+        ],
+      ),
+    );
+  }
+}
