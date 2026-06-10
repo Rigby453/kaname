@@ -6,6 +6,9 @@ import { importScheduleFromPhoto } from "../ai/scheduleImport.js";
 import { generateMorningMessage } from "../ai/morningMessage.js";
 import { generateSmartPlans } from "../ai/smartRedistribute.js";
 import { generateDiaryInsight } from "../ai/diaryInsight.js";
+import { recognizeFood } from "../ai/foodRecognize.js";
+import { searchProducts } from "../food/openFoodFacts.js";
+import type { FoodProduct } from "../food/openFoodFacts.js";
 
 const dateOnly = z
   .string()
@@ -24,6 +27,45 @@ const morningMessageSchema = z.object({
 });
 const redistributeSchema = z.object({ target_date: dateOnly });
 const diaryInsightSchema = z.object({ tone: toneSchema });
+const foodRecognizeSchema = z.object({
+  image_base64: z.string().min(1),
+  media_type: z.enum(["image/jpeg", "image/png"]),
+});
+
+// --- Лимит фото-распознаваний: 3 на пользователя в день (AI-03) ---
+// In-memory: сбрасывается при рестарте процесса — для текущего масштаба ок.
+// TODO(phase1+): вынести в таблицу AiUsage для устойчивого учёта токенов/лимитов.
+const kFoodPhotoDailyLimit = 3;
+const _foodPhotoUsage = new Map<string, { day: string; count: number }>();
+
+function consumeFoodPhotoQuota(userId: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = _foodPhotoUsage.get(userId);
+  if (!rec || rec.day !== today) {
+    _foodPhotoUsage.set(userId, { day: today, count: 1 });
+    return true;
+  }
+  if (rec.count >= kFoodPhotoDailyLimit) return false;
+  rec.count += 1;
+  return true;
+}
+
+// FoodProduct → snake_case (тот же формат, что /food/search)
+function serializeProduct(p: FoodProduct) {
+  return {
+    code: p.code,
+    name: p.name,
+    brand: p.brand,
+    per_100g: {
+      calories: p.per100g.calories,
+      protein: p.per100g.protein,
+      fat: p.per100g.fat,
+      carbs: p.per100g.carbs,
+      sugar: p.per100g.sugar,
+      fiber: p.per100g.fiber,
+    },
+  };
+}
 
 /**
  * Premium-гейт: AI — платные фичи. Возвращает true, если можно продолжать;
@@ -90,6 +132,53 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
         });
       } catch (err) {
         return aiError(fastify, reply, err, "schedule-import");
+      }
+    }
+  );
+
+  // AI-03: фото еды → блюдо + подбор продуктов из food DB (premium, 3/день).
+  // Модель только называет блюдо; КБЖУ — из Open Food Facts, не из модели.
+  fastify.post(
+    "/api/v1/ai/food-recognize",
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const parsed = foodRecognizeSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: parsed.error.issues[0]?.message ?? "Validation error",
+        });
+      }
+      if (!(await ensurePremium(request, reply))) return reply;
+
+      if (!consumeFoodPhotoQuota(request.user.userId)) {
+        return reply.status(429).send({
+          error: `Daily limit reached — up to ${kFoodPhotoDailyLimit} food photos per day.`,
+        });
+      }
+
+      try {
+        const rec = await recognizeFood({
+          imageBase64: parsed.data.image_base64,
+          mediaType: parsed.data.media_type,
+        });
+
+        // Подбираем продукты с КБЖУ из food DB по названию блюда.
+        // Сбой поиска не валит распознавание — вернём пустой список.
+        let products: FoodProduct[] = [];
+        try {
+          products = await searchProducts(rec.dish, 5);
+        } catch (err) {
+          fastify.log.warn({ err }, "OFF lookup after food-recognize failed");
+        }
+
+        return reply.status(200).send({
+          dish: rec.dish,
+          portion_description: rec.portionDescription,
+          confidence: rec.confidence,
+          products: products.map(serializeProduct),
+        });
+      } catch (err) {
+        return aiError(fastify, reply, err, "food-recognize");
       }
     }
   );

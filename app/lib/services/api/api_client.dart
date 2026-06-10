@@ -356,6 +356,23 @@ class ApiClient {
   // AI (Phase 1, premium)
   // ---------------------------------------------------------------------------
 
+  /// Распознать еду по фото (premium, 3/день). Возвращает
+  /// { dish, portion_description, confidence, products: [...] }.
+  Future<Map<String, dynamic>> aiFoodRecognize({
+    required String imageBase64,
+    required String mediaType,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/ai/food-recognize',
+        data: {'image_base64': imageBase64, 'media_type': mediaType},
+      );
+      return response.data!;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
   /// Распознать расписание с фото (premium). Возвращает список { title, scheduled_at }.
   /// [mediaType] — 'image/jpeg' или 'image/png'; [targetDate] — 'YYYY-MM-DD'.
   Future<List<dynamic>> scheduleImportFromPhoto({

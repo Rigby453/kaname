@@ -28,6 +28,25 @@ jest.mock('../../backend/src/ai/smartRedistribute', () => ({
 jest.mock('../../backend/src/ai/diaryInsight', () => ({
   generateDiaryInsight: jest.fn().mockResolvedValue({ insight: 'You journal most on Sundays.' }),
 }));
+jest.mock('../../backend/src/ai/foodRecognize', () => ({
+  recognizeFood: jest.fn().mockResolvedValue({
+    dish: 'greek salad',
+    portionDescription: 'a medium bowl',
+    confidence: 0.86,
+  }),
+}));
+// OFF тоже мокируем — никаких реальных HTTP-вызовов в тестах
+jest.mock('../../backend/src/food/openFoodFacts', () => ({
+  searchProducts: jest.fn().mockResolvedValue([
+    {
+      code: '123',
+      name: 'Greek salad',
+      brand: null,
+      per100g: { calories: 101, protein: 2.3, fat: 7.4, carbs: 5.0, sugar: 3.1, fiber: 1.2 },
+    },
+  ]),
+  lookupBarcode: jest.fn().mockResolvedValue(null),
+}));
 
 let app: FastifyInstance;
 const userIds: string[] = [];
@@ -104,6 +123,41 @@ test('diary-insight: 403 free / 200 premium with insight', async () => {
     { tone: 'harsh' },
     (b) => expect(typeof b['insight']).toBe('string')
   );
+});
+
+test('food-recognize: 403 free / 200 premium with dish + products', async () => {
+  await expectGated(
+    '/api/v1/ai/food-recognize',
+    { image_base64: 'ZmFrZQ==', media_type: 'image/jpeg' },
+    (b) => {
+      expect(b['dish']).toBe('greek salad');
+      expect(typeof b['confidence']).toBe('number');
+      const products = b['products'] as Array<Record<string, unknown>>;
+      expect(products).toHaveLength(1);
+      const per = products[0]?.['per_100g'] as Record<string, unknown>;
+      expect(per['calories']).toBe(101); // числа из food DB, не из модели
+    }
+  );
+});
+
+test('food-recognize: 4th call same day → 429 (limit 3/day)', async () => {
+  const prem = await registerUser(app);
+  userIds.push(prem.userId);
+  await makePremium(prem.userId);
+
+  const call = () =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/ai/food-recognize',
+      headers: { Authorization: `Bearer ${prem.token}` },
+      payload: { image_base64: 'ZmFrZQ==', media_type: 'image/jpeg' },
+    });
+
+  for (let i = 0; i < 3; i++) {
+    expect((await call()).statusCode).toBe(200);
+  }
+  const fourth = await call();
+  expect(fourth.statusCode).toBe(429);
 });
 
 test('morning-message without auth → 401', async () => {

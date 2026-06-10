@@ -1,16 +1,21 @@
 // Экран «Еда» (Health → Food, Phase 1, C5).
-// Поиск продукта (Open Food Facts через бэкенд) → выбрать граммы/приём → запись.
-// Итоги дня (ккал, Б/Ж/У, сахар/клетчатка) считаются локально из food_logs.
+// Поиск продукта (Open Food Facts через бэкенд) / штрихкод / ИИ-фото (premium)
+// → выбрать граммы/приём → запись. Итоги дня считаются локально из food_logs.
 // Числа КБЖУ — из базы (на 100 г), масштабируются под порцию (food_nutrition).
+
+import 'dart:convert' show base64Encode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/nutrition_goals_provider.dart';
 import '../../services/api/api_client.dart';
+import '../auth/auth_controller.dart';
 import 'barcode_scanner_screen.dart';
 import 'food_balance.dart';
 import 'food_nutrition.dart';
@@ -262,6 +267,9 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
   bool _loading = false;
   String? _error;
 
+  // Подпись от ИИ-фото: «AI: greek salad (86%)» — показывается над результатами
+  String? _aiNote;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -329,7 +337,22 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            // ИИ-фото (premium): модель называет блюдо, КБЖУ — из базы
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                label: const Text('AI photo (Premium)'),
+                onPressed: _loading ? null : _aiPhoto,
+              ),
+            ),
+            if (_aiNote != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(_aiNote!, style: textTheme.bodySmall),
+              ),
+            const SizedBox(height: 4),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
@@ -364,6 +387,85 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
         ),
       ),
     );
+  }
+
+  /// ИИ-фото еды (premium, AI-03): снимок → /ai/food-recognize → модель
+  /// называет блюдо, бэкенд подбирает продукты с КБЖУ из food DB.
+  Future<void> _aiPhoto() async {
+    final premium = await ref.read(isPremiumProvider.future);
+    if (!mounted) return;
+    if (!premium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Premium feature — AI recognizes food photos'),
+          action: SnackBarAction(
+            label: 'Upgrade',
+            onPressed: () => context.push('/paywall'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Камера предпочтительнее для еды; на платформах без камеры — галерея.
+    XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        imageQuality: 75,
+      );
+    } catch (_) {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        imageQuality: 75,
+      );
+    }
+    if (picked == null || !mounted) return;
+
+    final bytes = await picked.readAsBytes();
+    final mediaType =
+        picked.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _aiNote = null;
+    });
+    try {
+      final result = await ref.read(apiClientProvider).aiFoodRecognize(
+            imageBase64: base64Encode(bytes),
+            mediaType: mediaType,
+          );
+      if (!mounted) return;
+
+      final dish = (result['dish'] as String?) ?? '';
+      final confidence =
+          ((result['confidence'] as num?) ?? 0).toDouble().clamp(0.0, 1.0);
+      final products = ((result['products'] as List<dynamic>?) ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+      if (products.isNotEmpty) {
+        setState(() {
+          _aiNote = 'AI: $dish (${(confidence * 100).round()}%) — pick a match';
+          _results = products;
+        });
+      } else if (dish.isNotEmpty) {
+        // База не нашла соответствий — подставляем блюдо в поиск
+        _controller.text = dish;
+        setState(() =>
+            _aiNote = 'AI: $dish (${(confidence * 100).round()}%)');
+        await _search();
+      } else {
+        setState(() => _error = "Couldn't recognize the food — try again");
+      }
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   /// Скан штрихкода → /food/barcode → тот же диалог порции, что и поиск.

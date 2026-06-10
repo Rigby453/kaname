@@ -311,6 +311,12 @@ paths:
                   dish: { type: string }
                   portion_description: { type: string }
                   confidence: { type: number, minimum: 0, maximum: 1 }
+                  products:
+                    type: array
+                    description: >
+                      Top food-DB matches for the dish (nutrition per 100 g,
+                      from Open Food Facts — never from the model). May be empty.
+                    items: { $ref: '#/components/schemas/FoodProduct' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429':
