@@ -1,14 +1,13 @@
 // Экран подписки / пейволл (SPEC: $10/мес, premium открывает AI).
-// Реальные платежи (RevenueCat) — Phase 1; пока кнопка Subscribe — заглушка.
-// В debug-сборке есть «Dev: unlock premium» → /subscription/dev-upgrade,
-// чтобы протестировать AI-фичи (нужен ANTHROPIC_API_KEY на бэкенде).
+// Реальные платежи (RevenueCat) — Phase 1; сейчас Subscribe работает через
+// PurchaseService (заглушка): в debug вызывает dev-апгрейд, в release — сообщает
+// «скоро». Одна кнопка Subscribe заменяет прежние Subscribe + Dev: unlock premium.
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../services/api/api_client.dart';
+import '../../services/purchases/purchase_service.dart';
 import '../auth/auth_controller.dart';
 import '../profile/profile_screen.dart' show currentUserProvider;
 
@@ -65,30 +64,82 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   bool _working = false;
 
   Future<void> _subscribe() async {
-    // Реальные платежи появятся в Phase 1.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Subscriptions launch soon — payments are coming in the next update.'),
-      ),
-    );
-  }
-
-  Future<void> _devUnlock() async {
     setState(() => _working = true);
     try {
-      await ref.read(apiClientProvider).devUpgrade(tier: 'premium');
-      // Обновляем premium-статус и данные пользователя в UI.
-      ref.invalidate(isPremiumProvider);
-      ref.invalidate(currentUserProvider);
+      final outcome = await ref.read(purchaseServiceProvider).buyPremium();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Premium unlocked (dev). AI features are on.')),
-      );
-      context.pop();
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
+
+      switch (outcome) {
+        case PurchaseOutcome.success:
+          // Обновляем premium-статус и данные пользователя в UI.
+          ref.invalidate(isPremiumProvider);
+          ref.invalidate(currentUserProvider);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Welcome to Premium!')),
+          );
+          context.pop();
+
+        case PurchaseOutcome.unavailable:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Subscriptions launch soon — payments are coming in the next update.',
+              ),
+            ),
+          );
+
+        case PurchaseOutcome.error:
+          // Если не авторизован — подсказываем войти.
+          final isAuthed =
+              ref.read(authControllerProvider.notifier).isAuthenticated;
+          final message = isAuthed
+              ? 'Something went wrong. Please try again.'
+              : 'Sign in first to subscribe.';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+
+        case PurchaseOutcome.cancelled:
+          // Пользователь закрыл диалог — ничего не делаем.
+          break;
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _restorePurchases() async {
+    setState(() => _working = true);
+    try {
+      final outcome =
+          await ref.read(purchaseServiceProvider).restorePurchases();
+      if (!mounted) return;
+
+      switch (outcome) {
+        case PurchaseOutcome.success:
+          ref.invalidate(isPremiumProvider);
+          ref.invalidate(currentUserProvider);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Purchases restored!')),
+          );
+          context.pop();
+
+        case PurchaseOutcome.unavailable:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Nothing to restore yet — payments are coming soon.',
+              ),
+            ),
+          );
+
+        case PurchaseOutcome.error:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not restore purchases.')),
+          );
+
+        case PurchaseOutcome.cancelled:
+          break;
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -169,24 +220,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 child: const Text('Subscribe'),
               ),
             ),
-            // Dev-разблокировка только в debug-сборке и при наличии аккаунта.
-            if (kDebugMode && isAuthed) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: _working
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.lock_open, size: 18),
-                  label: const Text('Dev: unlock premium'),
-                  onPressed: _working ? null : _devUnlock,
-                ),
-              ),
-            ],
+            const SizedBox(height: 8),
+            // Восстановление покупок — понадобится после интеграции RevenueCat.
+            TextButton(
+              onPressed: _working ? null : _restorePurchases,
+              child: const Text('Restore purchases'),
+            ),
             const SizedBox(height: 12),
             Text(
               'Cancel anytime. Free tier keeps tasks, streaks, rule-based plans, '
