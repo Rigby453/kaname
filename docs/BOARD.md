@@ -10,7 +10,7 @@
 - [x] Миссия 0: аудит и наведение порядка в доках (2026-06-10) — см. «Решения» ниже
 - [!] Блок 1 — AI оживает: GEMINI_API_KEY всё ещё ПУСТ в backend/.env (пользователь считает что добавил — проверить); живые AI-тесты отложены по команде пользователя
 - [x] Блок 2 — сеть на телефоне: scripts/run-phone.ps1 (LAN IP → --dart-define=API_BASE_URL) + START.md; IP-детект и health-check проверены, телефон 2311DRK48G виден flutter (2026-06-10)
-- [ ] Блок 3 — анимации по /docs/ANIMATIONS.md (метка MVP) + core/animations/constants.dart
+- [x] Блок 3 — анимации MVP по /docs/ANIMATIONS.md (2026-06-10): §0 constants.dart · §1.1/1.2 Pressable (scale/lift карточек) · §2.3 AnimatedCheck (path-галочка + strikethrough fade; фикс: единая обёртка Dismissible чтобы переход ловился) · §3 тосты ×3 (done/deadline/removed+Undo; Undo вставляет копию с новым id из-за tombstone ADR-021; deadline-вариант готов, триггер придёт с пер-дедлайн уведомлениями) · §4.1 кольцо 400ms+пружина · §8.1 кроссфейд вкладок 150ms · §8.2 showAppSheet 320/220ms (кривые шита не задаются через AnimationStyle — отмечено в коде) · §10 reduce motion везде. Примечание: 2 субагента упёрлись в лимит сессии — хвосты доделаны оркестратором
 - [ ] Блок 4 — food_logs sync (backend append-стратегия + Drift sync_queue + тест)
 - [ ] Блок 5 — онбординг: слайды → настройка (интересы/импорт/время разбора/тон/тема/нормы) + Google/Apple заглушки
 - [ ] Блок 6 — тесты: виджет-тесты Today/Plan/Diary, food sync, AI (моки)

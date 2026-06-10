@@ -1,13 +1,16 @@
 // FL-TODAY-02: Кольцо прогресса для MAIN-задач
 // CustomPainter рисует дугу 0→2π×(done/total)
-// Анимируется за 300ms (slow из design-tokens) при изменении значения
-// Если total=0 — серое полное кольцо
+// Источник истины по анимациям: /docs/ANIMATIONS.md §4.1
+// Дуга: kDurationSlow (400ms) + kCurveLift (easeOutCubic)
+// При 100%: пружина scale 1.0→1.05→1.0, 300ms, kCurveSpring (elasticOut)
+// Если total=0 — серое полное кольцо без анимации
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/animations/constants.dart';
 import '../../../core/database/database.dart';
 
 class ProgressRing extends StatefulWidget {
@@ -24,23 +27,72 @@ class ProgressRing extends StatefulWidget {
 }
 
 class _ProgressRingState extends State<ProgressRing>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+    with TickerProviderStateMixin {
+  // Контроллер дуги: kDurationSlow (400ms) — /docs/ANIMATIONS.md §4.1
+  late AnimationController _arcController;
   late Animation<double> _progressAnimation;
 
+  // Контроллер пружины при 100%: 300ms — /docs/ANIMATIONS.md §4.1
+  late AnimationController _scaleController;
+  late Animation<double> _scaleAnimation;
+
   double _currentProgress = 0;
+
+  // Кэшированное значение disableAnimations; обновляется в didChangeDependencies
+  bool _reduceMotion = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      // slow = 300ms из design-tokens.json
-      duration: const Duration(milliseconds: 300),
+
+    // Длительности будут скорректированы в didChangeDependencies после первого
+    // вызова, но контроллеры нужно создать сразу.
+    _arcController = AnimationController(
+      duration: kDurationSlow,
       vsync: this,
     );
     _progressAnimation = Tween<double>(begin: 0, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+      CurvedAnimation(parent: _arcController, curve: kCurveLift),
     );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _scaleAnimation = _buildScaleTween();
+  }
+
+  /// TweenSequence пружины: 1.0→1.05 (weight 30) →1.0 (weight 70)
+  /// /docs/ANIMATIONS.md §4.1
+  Animation<double> _buildScaleTween() {
+    return TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.05),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.05, end: 1.0),
+        weight: 70,
+      ),
+    ]).animate(
+      CurvedAnimation(parent: _scaleController, curve: kCurveSpring),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // MediaQuery нельзя читать в initState — берём здесь.
+    final reduce = MediaQuery.of(context).disableAnimations;
+    if (reduce != _reduceMotion) {
+      _reduceMotion = reduce;
+      // Пересчитываем длительности согласно текущему режиму
+      _arcController.duration =
+          effectiveDuration(context, kDurationSlow);
+      _scaleController.duration =
+          effectiveDuration(context, const Duration(milliseconds: 300));
+    }
+    // Инициализируем начальное состояние без анимации при первом показе
     _updateProgress(animate: false);
   }
 
@@ -71,25 +123,44 @@ class _ProgressRingState extends State<ProgressRing>
       _progressAnimation = Tween<double>(
         begin: target,
         end: target,
-      ).animate(_controller);
+      ).animate(CurvedAnimation(parent: _arcController, curve: kCurveLift));
     }
   }
 
   void _animateTo(double target) {
     final from = _currentProgress;
+    final wasComplete = _currentProgress >= 1.0;
     _currentProgress = target;
+
+    // Пересчитываем длительность с учётом reduce motion
+    _arcController.duration =
+        _reduceMotion ? Duration.zero : kDurationSlow;
+    _scaleController.duration = _reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 300);
+
     _progressAnimation = Tween<double>(
       begin: from,
       end: target,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    _controller
+    ).animate(CurvedAnimation(parent: _arcController, curve: kCurveLift));
+
+    _arcController
       ..reset()
-      ..forward();
+      ..forward().then((_) {
+        // Пружина запускается после завершения дуги при достижении 100%
+        // и только если раньше не было 100% — /docs/ANIMATIONS.md §4.1
+        if (target >= 1.0 && !wasComplete && mounted) {
+          _scaleController
+            ..reset()
+            ..forward();
+        }
+      });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _arcController.dispose();
+    _scaleController.dispose();
     super.dispose();
   }
 
@@ -104,37 +175,41 @@ class _ProgressRingState extends State<ProgressRing>
             .length;
 
     return AnimatedBuilder(
-      animation: _progressAnimation,
+      animation: Listenable.merge([_progressAnimation, _scaleAnimation]),
       builder: (context, _) {
-        return SizedBox(
-          width: 160,
-          height: 160,
-          child: CustomPaint(
-            painter: _RingPainter(
-              progress: total == 0 ? 1.0 : _progressAnimation.value,
-              isEmpty: total == 0,
-              accentColor: colorScheme.primary,
-              // Серый — border из theme extension, fallback на onSurface с opacity
-              trackColor: colorScheme.onSurface.withAlpha(30),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    total == 0 ? '—' : '$done/$total',
-                    style: GoogleFonts.fraunces(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  if (total > 0)
+        return Transform.scale(
+          // Пружина активна только когда _scaleController запущен
+          scale: _scaleAnimation.value,
+          child: SizedBox(
+            width: 160,
+            height: 160,
+            child: CustomPaint(
+              painter: _RingPainter(
+                progress: total == 0 ? 1.0 : _progressAnimation.value,
+                isEmpty: total == 0,
+                accentColor: colorScheme.primary,
+                // Серый трек — onSurface с низкой прозрачностью
+                trackColor: colorScheme.onSurface.withAlpha(30),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      'main',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      total == 0 ? '—' : '$done/$total',
+                      style: GoogleFonts.fraunces(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
-                ],
+                    if (total > 0)
+                      Text(
+                        'main',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/app_sheet.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/settings/tone_provider.dart';
@@ -88,8 +89,8 @@ class EveningReviewCard extends ConsumerWidget {
 }
 
 Future<void> _showEveningReviewSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
+  return showAppSheet<void>(
+    context,
     isScrollControlled: true,
     builder: (_) => const _EveningReviewSheet(),
   );

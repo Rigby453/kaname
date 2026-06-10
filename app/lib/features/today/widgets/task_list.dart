@@ -3,11 +3,18 @@
 // - "Later": остальные задачи, по времени.
 // Свайп вправо = done (зелёный), свайп влево = skip (серый).
 // Тап по задаче открывает лист редактирования.
+//
+// ANIMATIONS.md §1.1+§1.2: карточка обёрнута в Pressable (scale/lift).
+// ANIMATIONS.md §2.3: AnimatedCheck + AnimatedDefaultTextStyle для done-строк.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/animated_check.dart';
+import '../../../core/animations/app_toast.dart';
+import '../../../core/animations/constants.dart';
+import '../../../core/animations/pressable.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import 'add_task_sheet.dart';
@@ -60,9 +67,16 @@ class TaskList extends ConsumerWidget {
   }
 
   Widget _buildRow(BuildContext context, WidgetRef ref, ItemsTableData item) {
-    // Завершённые/пропущенные показываем статичной строкой (без свайпа)
+    // Завершённые/пропущенные — без свайпа, но в ТОЙ ЖЕ обёртке Dismissible
+    // (direction: none): у обеих веток одинаковый runtimeType и ключ, поэтому
+    // element переживает смену статуса, _TaskCardState ловит переход
+    // pending→done в didUpdateWidget и AnimatedCheck проигрывается (§2.3).
     if (item.status != 'pending') {
-      return _TaskCard(item: item, day: day);
+      return Dismissible(
+        key: ValueKey(item.id),
+        direction: DismissDirection.none,
+        child: _TaskCard(item: item, day: day),
+      );
     }
 
     final colorScheme = Theme.of(context).colorScheme;
@@ -89,12 +103,21 @@ class TaskList extends ConsumerWidget {
         final dao = ref.read(itemsDaoProvider);
         if (direction == DismissDirection.startToEnd) {
           await dao.markDone(item.id);
+          // §3.1: тост «задача выполнена» после async-операции
+          if (context.mounted) {
+            showAppToast(
+              context,
+              variant: AppToastVariant.done,
+              message: 'Done! Great work.',
+            );
+          }
         } else {
           await dao.markSkipped(item.id);
+          // Для skip тост не показываем
         }
         return false;
       },
-      child: _TaskCard(item: item, day: day),
+      child: _TaskCard(key: ValueKey(item.id), item: item, day: day),
     );
   }
 
@@ -136,53 +159,93 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _TaskCard extends StatelessWidget {
-  const _TaskCard({required this.item, required this.day});
+/// Карточка задачи — StatefulWidget для корректного отслеживания
+/// перехода статуса pending→done через didUpdateWidget.
+/// AnimatedCheck анимирует галочку только при этом переходе,
+/// но не при первом открытии экрана (когда задача уже done).
+class _TaskCard extends StatefulWidget {
+  const _TaskCard({
+    required this.item,
+    required this.day,
+    super.key,
+  });
 
   final ItemsTableData item;
   final DateTime day;
 
   @override
+  State<_TaskCard> createState() => _TaskCardState();
+}
+
+class _TaskCardState extends State<_TaskCard> {
+  // true ровно на тот rebuild, в котором статус сменился на done —
+  // AnimatedCheck получает animateOnAppear и проигрывает анимацию один раз.
+  bool _justCompleted = false;
+
+  @override
+  void didUpdateWidget(_TaskCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _justCompleted =
+        oldWidget.item.status != 'done' && widget.item.status == 'done';
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final isDone = item.status == 'done';
-    final isSkipped = item.status == 'skipped';
+    final isDone = widget.item.status == 'done';
+    final isSkipped = widget.item.status == 'skipped';
     final isCompleted = isDone || isSkipped;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        onTap: () => showAddTaskSheet(context, day: day, existing: item),
-        leading: Text(
-          DateFormat.Hm().format(item.scheduledAt),
-          style: textTheme.labelMedium,
-        ),
-        title: Text(
-          item.title,
-          style: textTheme.bodyLarge?.copyWith(
-            decoration: isCompleted ? TextDecoration.lineThrough : null,
-            color: isCompleted
-                ? colorScheme.onSurface.withAlpha(120)
-                : colorScheme.onSurface,
+    // §2.3 strikethrough с fade через AnimatedDefaultTextStyle
+    final titleStyle = (textTheme.bodyLarge ?? const TextStyle()).copyWith(
+      decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+      decorationColor: isCompleted
+          ? colorScheme.onSurface.withAlpha(120)
+          : colorScheme.onSurface,
+      color: isCompleted
+          ? colorScheme.onSurface.withAlpha(120)
+          : colorScheme.onSurface,
+    );
+
+    return Pressable(
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(
+          onTap: () => showAddTaskSheet(context, day: widget.day, existing: widget.item),
+          leading: Text(
+            DateFormat.Hm().format(widget.item.scheduledAt),
+            style: textTheme.labelMedium,
           ),
+          title: AnimatedDefaultTextStyle(
+            style: titleStyle,
+            duration: const Duration(milliseconds: 200),
+            curve: kCurveSnap,
+            child: Text(widget.item.title),
+          ),
+          subtitle: Text(widget.item.type, style: textTheme.bodySmall),
+          trailing: _trailing(context, colorScheme, isDone),
         ),
-        subtitle: Text(item.type, style: textTheme.bodySmall),
-        trailing: _trailing(context, colorScheme),
       ),
     );
   }
 
-  Widget? _trailing(BuildContext context, ColorScheme colorScheme) {
-    if (item.status == 'done') {
-      return const Icon(Icons.check_circle, color: Colors.green);
+  Widget? _trailing(BuildContext context, ColorScheme colorScheme, bool isDone) {
+    if (isDone) {
+      // §2.3: AnimatedCheck вместо статичного Icon. Анимация — только при
+      // свежем переходе pending→done (_justCompleted), не при открытии экрана.
+      return AnimatedCheck(
+        checked: true,
+        color: Colors.green,
+        animateOnAppear: _justCompleted,
+      );
     }
-    if (item.status == 'skipped') {
+    if (widget.item.status == 'skipped') {
       return Icon(Icons.remove_circle_outline,
           color: colorScheme.onSurface.withAlpha(120));
     }
     // Значок щита для защищённых main-задач
-    if (item.priority == 'main') {
+    if (widget.item.priority == 'main') {
       return Icon(Icons.shield_outlined, color: colorScheme.primary, size: 20);
     }
     return null;

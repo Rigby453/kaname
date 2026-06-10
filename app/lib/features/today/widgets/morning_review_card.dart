@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/app_sheet.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/settings/tone_provider.dart';
@@ -132,8 +133,8 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
 }
 
 Future<void> _showMorningReviewSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
+  return showAppSheet<void>(
+    context,
     isScrollControlled: true,
     builder: (_) => const _MorningReviewSheet(),
   );

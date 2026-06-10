@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/app_sheet.dart';
+import '../../../core/animations/app_toast.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/settings/recent_subjects.dart';
@@ -36,8 +38,8 @@ Future<void> showAddTaskSheet(
   required DateTime day,
   ItemsTableData? existing,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
+  return showAppSheet<void>(
+    context,
     isScrollControlled: true,
     builder: (_) => Padding(
       // Поднимаем лист над клавиатурой
@@ -225,8 +227,38 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(itemsDaoProvider).deleteItem(existing.id);
-    if (mounted) Navigator.of(context).pop();
+    final dao = ref.read(itemsDaoProvider);
+    await dao.deleteItem(existing.id);
+    if (!mounted) return;
+    // §3.3: тост «Task removed» с Undo. Показываем до pop — OverlayEntry живёт
+    // в корневом Overlay навигатора и переживает закрытие шита.
+    // Undo вставляет КОПИЮ с новым id: старый id затумбстоунен для синка
+    // (ADR-021), повторная вставка того же id вернула бы конфликт удаления.
+    showAppToast(
+      context,
+      variant: AppToastVariant.removed,
+      message: 'Task removed',
+      onUndo: () {
+        final now = DateTime.now();
+        dao.insertItem(
+          ItemsTableCompanion(
+            id: Value(uuidV4()),
+            userId: Value(existing.userId),
+            title: Value(existing.title),
+            type: Value(existing.type),
+            priority: Value(existing.priority),
+            status: Value(existing.status),
+            scheduledAt: Value(existing.scheduledAt),
+            durationMinutes: Value(existing.durationMinutes),
+            isProtected: Value(existing.isProtected),
+            recurrenceRule: Value(existing.recurrenceRule),
+            createdAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+      },
+    );
+    Navigator.of(context).pop();
   }
 
   @override

@@ -3,9 +3,11 @@
 // Profile НЕ является табом. /auth — экран входа вне оболочки.
 // Redirect уводит на /auth, пока пользователь не вошёл (или не выбрал офлайн-режим).
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../animations/constants.dart'; // effectiveDuration
 
 import '../theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../features/auth/auth_controller.dart';
@@ -80,10 +82,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AuthScreen(),
       ),
 
-      // Оболочка с нижней навигацией — 4 таба через StatefulShellRoute
-      StatefulShellRoute.indexedStack(
+      // Оболочка с нижней навигацией — 4 таба через StatefulShellRoute.
+      // navigatorContainerBuilder даёт кроссфейд при смене вкладок (ANIMATIONS.md §8.1).
+      StatefulShellRoute(
         builder: (context, state, navigationShell) =>
             ScaffoldWithNavBar(navigationShell: navigationShell),
+        navigatorContainerBuilder: (context, navigationShell, children) {
+          // 150ms — ANIMATIONS.md §8.1
+          const kTabCrossfade = Duration(milliseconds: 150);
+          final duration = effectiveDuration(context, kTabCrossfade);
+          final activeIndex = navigationShell.currentIndex;
+
+          return Stack(
+            fit: StackFit.expand,
+            children: List.generate(children.length, (i) {
+              final active = i == activeIndex;
+              return IgnorePointer(
+                ignoring: !active,
+                child: TickerMode(
+                  enabled: active,
+                  child: AnimatedOpacity(
+                    opacity: active ? 1.0 : 0.0,
+                    duration: duration,
+                    curve: Curves.easeOut,
+                    child: children[i],
+                  ),
+                ),
+              );
+            }),
+          );
+        },
         branches: [
           // Таб 0: Today
           StatefulShellBranch(

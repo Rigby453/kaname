@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../services/api/api_client.dart';
@@ -172,8 +173,8 @@ class _FoodRow extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 Future<void> _showSearchSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
+  return showAppSheet<void>(
+    context,
     isScrollControlled: true,
     builder: (_) => const _FoodSearchSheet(),
   );
