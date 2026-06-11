@@ -8,9 +8,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'package:drift/drift.dart' show Value;
+import 'package:intl/intl.dart';
+
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/text_scale_provider.dart';
+import '../../core/utils/id.dart';
+import 'shared_plan.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../services/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -138,6 +143,8 @@ class ProfileScreen extends ConsumerWidget {
             const _PremiumCard(),
             const SizedBox(height: 16),
             const _ShareWeekCard(),
+            const SizedBox(height: 8),
+            const _SharedWithMeCard(),
             const SizedBox(height: 24),
             Text('Appearance', style: textTheme.titleMedium),
             const SizedBox(height: 8),
@@ -391,6 +398,400 @@ class _AppVersionLabel extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// «Поделились со мной» (SPEC C7, Ф3, v1)
+// ---------------------------------------------------------------------------
+
+/// Карточка «Shared with me»: вставить ссылку/токен → посмотреть
+/// read-only план друга → скопировать события к себе.
+class _SharedWithMeCard extends ConsumerStatefulWidget {
+  const _SharedWithMeCard();
+
+  @override
+  ConsumerState<_SharedWithMeCard> createState() => _SharedWithMeCardState();
+}
+
+class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
+  // Форматтер для заголовков дней
+  static final _dayFmt = DateFormat('EEE, d MMM');
+  // Форматтер для времени событий
+  static final _timeFmt = DateFormat('HH:mm');
+
+  /// Диалог ввода ссылки/токена, затем загрузка и показ шита.
+  Future<void> _openDialog() async {
+    final controller = TextEditingController();
+
+    final submitted = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Shared with me"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Paste link or token',
+          ),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('Open'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (submitted == null || submitted.trim().isEmpty) return;
+    if (!mounted) return;
+
+    final token = extractShareToken(submitted);
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid link or token')),
+      );
+      return;
+    }
+
+    await _loadAndShow(token);
+  }
+
+  /// Загружает план по токену и открывает шит просмотра.
+  Future<void> _loadAndShow(String token) async {
+    final api = ref.read(apiClientProvider);
+    Map<String, dynamic> plan;
+    try {
+      plan = await api.fetchSharedPlan(token);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+      return;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Network error — check your connection')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    await _showPlanSheet(plan);
+  }
+
+  /// Шит с read-only списком событий и кнопкой «Copy to my plan».
+  Future<void> _showPlanSheet(Map<String, dynamic> plan) async {
+    final ownerName = (plan['owner_name'] as String?) ?? 'Friend';
+    final fromRaw = plan['from'] as String?;
+    final toRaw = plan['to'] as String?;
+
+    // Диапазон для заголовка шита
+    String rangeLabel = '';
+    if (fromRaw != null && toRaw != null) {
+      try {
+        final from = DateTime.parse(fromRaw).toLocal();
+        final to = DateTime.parse(toRaw).toLocal();
+        rangeLabel = '${_dayFmt.format(from)} – ${_dayFmt.format(to)}';
+      } catch (_) {}
+    }
+
+    final rawItems = (plan['items'] as List<dynamic>?) ?? <dynamic>[];
+
+    // Группируем события по дням
+    final Map<String, List<Map<String, dynamic>>> byDay = {};
+    for (final raw in rawItems) {
+      final item = raw as Map<String, dynamic>;
+      final scheduledRaw = item['scheduled_at'] as String?;
+      if (scheduledRaw == null) continue;
+      DateTime dt;
+      try {
+        dt = DateTime.parse(scheduledRaw).toLocal();
+      } catch (_) {
+        continue;
+      }
+      final dayKey = DateFormat('yyyy-MM-dd').format(dt);
+      byDay.putIfAbsent(dayKey, () => []).add({...item, '_dt': dt});
+    }
+
+    // Упорядоченные ключи дней
+    final sortedDays = byDay.keys.toList()..sort();
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => _PlanSheetContent(
+        ownerName: ownerName,
+        rangeLabel: rangeLabel,
+        sortedDays: sortedDays,
+        byDay: byDay,
+        dayFmt: _dayFmt,
+        timeFmt: _timeFmt,
+        rawItems: rawItems,
+        onCopy: (items) => _copyToMyPlan(ctx, items),
+      ),
+    );
+  }
+
+  /// Вставляет каждый элемент как локальную задачу через ItemsDao.
+  Future<void> _copyToMyPlan(
+    BuildContext sheetCtx,
+    List<dynamic> rawItems,
+  ) async {
+    final dao = ref.read(itemsDaoProvider);
+    final now = DateTime.now();
+    int copied = 0;
+
+    for (final raw in rawItems) {
+      final item = raw as Map<String, dynamic>;
+      final scheduledRaw = item['scheduled_at'] as String?;
+      if (scheduledRaw == null) continue;
+      DateTime scheduledAt;
+      try {
+        scheduledAt = DateTime.parse(scheduledRaw).toLocal();
+      } catch (_) {
+        continue;
+      }
+
+      final title = (item['title'] as String?) ?? '';
+      if (title.isEmpty) continue;
+
+      final type = (item['type'] as String?) ?? 'task';
+      final durationMinutes = (item['duration_minutes'] as int?) ?? 30;
+
+      await dao.insertItem(
+        ItemsTableCompanion(
+          id: Value(uuidV4()),
+          userId: const Value('local'),
+          title: Value(title),
+          type: Value(type),
+          priority: const Value('medium'),
+          status: const Value('pending'),
+          scheduledAt: Value(scheduledAt),
+          durationMinutes: Value(durationMinutes),
+          isProtected: const Value(false),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+      copied++;
+    }
+
+    // Закрываем шит и показываем снэкбар
+    if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$copied event${copied == 1 ? '' : 's'} copied to your plan')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.group_outlined, color: colorScheme.primary),
+        title: const Text('Shared with me'),
+        subtitle: const Text("Open a friend's plan link"),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _openDialog,
+      ),
+    );
+  }
+}
+
+/// Содержимое шита просмотра чужого плана.
+/// Вынесен в отдельный StatelessWidget, чтобы не тянуть BuildContext шита
+/// в _SharedWithMeCardState и избежать mounted-проблем.
+class _PlanSheetContent extends StatelessWidget {
+  const _PlanSheetContent({
+    required this.ownerName,
+    required this.rangeLabel,
+    required this.sortedDays,
+    required this.byDay,
+    required this.dayFmt,
+    required this.timeFmt,
+    required this.rawItems,
+    required this.onCopy,
+  });
+
+  final String ownerName;
+  final String rangeLabel;
+  final List<String> sortedDays;
+  final Map<String, List<Map<String, dynamic>>> byDay;
+  final DateFormat dayFmt;
+  final DateFormat timeFmt;
+  final List<dynamic> rawItems;
+  final void Function(List<dynamic>) onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      builder: (_, scrollController) => Column(
+        children: [
+          // Ручка шита
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // Заголовок
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "$ownerName's plan",
+                        style: textTheme.titleLarge,
+                      ),
+                      if (rangeLabel.isNotEmpty)
+                        Text(rangeLabel, style: textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          // Список событий
+          Expanded(
+            child: rawItems.isEmpty
+                ? Center(
+                    child: Text(
+                      'No events in this plan',
+                      style: textTheme.bodyMedium,
+                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _itemCount(),
+                    itemBuilder: (_, index) => _buildRow(context, index),
+                  ),
+          ),
+          // Кнопка копирования
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              MediaQuery.of(context).padding.bottom + 16,
+            ),
+            child: FilledButton(
+              onPressed: rawItems.isEmpty ? null : () => onCopy(rawItems),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+              child: Text('Copy to my plan (${rawItems.length} event${rawItems.length == 1 ? '' : 's'})'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Общее количество строк: заголовок дня + строки событий.
+  int _itemCount() {
+    int count = 0;
+    for (final day in sortedDays) {
+      count += 1 + (byDay[day]?.length ?? 0);
+    }
+    return count;
+  }
+
+  /// Строит строку списка: либо заголовок дня, либо строку события.
+  Widget _buildRow(BuildContext context, int flatIndex) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    int cursor = 0;
+    for (final day in sortedDays) {
+      if (flatIndex == cursor) {
+        // Заголовок дня
+        DateTime? dt;
+        try {
+          dt = DateTime.parse(day);
+        } catch (_) {}
+        final label = dt != null ? dayFmt.format(dt) : day;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+          child: Text(label, style: textTheme.labelLarge),
+        );
+      }
+      cursor++;
+      final events = byDay[day] ?? [];
+      if (flatIndex < cursor + events.length) {
+        final item = events[flatIndex - cursor];
+        final dt = item['_dt'] as DateTime?;
+        final timeLabel = dt != null ? timeFmt.format(dt) : '--:--';
+        final title = (item['title'] as String?) ?? '';
+        final type = (item['type'] as String?) ?? 'task';
+
+        return ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          leading: Icon(
+            _typeIcon(type),
+            size: 18,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          title: Text(title, style: textTheme.bodyMedium),
+          trailing: Text(
+            '$timeLabel · $type',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+      }
+      cursor += events.length;
+    }
+    return const SizedBox.shrink();
+  }
+
+  IconData _typeIcon(String type) {
+    switch (type) {
+      case 'event':
+        return Icons.event_outlined;
+      case 'exam':
+        return Icons.school_outlined;
+      case 'deadline':
+        return Icons.flag_outlined;
+      default:
+        return Icons.check_circle_outline;
+    }
   }
 }
 

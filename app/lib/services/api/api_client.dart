@@ -376,6 +376,20 @@ class ApiClient {
     }
   }
 
+  /// Читает публичный план по токену (без авторизации).
+  /// Возвращает { owner_name, from, to, items: [...] }.
+  /// 404 → ApiException с сообщением из тела ответа (или 'Plan not found').
+  Future<Map<String, dynamic>> fetchSharedPlan(String token) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/api/v1/share/$token',
+      );
+      return response.data!;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // AI (Phase 1, premium)
   // ---------------------------------------------------------------------------
