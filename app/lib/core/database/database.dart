@@ -149,6 +149,28 @@ class FoodLogsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Записи сна (Sleep tracker, Phase 2). Локальный, offline-first.
+/// startAt — время отхода ко сну; endAt — null пока ночь не завершена.
+/// Добавлено в schemaVersion 6.
+class SleepLogsTable extends Table {
+  @override
+  String get tableName => 'sleep_logs';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Время начала (лёг спать)
+  DateTimeColumn get startAt => dateTime()();
+
+  // Время конца (проснулся); null = ночь ещё идёт
+  DateTimeColumn get endAt => dateTime().nullable()();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Список покупок (SPEC C5, Phase 1). Локальный, без синхронизации (Ф3).
 /// id — UUID, генерируется клиентом. Добавлено в schemaVersion 4.
 class ShoppingItemsTable extends Table {
@@ -269,6 +291,7 @@ class SyncQueueTable extends Table {
     ShoppingItemsTable,
     RecipesTable,
     RecipeIngredientsTable,
+    SleepLogsTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -278,7 +301,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -300,6 +323,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.createTable(recipesTable);
             await m.createTable(recipeIngredientsTable);
+          }
+          // v6: добавлена таблица sleep_logs (трекер сна, Phase 2).
+          if (from < 6) {
+            await m.createTable(sleepLogsTable);
           }
         },
       );

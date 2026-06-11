@@ -4221,6 +4221,314 @@ class RecipeIngredientsTableCompanion
   }
 }
 
+class $SleepLogsTableTable extends SleepLogsTable
+    with TableInfo<$SleepLogsTableTable, SleepLogsTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SleepLogsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startAtMeta = const VerificationMeta(
+    'startAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startAt = GeneratedColumn<DateTime>(
+    'start_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endAtMeta = const VerificationMeta('endAt');
+  @override
+  late final GeneratedColumn<DateTime> endAt = GeneratedColumn<DateTime>(
+    'end_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, startAt, endAt, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sleep_logs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SleepLogsTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('start_at')) {
+      context.handle(
+        _startAtMeta,
+        startAt.isAcceptableOrUnknown(data['start_at']!, _startAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startAtMeta);
+    }
+    if (data.containsKey('end_at')) {
+      context.handle(
+        _endAtMeta,
+        endAt.isAcceptableOrUnknown(data['end_at']!, _endAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SleepLogsTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SleepLogsTableData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      startAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}start_at'],
+      )!,
+      endAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}end_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SleepLogsTableTable createAlias(String alias) {
+    return $SleepLogsTableTable(attachedDatabase, alias);
+  }
+}
+
+class SleepLogsTableData extends DataClass
+    implements Insertable<SleepLogsTableData> {
+  final String id;
+  final DateTime startAt;
+  final DateTime? endAt;
+  final DateTime createdAt;
+  const SleepLogsTableData({
+    required this.id,
+    required this.startAt,
+    this.endAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['start_at'] = Variable<DateTime>(startAt);
+    if (!nullToAbsent || endAt != null) {
+      map['end_at'] = Variable<DateTime>(endAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SleepLogsTableCompanion toCompanion(bool nullToAbsent) {
+    return SleepLogsTableCompanion(
+      id: Value(id),
+      startAt: Value(startAt),
+      endAt: endAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SleepLogsTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SleepLogsTableData(
+      id: serializer.fromJson<String>(json['id']),
+      startAt: serializer.fromJson<DateTime>(json['startAt']),
+      endAt: serializer.fromJson<DateTime?>(json['endAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'startAt': serializer.toJson<DateTime>(startAt),
+      'endAt': serializer.toJson<DateTime?>(endAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SleepLogsTableData copyWith({
+    String? id,
+    DateTime? startAt,
+    Value<DateTime?> endAt = const Value.absent(),
+    DateTime? createdAt,
+  }) => SleepLogsTableData(
+    id: id ?? this.id,
+    startAt: startAt ?? this.startAt,
+    endAt: endAt.present ? endAt.value : this.endAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SleepLogsTableData copyWithCompanion(SleepLogsTableCompanion data) {
+    return SleepLogsTableData(
+      id: data.id.present ? data.id.value : this.id,
+      startAt: data.startAt.present ? data.startAt.value : this.startAt,
+      endAt: data.endAt.present ? data.endAt.value : this.endAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SleepLogsTableData(')
+          ..write('id: $id, ')
+          ..write('startAt: $startAt, ')
+          ..write('endAt: $endAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, startAt, endAt, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SleepLogsTableData &&
+          other.id == this.id &&
+          other.startAt == this.startAt &&
+          other.endAt == this.endAt &&
+          other.createdAt == this.createdAt);
+}
+
+class SleepLogsTableCompanion extends UpdateCompanion<SleepLogsTableData> {
+  final Value<String> id;
+  final Value<DateTime> startAt;
+  final Value<DateTime?> endAt;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const SleepLogsTableCompanion({
+    this.id = const Value.absent(),
+    this.startAt = const Value.absent(),
+    this.endAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SleepLogsTableCompanion.insert({
+    required String id,
+    required DateTime startAt,
+    this.endAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       startAt = Value(startAt);
+  static Insertable<SleepLogsTableData> custom({
+    Expression<String>? id,
+    Expression<DateTime>? startAt,
+    Expression<DateTime>? endAt,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (startAt != null) 'start_at': startAt,
+      if (endAt != null) 'end_at': endAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SleepLogsTableCompanion copyWith({
+    Value<String>? id,
+    Value<DateTime>? startAt,
+    Value<DateTime?>? endAt,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return SleepLogsTableCompanion(
+      id: id ?? this.id,
+      startAt: startAt ?? this.startAt,
+      endAt: endAt ?? this.endAt,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (startAt.present) {
+      map['start_at'] = Variable<DateTime>(startAt.value);
+    }
+    if (endAt.present) {
+      map['end_at'] = Variable<DateTime>(endAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SleepLogsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('startAt: $startAt, ')
+          ..write('endAt: $endAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4235,6 +4543,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $RecipesTableTable recipesTable = $RecipesTableTable(this);
   late final $RecipeIngredientsTableTable recipeIngredientsTable =
       $RecipeIngredientsTableTable(this);
+  late final $SleepLogsTableTable sleepLogsTable = $SleepLogsTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4249,6 +4558,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     shoppingItemsTable,
     recipesTable,
     recipeIngredientsTable,
+    sleepLogsTable,
   ];
 }
 
@@ -6488,6 +6798,193 @@ typedef $$RecipeIngredientsTableTableProcessedTableManager =
       RecipeIngredientsTableData,
       PrefetchHooks Function()
     >;
+typedef $$SleepLogsTableTableCreateCompanionBuilder =
+    SleepLogsTableCompanion Function({
+      required String id,
+      required DateTime startAt,
+      Value<DateTime?> endAt,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$SleepLogsTableTableUpdateCompanionBuilder =
+    SleepLogsTableCompanion Function({
+      Value<String> id,
+      Value<DateTime> startAt,
+      Value<DateTime?> endAt,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$SleepLogsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SleepLogsTableTable> {
+  $$SleepLogsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startAt => $composableBuilder(
+    column: $table.startAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get endAt => $composableBuilder(
+    column: $table.endAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SleepLogsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SleepLogsTableTable> {
+  $$SleepLogsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startAt => $composableBuilder(
+    column: $table.startAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get endAt => $composableBuilder(
+    column: $table.endAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SleepLogsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SleepLogsTableTable> {
+  $$SleepLogsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startAt =>
+      $composableBuilder(column: $table.startAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get endAt =>
+      $composableBuilder(column: $table.endAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SleepLogsTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SleepLogsTableTable,
+          SleepLogsTableData,
+          $$SleepLogsTableTableFilterComposer,
+          $$SleepLogsTableTableOrderingComposer,
+          $$SleepLogsTableTableAnnotationComposer,
+          $$SleepLogsTableTableCreateCompanionBuilder,
+          $$SleepLogsTableTableUpdateCompanionBuilder,
+          (
+            SleepLogsTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $SleepLogsTableTable,
+              SleepLogsTableData
+            >,
+          ),
+          SleepLogsTableData,
+          PrefetchHooks Function()
+        > {
+  $$SleepLogsTableTableTableManager(
+    _$AppDatabase db,
+    $SleepLogsTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SleepLogsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SleepLogsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SleepLogsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<DateTime> startAt = const Value.absent(),
+                Value<DateTime?> endAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SleepLogsTableCompanion(
+                id: id,
+                startAt: startAt,
+                endAt: endAt,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required DateTime startAt,
+                Value<DateTime?> endAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SleepLogsTableCompanion.insert(
+                id: id,
+                startAt: startAt,
+                endAt: endAt,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SleepLogsTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SleepLogsTableTable,
+      SleepLogsTableData,
+      $$SleepLogsTableTableFilterComposer,
+      $$SleepLogsTableTableOrderingComposer,
+      $$SleepLogsTableTableAnnotationComposer,
+      $$SleepLogsTableTableCreateCompanionBuilder,
+      $$SleepLogsTableTableUpdateCompanionBuilder,
+      (
+        SleepLogsTableData,
+        BaseReferences<_$AppDatabase, $SleepLogsTableTable, SleepLogsTableData>,
+      ),
+      SleepLogsTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6513,4 +7010,6 @@ class $AppDatabaseManager {
         _db,
         _db.recipeIngredientsTable,
       );
+  $$SleepLogsTableTableTableManager get sleepLogsTable =>
+      $$SleepLogsTableTableTableManager(_db, _db.sleepLogsTable);
 }

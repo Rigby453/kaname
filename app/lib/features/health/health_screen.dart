@@ -1,15 +1,16 @@
 // Экран Health — хаб здоровья.
-// Рабочий модуль: трекер воды (Phase 1: анимированный бар §4.2 + график
-// 7 дней). Остальное (тренировки/сон/дыхание/осанка) — Phase 2, плитки «скоро».
+// Рабочие модули: трекер воды (Phase 1) + трекер сна (Phase 2).
+// Остальное (тренировки/дыхание/осанка) — Phase 2/3, плитки «скоро».
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../core/animations/app_toast.dart';
 import '../../core/animations/constants.dart';
+import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/water_goal_provider.dart';
+import 'sleep_stats.dart';
 
 /// Сумма выпитого за сегодня (реактивно).
 final todayWaterProvider = StreamProvider.autoDispose<int>((ref) {
@@ -21,12 +22,23 @@ final weekWaterProvider = StreamProvider.autoDispose<List<int>>((ref) {
   return ref.watch(waterDaoProvider).watchDailyTotals(DateTime.now(), 7);
 });
 
+/// Открытая ночь (endAt == null), реактивно.
+final openNightProvider = StreamProvider.autoDispose<SleepLogsTableData?>((ref) {
+  return ref.watch(sleepDaoProvider).watchOpenNight();
+});
+
+/// Завершённые ночи за последние 7 дней, реактивно.
+final recentNightsProvider =
+    StreamProvider.autoDispose<List<SleepLogsTableData>>((ref) {
+  return ref.watch(sleepDaoProvider).watchRecentNights(7);
+});
+
 class HealthScreen extends ConsumerWidget {
   const HealthScreen({super.key});
 
+  // Sleep убран из «скоро» — теперь живой трекер ниже
   static const _comingSoon = [
     (Icons.fitness_center, 'Workouts'),
-    (Icons.bedtime_outlined, 'Sleep'),
     (Icons.air, 'Breathing'),
     (Icons.self_improvement, 'Posture'),
   ];
@@ -98,6 +110,10 @@ class HealthScreen extends ConsumerWidget {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+
+        // --- Трекер сна ---
+        const _SleepCard(),
         const SizedBox(height: 16),
 
         // --- Еда ---
@@ -249,6 +265,175 @@ class _WeekWaterChart extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Text(
                   _letters[day.weekday - 1],
+                  style: textTheme.bodySmall?.copyWith(
+                    fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                    color: isToday
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sleep tracker card
+// ---------------------------------------------------------------------------
+
+/// Карточка трекера сна. Два состояния:
+/// • нет открытой ночи → кнопка «Going to bed» + недельный график
+/// • есть открытая ночь → «Sleeping since HH:MM» + кнопка «I'm awake»
+class _SleepCard extends ConsumerWidget {
+  const _SleepCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    // Используем .when для разбора состояния загрузки корректно.
+    final openAsync = ref.watch(openNightProvider);
+    final dao = ref.read(sleepDaoProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.bedtime_outlined, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Sleep', style: textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            openAsync.when(
+              loading: () => const SizedBox(height: 48),
+              error: (_, e) => const SizedBox.shrink(),
+              data: (open) {
+                if (open != null) {
+                  // Ночь идёт — показываем время начала и кнопку «проснулся»
+                  final timeStr =
+                      TimeOfDay.fromDateTime(open.startAt).format(context);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Sleeping since $timeStr',
+                        style: textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.wb_sunny_outlined),
+                        label: const Text("I'm awake"),
+                        onPressed: () async {
+                          await dao.endNight();
+                          // Считаем длительность для снэкбара
+                          final dur =
+                              DateTime.now().difference(open.startAt);
+                          final h = dur.inHours;
+                          final m = dur.inMinutes % 60;
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Night logged: ${h}h ${m}m'),
+                                duration: const Duration(seconds: 3),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  );
+                }
+
+                // Ночи нет — кнопка «Ложусь спать» + недельный график
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FilledButton.icon(
+                      icon: const Icon(Icons.bedtime),
+                      label: const Text('Going to bed'),
+                      onPressed: () => dao.startNight(),
+                    ),
+                    const SizedBox(height: 16),
+                    _WeekSleepChart(goalHours: 7),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Мини-график сна за последние 7 дней (аналог _WeekWaterChart).
+/// Цель подсветки — ≥ 7 часов (accent color).
+class _WeekSleepChart extends ConsumerWidget {
+  const _WeekSleepChart({required this.goalHours});
+
+  final double goalHours;
+
+  static const _chartHeight = 56.0;
+  static const _letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nights = ref.watch(recentNightsProvider).valueOrNull;
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final today = DateTime.now();
+
+    // Если данных нет вообще (null = загружается) или пустой список
+    if (nights == null) return const SizedBox.shrink();
+    if (nights.isEmpty) {
+      return Text(
+        'No nights tracked yet',
+        style: textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurface.withValues(alpha: 0.5),
+        ),
+      );
+    }
+
+    final slots = nightlyHours(nights, today, 7);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(7, (i) {
+        final slot = slots[i];
+        final frac =
+            goalHours <= 0 ? 0.0 : (slot.hours / goalHours).clamp(0.0, 1.0);
+        final isToday = i == 6;
+        final reached = slot.hours >= goalHours && goalHours > 0;
+
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: (_chartHeight * frac).clamp(3.0, _chartHeight),
+                  decoration: BoxDecoration(
+                    color: reached
+                        ? colorScheme.primary
+                        : colorScheme.primary.withValues(
+                            alpha: isToday ? 0.8 : 0.35,
+                          ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _letters[slot.day.weekday - 1],
                   style: textTheme.bodySmall?.copyWith(
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
                     color: isToday

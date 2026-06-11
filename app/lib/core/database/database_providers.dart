@@ -12,6 +12,7 @@ import 'daos/water_dao.dart';
 import 'daos/food_logs_dao.dart';
 import 'daos/shopping_dao.dart';
 import 'daos/recipes_dao.dart';
+import 'daos/sleep_dao.dart';
 
 /// Единственный экземпляр базы данных
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -61,4 +62,10 @@ final shoppingDaoProvider = Provider<ShoppingDao>((ref) {
 final recipesDaoProvider = Provider<RecipesDao>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return RecipesDao(db);
+});
+
+/// DAO для трекера сна (Phase 2)
+final sleepDaoProvider = Provider<SleepDao>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return SleepDao(db);
 });
