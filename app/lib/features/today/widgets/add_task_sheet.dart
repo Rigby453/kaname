@@ -8,6 +8,7 @@
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -38,15 +39,35 @@ Future<void> showAddTaskSheet(
   required DateTime day,
   ItemsTableData? existing,
 }) {
+  final colorScheme = Theme.of(context).colorScheme;
+  // Баг 1: серые треугольники по бокам скруглений появляются из-за того, что
+  // Material 3 добавляет surfaceTint (elevation tint) поверх фона шита, а сам
+  // шит не обрезает внутренние виджеты по своей форме.
+  // Фикс:
+  //   • backgroundColor = colorScheme.surface — явный фон без оттенка elevation.
+  //   • shape + clipBehavior = Clip.antiAlias — все дочерние виджеты обрезаются
+  //     по скруглённым углам, просвет за углом исчезает.
+  //   • Внутри builder оборачиваем в Material(surfaceTintColor: transparent),
+  //     чтобы подавить M3-tint независимо от темы.
   return showAppSheet<void>(
     context,
     isScrollControlled: true,
-    builder: (_) => Padding(
-      // Поднимаем лист над клавиатурой
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+    backgroundColor: colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    clipBehavior: Clip.antiAlias,
+    builder: (_) => Material(
+      // Подавляем M3 elevation tint — иначе цвет шита будет светлее surface.
+      color: colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+      child: Padding(
+        // Поднимаем лист над клавиатурой
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: AddTaskSheet(day: day, existing: existing),
       ),
-      child: AddTaskSheet(day: day, existing: existing),
     ),
   );
 }
@@ -70,6 +91,8 @@ class AddTaskSheet extends ConsumerStatefulWidget {
 
 class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   late final TextEditingController _titleController;
+  // Баг 2: контроллер для ручного ввода минут; синхронизируется с _durationMinutes.
+  late final TextEditingController _customMinutesController;
   late String _type;
   late String _priority;
   late DateTime _scheduledAt;
@@ -86,6 +109,12 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _priority = existing?.priority ?? 'medium';
     _scheduledAt = existing?.scheduledAt ?? _defaultScheduledAt();
     _durationMinutes = existing?.durationMinutes ?? 30;
+    // Инициализируем поле ручного ввода текущим значением, если оно не входит
+    // в стандартный список пресетов — тогда пользователь сразу видит своё число.
+    final isCustom = !_durations.contains(_durationMinutes);
+    _customMinutesController = TextEditingController(
+      text: isCustom ? '$_durationMinutes' : '',
+    );
   }
 
   /// Сегодня, следующий круглый час
@@ -99,6 +128,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   @override
   void dispose() {
     _titleController.dispose();
+    _customMinutesController.dispose();
     super.dispose();
   }
 
@@ -146,6 +176,47 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         _scheduledAt = DateTime(_scheduledAt.year, _scheduledAt.month,
             _scheduledAt.day, picked.hour, picked.minute);
       });
+    }
+  }
+
+  // Баг 2: выбор «End time» — пользователь указывает время конца задачи,
+  // duration = разница в минутах с _scheduledAt.
+  Future<void> _pickEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(
+        _scheduledAt.add(Duration(minutes: _durationMinutes)),
+      ),
+    );
+    if (picked == null) return;
+
+    final endDt = DateTime(_scheduledAt.year, _scheduledAt.month,
+        _scheduledAt.day, picked.hour, picked.minute);
+    final diffMinutes = endDt.difference(_scheduledAt).inMinutes;
+
+    if (diffMinutes <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('End time must be after start time'),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _durationMinutes = diffMinutes;
+      // Сбрасываем поле ручного ввода — показываем вычисленное значение.
+      _customMinutesController.text = '$diffMinutes';
+    });
+  }
+
+  // Баг 2: обработка ручного ввода минут из TextField.
+  void _onCustomMinutesChanged(String value) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed != null && parsed > 0) {
+      setState(() => _durationMinutes = parsed);
     }
   }
 
@@ -264,6 +335,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return SafeArea(
       // Скролл вместо Padding: с открытой клавиатурой контент не помещается
@@ -340,26 +412,116 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
               spacing: 8,
               children: _priorities
                   .map((p) => ChoiceChip(
-                        label: Text(p),
+                        // Баг 3: Tooltip на чипе main объясняет назначение щита
+                        // (видно при долгом нажатии / hover).
+                        label: p == 'main'
+                            ? Tooltip(
+                                message: 'Protected from replanning',
+                                child: const Text('main'),
+                              )
+                            : Text(p),
                         selected: _priority == p,
                         onSelected: (_) => _onPriorityTap(p),
                       ))
                   .toList(),
             ),
+            // Баг 3: подсказка под строкой приоритетов — показывается только
+            // когда выбран main, чтобы не захламлять UI по умолчанию.
+            if (_priority == 'main') ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(
+                    Icons.shield_outlined,
+                    size: 14,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Protected: replanning never moves it',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
 
-            // Длительность
+            // Длительность — пресеты + ручной ввод минут + End time (Баг 2)
             Text('Duration', style: textTheme.labelMedium),
             const SizedBox(height: 8),
+            // Строка 1: пресеты чипами
             Wrap(
               spacing: 8,
+              runSpacing: 4,
               children: _durations
                   .map((d) => ChoiceChip(
                         label: Text(_durationLabel(d)),
-                        selected: _durationMinutes == d,
-                        onSelected: (_) => setState(() => _durationMinutes = d),
+                        // Пресет считается выбранным только если поле ручного ввода пустое
+                        // (т.е. пользователь не вводил своё число).
+                        selected: _durationMinutes == d &&
+                            _customMinutesController.text.trim().isEmpty,
+                        onSelected: (_) => setState(() {
+                          _durationMinutes = d;
+                          // Сбрасываем кастомный ввод при выборе пресета.
+                          _customMinutesController.clear();
+                        }),
                       ))
                   .toList(),
+            ),
+            const SizedBox(height: 8),
+            // Строка 2: ручной ввод минут + кнопка End time
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Поле ввода произвольного числа минут
+                SizedBox(
+                  width: 72,
+                  child: TextField(
+                    controller: _customMinutesController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      // Не более 4 цифр (максимум 9999 минут)
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      hintText: 'min',
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onChanged: _onCustomMinutesChanged,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Кнопка выбора конечного времени (Баг 2)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.schedule_outlined, size: 16),
+                  label: const Text('End time'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    textStyle: textTheme.labelMedium,
+                  ),
+                  onPressed: _pickEndTime,
+                ),
+                // Текущее значение рядом для наглядности
+                if (_durationMinutes > 0) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    _durationLabel(_durationMinutes),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurface.withAlpha(160),
+                    ),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 16),
 

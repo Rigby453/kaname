@@ -11,7 +11,8 @@ import 'constants.dart';
 
 // Длительности модалок — ANIMATIONS.md §8.2 (не совпадают с kDurationNormal/kDurationFast,
 // поэтому задаём локально, а не выносим в constants.dart).
-const _kSheetOpenDuration = Duration(milliseconds: 320); // §8.2
+// Ревью 2026-06-11: 320 → 300 (UI-переходы ≤300 мс, §0)
+const _kSheetOpenDuration = Duration(milliseconds: 300); // §8.2
 const _kSheetCloseDuration = Duration(milliseconds: 220); // §8.2
 
 /// Показывает модальный bottom sheet с анимацией по ANIMATIONS.md §8.2.
@@ -26,6 +27,9 @@ Future<T?> showAppSheet<T>(
   bool enableDrag = true,
   bool useSafeArea = false,
   Color? backgroundColor,
+  // Баг 1: clipBehavior — опциональный параметр для устранения серых треугольников
+  // при подъёме клавиатуры (clip скруглённых углов шита).
+  Clip? clipBehavior,
   ShapeBorder? shape,
   BoxConstraints? constraints,
   String? barrierLabel,
@@ -56,6 +60,7 @@ Future<T?> showAppSheet<T>(
     enableDrag: enableDrag,
     useSafeArea: useSafeArea,
     backgroundColor: backgroundColor,
+    clipBehavior: clipBehavior,
     shape: shape,
     constraints: constraints,
     barrierLabel: barrierLabel,

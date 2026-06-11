@@ -244,9 +244,12 @@ class _TaskCardState extends State<_TaskCard> {
       return Icon(Icons.remove_circle_outline,
           color: colorScheme.onSurface.withAlpha(120));
     }
-    // Значок щита для защищённых main-задач
+    // Баг 3: Tooltip объясняет назначение щита без лишних элементов в UI.
     if (widget.item.priority == 'main') {
-      return Icon(Icons.shield_outlined, color: colorScheme.primary, size: 20);
+      return Tooltip(
+        message: 'Protected from replanning',
+        child: Icon(Icons.shield_outlined, color: colorScheme.primary, size: 20),
+      );
     }
     return null;
   }
