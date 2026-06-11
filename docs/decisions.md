@@ -49,6 +49,11 @@
 
 <!-- Add new ADRs below this line -->
 
+## ADR-029: Restaurant-menu food input deferred to Ф3 (delivery integration)
+**Date:** 2026-06-11
+**Decision:** The «ресторан-меню» input method from SPEC C5 ships in Ф3 together with the delivery integration, not in Ф1. In Ф1 the restaurant use case is covered by the existing inputs: AI photo of the dish (AI-03), text search, and voice.
+**Reason:** There is no data source for restaurant menus today — Open Food Facts indexes packaged products, not restaurant dishes; menu data realistically arrives with the Ф3 delivery-platform integration (SPEC: «Список покупок (готов к доставке, Ф3)» implies the partner API). Building a fake restaurant picker over the same OFF search would add UI without new capability. Logged so the audit (docs/AUDIT.md) and BOARD reflect a conscious scope decision, not an omission.
+
 ## ADR-028: PurchaseService abstraction — stub now, RevenueCat later
 **Date:** 2026-06-10
 **Decision:** Subscriptions go through `app/lib/services/purchases/purchase_service.dart`: an abstract `PurchaseService` (`buyPremium()` / `restorePurchases()` → `PurchaseOutcome {success, cancelled, unavailable, error}`) behind `purchaseServiceProvider`. Today's implementation is `StubPurchaseService`: in debug builds `buyPremium` calls the existing dev-upgrade endpoint ([[ADR-018]]) so the single Subscribe button actually unlocks premium for testing (the separate "Dev: unlock premium" button is removed); in release it returns `unavailable` ("payments coming soon"). Real RevenueCat integration later = add `purchases_flutter`, implement `RevenueCatPurchaseService`, swap one line in the provider — UI untouched.
