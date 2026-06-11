@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../import/import_sheet.dart';
 import '../today/widgets/add_task_sheet.dart';
@@ -48,10 +49,21 @@ class PlanScreen extends ConsumerWidget {
                   onSelectionChanged: (s) =>
                       ref.read(planViewProvider.notifier).state = s.first,
                 ),
-                TextButton.icon(
-                  icon: const Icon(Icons.upload_file_outlined, size: 18),
-                  label: const Text('Import'),
-                  onPressed: () => showImportSheet(context, day: selectedDay),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.flag_outlined),
+                      tooltip: 'Long-term goals',
+                      onPressed: () => context.push('/goals'),
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.upload_file_outlined, size: 18),
+                      label: const Text('Import'),
+                      onPressed: () =>
+                          showImportSheet(context, day: selectedDay),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -274,6 +274,52 @@ class WorkoutsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Долгосрочные цели пользователя (SPEC C4). Горизонт: month / year / five_years / ten_years.
+/// Локальные, без синхронизации (ADR-027). Добавлено в schemaVersion 9.
+class GoalsTable extends Table {
+  @override
+  String get tableName => 'goals';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Название цели
+  TextColumn get title => text()();
+
+  // Горизонт: month | year | five_years | ten_years
+  TextColumn get horizon => text()();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Шаги (подзадачи) долгосрочной цели. Добавлено в schemaVersion 9.
+class GoalStepsTable extends Table {
+  @override
+  String get tableName => 'goal_steps';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Ссылка на цель
+  TextColumn get goalId => text()();
+
+  // Название шага
+  TextColumn get title => text()();
+
+  // Выполнен ли шаг
+  BoolColumn get done => boolean().withDefault(const Constant(false))();
+
+  // Порядок отображения
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Сессии тренировок (фактические выполнения шаблона). Добавлено в schemaVersion 8.
 /// finishedAt = null означает незавершённую сессию (тренировка прервана или в процессе).
 class WorkoutSessionsTable extends Table {
@@ -377,6 +423,8 @@ class SyncQueueTable extends Table {
     WorkoutsTable,
     WorkoutExercisesTable,
     WorkoutSessionsTable,
+    GoalsTable,
+    GoalStepsTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -386,7 +434,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -421,6 +469,11 @@ class AppDatabase extends _$AppDatabase {
           // v8: добавлена таблица workout_sessions (сессии тренировок, Phase 2).
           if (from < 8) {
             await m.createTable(workoutSessionsTable);
+          }
+          // v9: добавлены таблицы goals и goal_steps (долгосрочные цели, SPEC C4).
+          if (from < 9) {
+            await m.createTable(goalsTable);
+            await m.createTable(goalStepsTable);
           }
         },
       );

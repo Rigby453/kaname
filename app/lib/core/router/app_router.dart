@@ -31,6 +31,7 @@ import '../../features/health/posture_screen.dart';
 import '../../features/health/workouts_screen.dart';
 import '../../features/health/workout_editor_screen.dart';
 import '../../features/health/workout_trainer_screen.dart';
+import '../../features/plan/goals_screen.dart';
 import 'scaffold_with_nav_bar.dart';
 
 /// Индексы табов
@@ -254,6 +255,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => WorkoutTrainerScreen(
           workoutId: state.pathParameters['id']!,
         ),
+      ),
+
+      // /goals — долгосрочные цели (SPEC C4), push-route вне оболочки
+      GoRoute(
+        path: '/goals',
+        builder: (context, state) => const GoalsScreen(),
       ),
     ],
   );

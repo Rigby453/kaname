@@ -14,6 +14,7 @@ import 'daos/shopping_dao.dart';
 import 'daos/recipes_dao.dart';
 import 'daos/sleep_dao.dart';
 import 'daos/workouts_dao.dart';
+import 'daos/goals_dao.dart';
 
 /// Единственный экземпляр базы данных
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -75,4 +76,10 @@ final sleepDaoProvider = Provider<SleepDao>((ref) {
 final workoutsDaoProvider = Provider<WorkoutsDao>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return WorkoutsDao(db);
+});
+
+/// DAO для долгосрочных целей (SPEC C4, Phase 3)
+final goalsDaoProvider = Provider<GoalsDao>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return GoalsDao(db);
 });
