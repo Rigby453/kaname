@@ -20,6 +20,7 @@ tags:
   - name: Sync
   - name: Engine
   - name: AI (Phase 1)
+  - name: Share
 
 security:
   - bearerAuth: []
@@ -524,6 +525,97 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { description: Not available (production) }
 
+  /api/v1/share:
+    post:
+      tags: [Share]
+      summary: Create a view-only share link for a date range (signed JWT, 7 days)
+      description: >
+        Generates a signed JWT (purpose=share, expiresIn=7d) and returns a public URL.
+        No DB row is created. The link gives read-only access to the owner's items
+        in [from, to). Phase 3 feature (ADR-030).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from:
+                  type: string
+                  format: date-time
+                  description: Inclusive lower bound (ISO 8601 with offset)
+                to:
+                  type: string
+                  format: date-time
+                  description: Exclusive upper bound (ISO 8601 with offset); must be after from; max 31 days range
+      responses:
+        '200':
+          description: Share token and public URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, url]
+                properties:
+                  token: { type: string, description: Signed JWT }
+                  url: { type: string, description: Public share URL }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /share/{token}:
+    get:
+      tags: [Share]
+      summary: Public share page — HTML (browser) or JSON (app)
+      description: >
+        No authentication required. If Accept contains text/html, returns a self-contained
+        HTML page with the owner's plan (dark Focus theme). Otherwise returns JSON.
+        Returns 404 if the token is expired or invalid.
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Plan data (HTML or JSON depending on Accept header)
+          content:
+            text/html:
+              schema: { type: string }
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareResponse' }
+        '404':
+          description: Link expired or invalid
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/share/{token}:
+    get:
+      tags: [Share]
+      summary: Share plan — JSON only (for in-app "shared with me", Phase 3)
+      description: >
+        Same data as GET /share/{token} but always JSON, no HTML branch.
+        No authentication required.
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Plan data
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShareResponse' }
+        '404':
+          description: Link expired or invalid
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /api/v1/food/barcode/{code}:
     get:
       tags: [Food]
@@ -802,6 +894,26 @@ components:
           type: array
           description: Item ids deleted on other devices since last_sync_at (apply locally).
           items: { type: string, format: uuid }
+
+    ShareResponse:
+      type: object
+      description: >
+        Public view of a user's plan for a given date range.
+        Omits id and user_id; contains only safe public fields.
+      properties:
+        owner_name: { type: string }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              title: { type: string }
+              type: { type: string, enum: [task, event, exam, deadline] }
+              scheduled_at: { type: string, format: date-time }
+              duration_minutes: { type: integer }
+              status: { type: string, enum: [pending, done, skipped] }
 
     RedistributeResponse:
       type: object

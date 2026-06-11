@@ -49,6 +49,11 @@
 
 <!-- Add new ADRs below this line -->
 
+## ADR-030: Share links are signed JWTs, not DB rows
+**Date:** 2026-06-11
+**Decision:** `POST /api/v1/share` signs a JWT with `{ purpose: 'share', user_id, from, to }` and `expiresIn: '7d'`. The public URL is `/share/<token>`. The handler for both `GET /share/:token` and `GET /api/v1/share/:token` calls `fastify.jwt.verify`, checks `payload.purpose === 'share'`, fetches the owner's items in `[from, to)` from the DB at request time, and returns either HTML (dark Focus theme, inline CSS) or JSON based on the `Accept` header. No new Prisma model, no migration, no revocation in v1.
+**Reason:** Zero schema changes keep this Ф3 feature deliverable without touching the DB contract. Stateless JWT verify scales horizontally without a DB lookup for auth. Revocation and analytics (e.g. view counts) can be layered on with a `SharedLink` table when the "shared with me" in-app feature (also Ф3) arrives — at that point the token becomes a lookup key into the table rather than the data store itself.
+
 ## ADR-029: Restaurant-menu food input deferred to Ф3 (delivery integration)
 **Date:** 2026-06-11
 **Decision:** The «ресторан-меню» input method from SPEC C5 ships in Ф3 together with the delivery integration, not in Ф1. In Ф1 the restaurant use case is covered by the existing inputs: AI photo of the dish (AI-03), text search, and voice.

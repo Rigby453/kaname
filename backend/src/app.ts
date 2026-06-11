@@ -13,6 +13,7 @@ import redistributeRoutes from "./routes/redistribute.js";
 import aiRoutes from "./routes/ai.js";
 import subscriptionRoutes from "./routes/subscription.js";
 import foodRoutes from "./routes/food.js";
+import shareRoutes from "./routes/share.js";
 
 /**
  * Собирает и конфигурирует экземпляр Fastify (без вызова listen).
@@ -28,6 +29,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   const fastify = Fastify({
     // В тестах логи отключаем, чтобы не зашумлять вывод
     logger: process.env["NODE_ENV"] !== "test",
+    // /share/:token несёт JWT (~300 символов); дефолтный maxParamLength=100
+    // не матчит такие URL (роутер отвечал 404 на валидные ссылки).
+    maxParamLength: 1000,
   });
 
   // Регистрируем CORS — разрешаем localhost в dev
@@ -79,6 +83,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Регистрируем маршруты Food (Open Food Facts: barcode/search)
   await fastify.register(foodRoutes);
+
+  // Регистрируем маршруты Share (Ф3: веб-шеринг плана, ADR-030)
+  await fastify.register(shareRoutes);
 
   return fastify;
 }
