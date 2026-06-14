@@ -5,67 +5,78 @@ You are the **orchestrator**. Read this file + /CLAUDE.md before every session.
 Spawn sub-agents via the Task tool when work is isolated to one area.
 Coordinate their output. Never let agents step on each other's files.
 
+## Orchestrator Rules (v2)
+- **Never write code**: Your job is to spawn agents, read results from disk, run verification (tests/analyze), and commit.
+- **Atomic Tasks**: One task = one atomic block (one feature + its unit test). Max 30 mins of real work.
+- **Verification**: After every agent task, run `git status`, read key output files, and execute analyze/tests. Do not trust the agent's report alone.
+- **Commit & Push**: One logical task = one commit + push to `origin main`. Format: `feat(scope):`, `fix(scope):`, `docs:`, `refactor(scope):`.
+
 ## When to spawn sub-agents
 
 | Task type | Agent to spawn | Reads |
 |-----------|---------------|-------|
-| Backend API / DB / rule engine | backend agent | backend/CLAUDE.md |
-| Flutter screens / themes / sync | flutter agent | app/CLAUDE.md |
-| Landing page | landing agent | landing/CLAUDE.md |
-| Tests | QA agent | tests/CLAUDE.md |
-| AI prompts / Claude API | AI agent | docs/agents/ai-tasks.md |
-
-> These roles are now **registered sub-agents** in `.claude/agents/` — spawn them by name:
-> `backend`, `flutter`, `ai`, `qa`, `landing`. Each already knows what to read and what it owns.
+| Backend API / DB / rule engine | backend | backend/CLAUDE.md |
+| Design System / UI Components | design-system | app/lib/core/design_system/CLAUDE.md |
+| Flutter screens / logic | flutter | app/CLAUDE.md |
+| Notifications / Background | notifications | app/CLAUDE.md |
+| Subscriptions / RevenueCat | subscription | app/CLAUDE.md |
+| Landing page | landing | landing/CLAUDE.md |
+| Tests | qa | tests/CLAUDE.md |
+| AI prompts / Claude API | ai | docs/agents/ai-tasks.md |
 
 ## Agents
 
 ### Backend Agent
 **Works in:** `backend/`
-**Reads first:** /CLAUDE.md · /backend/CLAUDE.md · /docs/api-spec.yaml · /docs/data-model.md
 **Stack:** Node.js 22 · Fastify · Prisma · TypeScript · PostgreSQL
 **Owns:** REST API · DB migrations · rule engine · AI proxy endpoints · JWT auth · sync
 
+### Design System Agent
+**Works in:** `app/lib/core/design_system/`
+**Stack:** Flutter 3 · Design Tokens
+**Owns:** Theme, colors, typography, reusable atomic widgets.
+
 ### Flutter Agent
 **Works in:** `app/`
-**Reads first:** /CLAUDE.md · /app/CLAUDE.md · /docs/design-tokens.json · /docs/api-spec.yaml
 **Stack:** Flutter 3 · Riverpod · Drift (SQLite) · go_router · Dio
-**Owns:** all screens · 5 themes · animations · offline-first storage · local notifications · home widget
+**Owns:** Screens, business logic, offline-first storage, local state.
+
+### Notifications Agent
+**Works in:** `app/` (native integrations)
+**Stack:** Flutter · Firebase Messaging · Local Notifications
+**Owns:** Push setup, background tasks, notification scheduling.
+
+### Subscription Agent
+**Works in:** `app/`
+**Stack:** Flutter · RevenueCat
+**Owns:** Paywalls, subscription logic, receipt verification.
 
 ### AI Agent
 **Works in:** `backend/src/ai/`
-**Reads first:** /CLAUDE.md · /docs/agents/ai-tasks.md
-**Stack:** provider abstraction `src/ai/provider.ts` (ADR-022): Gemini (default, GEMINI_API_KEY) or Claude API (claude-haiku-4-5 bulk · claude-sonnet-4-6 complex · prompt caching · Batch)
-**Owns:** redistribution prompts · AI endpoints · tone-aware copy · food vision
+**Stack:** provider abstraction `src/ai/provider.ts` (ADR-022): Gemini (default) or Claude API.
+**Owns:** redistribution prompts · AI endpoints · tone-aware copy.
 
 ### QA Agent
 **Works in:** `tests/`
-**Reads first:** /CLAUDE.md · /tests/CLAUDE.md · /docs/agents/qa-tasks.md
 **Stack:** Jest + Supertest (backend) · flutter_test (app)
 **Owns:** integration tests · unit tests · sync conflict scenarios
 
 ### Landing Agent
 **Works in:** `landing/`
-**Reads first:** /CLAUDE.md · /landing/CLAUDE.md · /docs/design-tokens.json
-**Stack:** HTML · Tailwind CDN · Alpine.js — **no build step**
-**Owns:** index.html · smart Download button · pricing section
+**Stack:** HTML · Tailwind CDN · Alpine.js
+**Owns:** index.html · smart Download button.
 
 ---
 
-## Build order — MVP
+## Build order — MVP (Phase 0)
 
-```
 1. [backend] Project setup + Prisma schema + migrations
 2. [backend] Auth endpoints (register / login / me)
-3. [backend] Items CRUD + Streaks + Sync endpoint
-4. [flutter] Project setup + Focus theme + 4-tab navigation
-5. [flutter] Drift local DB + Today screen + FAB add task
-6. [backend] Rule redistribution engine (pending → proposed plan)
-7. [flutter] Plan screen + Diary screen + morning review UI
-8. [flutter] API client + Sync service
-9. [qa]     Integration tests: auth, items, streaks, sync, engine
-10. [landing] index.html with smart Download button
-```
+3. [design-system] Core theme + Typography + Basic buttons
+4. [flutter] Drift local DB + Today screen + FAB add task
+5. [backend] Items CRUD + Streaks + Sync endpoint
+6. [flutter] API client + Sync service
+7. [qa] Integration tests: auth, items, streaks, sync
 
 ---
 
@@ -91,3 +102,4 @@ Coordinate their output. Never let agents step on each other's files.
 - Code and variable names in **English**; comments can be Russian
 - Log architectural decisions in `/docs/decisions.md` (ADR format)
 - Before touching shared contracts, ask orchestrator first
+
