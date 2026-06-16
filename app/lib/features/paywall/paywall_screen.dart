@@ -3,10 +3,12 @@
 // PurchaseService (заглушка): в debug вызывает dev-апгрейд, в release — сообщает
 // «скоро». Одна кнопка Subscribe заменяет прежние Subscribe + Dev: unlock premium.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/api/api_client.dart';
 import '../../services/purchases/purchase_service.dart';
 import '../auth/auth_controller.dart';
 import '../profile/profile_screen.dart' show currentUserProvider;
@@ -102,6 +104,48 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         case PurchaseOutcome.cancelled:
           // Пользователь закрыл диалог — ничего не делаем.
           break;
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _devActivate() async {
+    setState(() => _working = true);
+    try {
+      await ref.read(apiClientProvider).devUpgrade(tier: 'premium');
+      ref.invalidate(isPremiumProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Premium activated!')),
+      );
+      context.pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _devDeactivate() async {
+    setState(() => _working = true);
+    try {
+      await ref.read(apiClientProvider).devUpgrade(tier: 'free');
+      ref.invalidate(isPremiumProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Downgraded to Free')),
+      );
+      context.pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -233,6 +277,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               style: textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
+            // Кнопка только в debug-сборке — активирует premium без оплаты
+            if (kDebugMode) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text('Dev tools', style: textTheme.labelSmall),
+              const SizedBox(height: 4),
+              OutlinedButton(
+                onPressed: _working ? null : _devActivate,
+                child: const Text('🛠 Activate Premium (dev only)'),
+              ),
+              const SizedBox(height: 4),
+              OutlinedButton(
+                onPressed: _working ? null : _devDeactivate,
+                child: const Text('🛠 Downgrade to Free (dev only)'),
+              ),
+            ],
           ],
         ),
       ),
