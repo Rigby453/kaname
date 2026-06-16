@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/water_goal_provider.dart';
+import '../../core/utils/breakpoints.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
 import '../health/health_screen.dart';
@@ -143,138 +144,198 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-
     if (!_loaded) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= Breakpoints.tablet) {
+          return _buildTabletLayout(context);
+        }
+        return _buildMobileLayout(context);
+      },
+    );
+  }
+
+  /// Mobile single-column layout (< 600px): форма + карточки подряд.
+  Widget _buildMobileLayout(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('How was today?', style: textTheme.headlineSmall),
-          const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              icon: const Icon(Icons.history),
-              label: const Text('View History'),
-              onPressed: () => context.push('/diary-history'),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Настроение 1..5
-          Text('Mood', style: textTheme.labelMedium),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(5, (i) {
-              final value = i + 1;
-              final selected = _mood == value;
-              return GestureDetector(
-                onTap: () => setState(() => _mood = value),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 120), // fast
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected
-                        ? colorScheme.primary.withValues(alpha: 0.25)
-                        : Colors.transparent,
-                    border: Border.all(
-                      color: selected
-                          ? colorScheme.primary
-                          : colorScheme.outline,
-                    ),
-                  ),
-                  child: Text(
-                    _moodEmojis[i],
-                    style: const TextStyle(fontSize: 24),
-                  ),
-                ),
-              );
-            }),
-          ),
+          ..._buildFormWidgets(context),
           const SizedBox(height: 24),
-
-          // Свободная заметка
-          Text('Anything interesting today?', style: textTheme.labelMedium),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _noteController,
-            maxLines: 4,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              hintText: 'Write a few words…',
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // What went wrong — мульти-выбор
-          Text('What went wrong?', style: textTheme.labelMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _issueLabels.entries.map((e) {
-              final selected = _issues.contains(e.key);
-              return FilterChip(
-                label: Text(e.value),
-                selected: selected,
-                onSelected: (on) => setState(() {
-                  if (on) {
-                    _issues.add(e.key);
-                  } else {
-                    _issues.remove(e.key);
-                  }
-                }),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 32),
-
-          // Сохранить день
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _save,
-              child: const Text('Save Day'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              // Во время запроса AI — пульс вместо спиннера (§7.1)
-              icon: _insightLoading
-                  ? const AiPulseDot(size: 10)
-                  : const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('Get insight (Premium)'),
-              onPressed: _insightLoading ? null : _getInsight,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.calendar_view_week, size: 18),
-              label: const Text('This week'),
-              onPressed: () => context.push('/wrapped'),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const _PlanVsFactCard(),
-          const SizedBox(height: 12),
-          const _QuickInsightCard(),
-          const SizedBox(height: 12),
-          const _LifeInsightsCard(),
+          ..._buildInsightWidgets(),
         ],
       ),
     );
+  }
+
+  /// Tablet 2-column layout (≥ 600px).
+  /// Left column (flex 1): diary form.
+  /// Right column (flex 1): plan-vs-fact + weekly insight + life insights.
+  Widget _buildTabletLayout(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Левая колонка: форма дневника ---
+        Expanded(
+          flex: 1,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _buildFormWidgets(context),
+            ),
+          ),
+        ),
+        const VerticalDivider(width: 1),
+        // --- Правая колонка: карточки инсайтов ---
+        Expanded(
+          flex: 1,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _buildInsightWidgets(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Виджеты формы дневника (настроение, заметка, теги, кнопки).
+  List<Widget> _buildFormWidgets(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return [
+      Text('How was today?', style: textTheme.headlineSmall),
+      const SizedBox(height: 16),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          icon: const Icon(Icons.history),
+          label: const Text('View History'),
+          onPressed: () => context.push('/diary-history'),
+        ),
+      ),
+      const SizedBox(height: 8),
+
+      // Настроение 1..5
+      Text('Mood', style: textTheme.labelMedium),
+      const SizedBox(height: 8),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: List.generate(5, (i) {
+          final value = i + 1;
+          final selected = _mood == value;
+          return GestureDetector(
+            onTap: () => setState(() => _mood = value),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120), // fast
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected
+                    ? colorScheme.primary.withValues(alpha: 0.25)
+                    : Colors.transparent,
+                border: Border.all(
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.outline,
+                ),
+              ),
+              child: Text(
+                _moodEmojis[i],
+                style: const TextStyle(fontSize: 24),
+              ),
+            ),
+          );
+        }),
+      ),
+      const SizedBox(height: 24),
+
+      // Свободная заметка
+      Text('Anything interesting today?', style: textTheme.labelMedium),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _noteController,
+        maxLines: 4,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: const InputDecoration(
+          hintText: 'Write a few words…',
+        ),
+      ),
+      const SizedBox(height: 24),
+
+      // What went wrong — мульти-выбор
+      Text('What went wrong?', style: textTheme.labelMedium),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _issueLabels.entries.map((e) {
+          final selected = _issues.contains(e.key);
+          return FilterChip(
+            label: Text(e.value),
+            selected: selected,
+            onSelected: (on) => setState(() {
+              if (on) {
+                _issues.add(e.key);
+              } else {
+                _issues.remove(e.key);
+              }
+            }),
+          );
+        }).toList(),
+      ),
+      const SizedBox(height: 32),
+
+      // Сохранить день
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: _save,
+          child: const Text('Save Day'),
+        ),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          // Во время запроса AI — пульс вместо спиннера (§7.1)
+          icon: _insightLoading
+              ? const AiPulseDot(size: 10)
+              : const Icon(Icons.auto_awesome, size: 18),
+          label: const Text('Get insight (Premium)'),
+          onPressed: _insightLoading ? null : _getInsight,
+        ),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.calendar_view_week, size: 18),
+          label: const Text('This week'),
+          onPressed: () => context.push('/wrapped'),
+        ),
+      ),
+    ];
+  }
+
+  /// Карточки инсайтов (план vs факт, недельный инсайт, жизненные инсайты).
+  List<Widget> _buildInsightWidgets() {
+    return const [
+      _PlanVsFactCard(),
+      SizedBox(height: 12),
+      _QuickInsightCard(),
+      SizedBox(height: 12),
+      _LifeInsightsCard(),
+    ];
   }
 }
 

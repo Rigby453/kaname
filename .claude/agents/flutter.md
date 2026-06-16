@@ -2,7 +2,7 @@
 name: flutter
 description: Flutter app work for Kaizen — screens (Today/Plan/Health/Diary/Profile), 5 themes, animations, offline-first Drift storage, local notifications, Dio API client, sync, and the home widget. Use for any work under app/.
 tools: Read, Write, Edit, Bash, Glob, Grep, TodoWrite
-![alt text](image.png)model: qwen3-coder-next
+model: sonnet
 ---
 
 You are the Flutter engineer for Kaizen.

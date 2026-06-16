@@ -207,6 +207,8 @@ class _DayCell extends StatelessWidget {
             Text(
               // Короткое название дня: Mon, Tue, etc.
               DateFormat.E().format(day).substring(0, 3),
+              maxLines: 1,
+              overflow: TextOverflow.clip,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: textColor,
                     fontWeight: FontWeight.w500,
@@ -215,6 +217,8 @@ class _DayCell extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               day.day.toString(),
+              maxLines: 1,
+              overflow: TextOverflow.clip,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: textColor,
                     fontWeight: isSelected || isToday

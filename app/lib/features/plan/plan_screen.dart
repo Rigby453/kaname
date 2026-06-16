@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/breakpoints.dart';
 import '../import/import_sheet.dart';
 import '../today/widgets/add_task_sheet.dart';
 import 'widgets/day_timeline.dart';
@@ -54,22 +55,68 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedDay = ref.watch(selectedDayProvider);
-    final view = ref.watch(planViewProvider);
-    final searchVisible = ref.watch(planSearchVisibleProvider);
 
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () => showAddTaskSheet(context, day: selectedDay),
         child: const Icon(Icons.add),
       ),
-      body: Column(
-        children: [
-          // Переключатель вида + поиск + импорт
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= Breakpoints.tablet) {
+            return _buildTabletLayout(context);
+          }
+          return _buildMobileLayout(context);
+        },
+      ),
+    );
+  }
+
+  /// Mobile single-column layout (< 600px).
+  Widget _buildMobileLayout(BuildContext context) {
+    final selectedDay = ref.watch(selectedDayProvider);
+    final view = ref.watch(planViewProvider);
+    final searchVisible = ref.watch(planSearchVisibleProvider);
+
+    return Column(
+      children: [
+        // Переключатель вида + поиск + импорт
+        _buildToolbar(context, selectedDay, view, searchVisible),
+        // Строка поиска (разворачивается при searchVisible в режиме Day)
+        if (view == PlanView.day && searchVisible)
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: _SearchField(
+              onChanged: (v) =>
+                  ref.read(planSearchQueryProvider.notifier).state = v,
+            ),
+          ),
+        const Divider(height: 1),
+        Expanded(child: _bodyContent(view)),
+      ],
+    );
+  }
+
+  /// Tablet 2-column layout (≥ 600px).
+  /// Left column (flex 1): week strip + view toggle buttons.
+  /// Right column (flex 2): day timeline / month calendar / week agenda.
+  Widget _buildTabletLayout(BuildContext context) {
+    final selectedDay = ref.watch(selectedDayProvider);
+    final view = ref.watch(planViewProvider);
+    final searchVisible = ref.watch(planSearchVisibleProvider);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Левая колонка: управление ---
+        Expanded(
+          flex: 1,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Переключатель вида
                 SegmentedButton<PlanView>(
                   segments: const [
                     ButtonSegment(value: PlanView.day, label: Text('Day')),
@@ -81,14 +128,13 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                   onSelectionChanged: (s) =>
                       ref.read(planViewProvider.notifier).state = s.first,
                 ),
+                const SizedBox(height: 12),
+                // Выбор даты + Today
                 Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Кнопка «Today» — видна только когда выбран не сегодня
                     Builder(builder: (ctx) {
                       final now = DateTime.now();
-                      final today =
-                          DateTime(now.year, now.month, now.day);
+                      final today = DateTime(now.year, now.month, now.day);
                       if (selectedDay != today) {
                         return TextButton(
                           onPressed: () {
@@ -100,7 +146,6 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                       }
                       return const SizedBox.shrink();
                     }),
-                    // Тап на дату открывает DatePicker (быстрый переход к любой дате)
                     GestureDetector(
                       onTap: () => _pickDate(selectedDay),
                       child: Padding(
@@ -124,15 +169,22 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                             Icon(
                               Icons.arrow_drop_down,
                               size: 18,
-                              color:
-                                  Theme.of(context).colorScheme.onSurface,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ],
                         ),
                       ),
                     ),
-                    // Иконка поиска (только в режиме Day)
-                    if (view == PlanView.day)
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // WeekStrip на планшете в левой колонке
+                if (view != PlanView.month) const WeekStrip(),
+                const SizedBox(height: 8),
+                // Поиск (только в режиме Day)
+                if (view == PlanView.day)
+                  Row(
+                    children: [
                       IconButton(
                         icon: Icon(
                           searchVisible
@@ -145,45 +197,155 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                               ref.read(planSearchVisibleProvider.notifier);
                           notifier.state = !notifier.state;
                           if (notifier.state == false) {
-                            // Сбрасываем запрос при закрытии
                             ref.read(planSearchQueryProvider.notifier).state =
                                 '';
                           }
                         },
                       ),
-                    IconButton(
-                      icon: const Icon(Icons.flag_outlined),
-                      tooltip: 'Long-term goals',
-                      onPressed: () => context.push('/goals'),
+                      const SizedBox(width: 4),
+                      const Text('Search'),
+                    ],
+                  ),
+                if (view == PlanView.day && searchVisible)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: _SearchField(
+                      onChanged: (v) =>
+                          ref.read(planSearchQueryProvider.notifier).state = v,
                     ),
-                    TextButton.icon(
-                      icon: const Icon(Icons.upload_file_outlined, size: 18),
-                      label: const Text('Import'),
-                      onPressed: () =>
-                          showImportSheet(context, day: selectedDay),
-                    ),
-                  ],
+                  ),
+                const SizedBox(height: 8),
+                // Дополнительные действия
+                IconButton(
+                  icon: const Icon(Icons.flag_outlined),
+                  tooltip: 'Long-term goals',
+                  onPressed: () => context.push('/goals'),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.upload_file_outlined, size: 18),
+                  label: const Text('Import'),
+                  onPressed: () =>
+                      showImportSheet(context, day: selectedDay),
                 ),
               ],
             ),
           ),
-          // Строка поиска (разворачивается при searchVisible в режиме Day)
-          if (view == PlanView.day && searchVisible)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: _SearchField(
-                onChanged: (v) =>
-                    ref.read(planSearchQueryProvider.notifier).state = v,
+        ),
+        const VerticalDivider(width: 1),
+        // --- Правая колонка: содержимое ---
+        Expanded(
+          flex: 2,
+          child: _bodyContentTablet(view),
+        ),
+      ],
+    );
+  }
+
+  /// Строит общую панель инструментов (для mobile).
+  Widget _buildToolbar(
+    BuildContext context,
+    DateTime selectedDay,
+    PlanView view,
+    bool searchVisible,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          SegmentedButton<PlanView>(
+            segments: const [
+              ButtonSegment(value: PlanView.day, label: Text('Day')),
+              ButtonSegment(value: PlanView.week, label: Text('Week')),
+              ButtonSegment(value: PlanView.month, label: Text('Month')),
+            ],
+            selected: {view},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) =>
+                ref.read(planViewProvider.notifier).state = s.first,
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Кнопка «Today» — видна только когда выбран не сегодня
+              Builder(builder: (ctx) {
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
+                if (selectedDay != today) {
+                  return TextButton(
+                    onPressed: () {
+                      ref.read(selectedDayProvider.notifier).state = today;
+                    },
+                    child: const Text('Today'),
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
+              // Тап на дату открывает DatePicker
+              GestureDetector(
+                onTap: () => _pickDate(selectedDay),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatSelectedDate(selectedDay),
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelMedium
+                            ?.copyWith(
+                              color:
+                                  Theme.of(context).colorScheme.onSurface,
+                            ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          const Divider(height: 1),
-          Expanded(child: _body(view)),
+              // Иконка поиска (только в режиме Day)
+              if (view == PlanView.day)
+                IconButton(
+                  icon: Icon(
+                    searchVisible ? Icons.search_off : Icons.search,
+                  ),
+                  tooltip: 'Search tasks',
+                  onPressed: () {
+                    final notifier =
+                        ref.read(planSearchVisibleProvider.notifier);
+                    notifier.state = !notifier.state;
+                    if (notifier.state == false) {
+                      // Сбрасываем запрос при закрытии
+                      ref.read(planSearchQueryProvider.notifier).state = '';
+                    }
+                  },
+                ),
+              IconButton(
+                icon: const Icon(Icons.flag_outlined),
+                tooltip: 'Long-term goals',
+                onPressed: () => context.push('/goals'),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.upload_file_outlined, size: 18),
+                label: const Text('Import'),
+                onPressed: () => showImportSheet(context, day: selectedDay),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _body(PlanView view) {
+  /// Содержимое тела в mobile (с WeekStrip внутри для Day/Week).
+  Widget _bodyContent(PlanView view) {
     switch (view) {
       case PlanView.month:
         return const MonthView();
@@ -199,6 +361,28 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         return const Column(
           children: [
             WeekStrip(),
+            Divider(height: 1),
+            Expanded(child: DayTimeline()),
+          ],
+        );
+    }
+  }
+
+  /// Содержимое правой колонки на планшете (без WeekStrip — он в левой колонке).
+  Widget _bodyContentTablet(PlanView view) {
+    switch (view) {
+      case PlanView.month:
+        return const MonthView();
+      case PlanView.week:
+        return const Column(
+          children: [
+            Divider(height: 1),
+            Expanded(child: WeekAgenda()),
+          ],
+        );
+      case PlanView.day:
+        return const Column(
+          children: [
             Divider(height: 1),
             Expanded(child: DayTimeline()),
           ],
