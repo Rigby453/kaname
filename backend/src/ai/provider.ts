@@ -36,9 +36,17 @@ export function activeProvider(): AiProvider {
 
 /** Единая точка генерации текста для всех AI-фич. */
 export async function generateText(params: GenerateParams): Promise<string> {
-  return activeProvider() === "gemini"
-    ? geminiGenerate(params)
-    : anthropicGenerate(params);
+  if (activeProvider() !== "gemini") return anthropicGenerate(params);
+  try {
+    return await geminiGenerate(params);
+  } catch (err) {
+    // Gemini гео-блокирует некоторые регионы — автоматически fallback на Anthropic.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("User location is not supported") && process.env["ANTHROPIC_API_KEY"]) {
+      return anthropicGenerate(params);
+    }
+    throw err;
+  }
 }
 
 /**
