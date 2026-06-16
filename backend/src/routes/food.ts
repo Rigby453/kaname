@@ -13,6 +13,7 @@ function serialize(p: FoodProduct) {
     code: p.code,
     name: p.name,
     brand: p.brand,
+    image: p.image,
     per_100g: {
       calories: p.per100g.calories,
       protein: p.per100g.protein,

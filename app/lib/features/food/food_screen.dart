@@ -3,6 +3,7 @@
 // → выбрать граммы/приём → запись. Итоги дня считаются локально из food_logs.
 // Числа КБЖУ — из базы (на 100 г), масштабируются под порцию (food_nutrition).
 
+import 'dart:async';
 import 'dart:convert' show base64Encode;
 
 import 'package:flutter/material.dart';
@@ -292,6 +293,7 @@ class _FoodSearchSheet extends ConsumerStatefulWidget {
 
 class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
   final _controller = TextEditingController();
+  Timer? _debounce;
   List<Map<String, dynamic>> _results = [];
   bool _loading = false;
   String? _error;
@@ -306,6 +308,7 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
   @override
   void dispose() {
     if (_listening) _speech.stop();
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -400,6 +403,11 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
               autofocus: true,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _search(),
+              onChanged: (value) {
+                _debounce?.cancel();
+                if (value.trim().isEmpty) return;
+                _debounce = Timer(const Duration(milliseconds: 400), _search);
+              },
               decoration: InputDecoration(
                 hintText: 'Search a product…',
                 suffixIcon: Row(
@@ -468,7 +476,21 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                     final p = _results[i];
                     final per = p['per_100g'] as Map<String, dynamic>?;
                     final kcal = (per?['calories'] as num?)?.round();
+                    final imageUrl = p['image'] as String?;
                     return ListTile(
+                      leading: imageUrl != null && imageUrl.isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Image.network(
+                                imageUrl,
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const Icon(Icons.fastfood_outlined, size: 32),
+                              ),
+                            )
+                          : const SizedBox(width: 40, child: Icon(Icons.fastfood_outlined, size: 32)),
                       title: Text((p['name'] as String?) ?? 'Unknown'),
                       subtitle: Text([
                         if (p['brand'] != null) p['brand'] as String,

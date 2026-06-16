@@ -15,6 +15,7 @@ export interface FoodProduct {
   code: string; // штрихкод / OFF id
   name: string;
   brand: string | null;
+  image: string | null;
   per100g: {
     calories: number | null;
     protein: number | null;
@@ -40,6 +41,7 @@ interface OffProduct {
   // search-a-licious отдаёт массив, api/v2 — строку через запятую
   brands?: string | string[];
   nutriments?: OffNutriments;
+  image_url?: string;
 }
 interface OffProductResponse {
   status?: number;
@@ -64,6 +66,7 @@ function normalize(p: OffProduct, fallbackCode: string): FoodProduct | null {
     code: (p.code ?? fallbackCode).trim(),
     name,
     brand: rawBrand?.trim() || null,
+    image: p.image_url?.trim() || null,
     per100g: {
       calories: num(n["energy-kcal_100g"]),
       protein: num(n.proteins_100g),
@@ -75,7 +78,7 @@ function normalize(p: OffProduct, fallbackCode: string): FoodProduct | null {
   };
 }
 
-const FIELDS = "code,product_name,brands,nutriments";
+const FIELDS = "code,product_name,brands,nutriments,image_url";
 
 /** Поиск продукта по штрихкоду. null — не найден. */
 export async function lookupBarcode(code: string): Promise<FoodProduct | null> {
