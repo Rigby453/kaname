@@ -8,21 +8,24 @@ datasource db {
 }
 
 model User {
-  id               String     @id @default(uuid())
-  email            String     @unique
+  id               String           @id @default(uuid())
+  email            String           @unique
   passwordHash     String
   name             String
-  subscriptionTier String     @default("free")
-  theme            String     @default("focus")
-  tonePreference   String     @default("gentle")
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  subscriptionTier String           @default("free")
+  theme            String           @default("focus")
+  tonePreference   String           @default("gentle")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   items            Item[]
   streak           Streak?
   dayLogs          DayLog[]
   waterLogs        WaterLog[]
   foodLogs         FoodLog[]
   tombstones       Tombstone[]
+  friends          Friend[]         @relation("UserFriends")
+  friendOf         Friend[]         @relation("FriendOf")
+  coStudySessions  CoStudySession[]
 }
 
 model Item {
@@ -107,4 +110,27 @@ model Tombstone {
 
   @@unique([userId, itemId])
   @@index([userId, deletedAt])
+}
+
+model Friend {
+  id        String   @id @default(uuid())
+  userId    String
+  friendId  String
+  createdAt DateTime @default(now())
+  user      User     @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend    User     @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@map("friends")
+}
+
+model CoStudySession {
+  id            String    @id @default(uuid())
+  userId        String
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+  minutesLogged Int?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("co_study_sessions")
 }

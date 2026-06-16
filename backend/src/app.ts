@@ -15,6 +15,7 @@ import subscriptionRoutes from "./routes/subscription.js";
 import foodRoutes from "./routes/food.js";
 import shareRoutes from "./routes/share.js";
 import authResetRoutes from "./routes/auth-reset.js";
+import { coStudyRoutes } from "./routes/costudy.js";
 
 /**
  * Собирает и конфигурирует экземпляр Fastify (без вызова listen).
@@ -90,6 +91,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Регистрируем маршруты сброса пароля (AUTH-05..06)
   await fastify.register(authResetRoutes);
+
+  // Регистрируем маршруты Co-study (Ф3: друзья, учебные сессии, лидерборд)
+  await fastify.register(coStudyRoutes);
 
   return fastify;
 }
