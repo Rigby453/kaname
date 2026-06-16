@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../import/import_sheet.dart';
 import '../today/widgets/add_task_sheet.dart';
@@ -17,11 +18,41 @@ import 'widgets/plan_providers.dart';
 import 'widgets/week_agenda.dart';
 import 'widgets/week_strip.dart';
 
-class PlanScreen extends ConsumerWidget {
+class PlanScreen extends ConsumerStatefulWidget {
   const PlanScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlanScreen> createState() => _PlanScreenState();
+}
+
+class _PlanScreenState extends ConsumerState<PlanScreen> {
+  /// Форматирует выбранную дату: «Today», «Yesterday», или «15 Jun».
+  String _formatSelectedDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    if (date == today) return 'Today';
+    if (date == yesterday) return 'Yesterday';
+    // Год показываем только если не текущий
+    if (date.year == now.year) return DateFormat('d MMM').format(date);
+    return DateFormat('d MMM y').format(date);
+  }
+
+  /// Открывает DatePicker и переключает выбранный день.
+  Future<void> _pickDate(DateTime current) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2099),
+    );
+    if (picked != null && mounted) {
+      ref.read(selectedDayProvider.notifier).state = picked;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selectedDay = ref.watch(selectedDayProvider);
     final view = ref.watch(planViewProvider);
     final searchVisible = ref.watch(planSearchVisibleProvider);
@@ -54,7 +85,7 @@ class PlanScreen extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Кнопка «Today» — видна только когда выбран не сегодня
-                    Builder(builder: (context) {
+                    Builder(builder: (ctx) {
                       final now = DateTime.now();
                       final today =
                           DateTime(now.year, now.month, now.day);
@@ -69,6 +100,37 @@ class PlanScreen extends ConsumerWidget {
                       }
                       return const SizedBox.shrink();
                     }),
+                    // Тап на дату открывает DatePicker (быстрый переход к любой дате)
+                    GestureDetector(
+                      onTap: () => _pickDate(selectedDay),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _formatSelectedDate(selectedDay),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface,
+                                  ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              size: 18,
+                              color:
+                                  Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     // Иконка поиска (только в режиме Day)
                     if (view == PlanView.day)
                       IconButton(

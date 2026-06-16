@@ -108,7 +108,7 @@ class _WeekStripState extends ConsumerState<WeekStrip> {
                 context: context,
                 initialDate: day,
                 firstDate: DateTime(2020),
-                lastDate: DateTime(2030),
+                lastDate: DateTime(2099),
               );
               if (picked != null) {
                 _jumpToDate(picked);
