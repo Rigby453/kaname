@@ -90,7 +90,7 @@
 - [x] Глобальный undo: undo завершения задачи + поиск в Plan (2026-06-16, 0627153)
 - [x] Хештеги + поиск по задачам: SearchBar в Plan с фильтром по title (2026-06-16, 0627153)
 - [x] Фото/видео к задачам — локально (2026-06-16): Drift v11 ItemAttachmentsTable + image_picker + video_player, миниатюры в add_task_sheet
-- [x] Адаптивная вёрстка (все размеры/ориентации): ScaffoldWithNavBar NavigationRail + HealthScreen 2-col (cfc5029) + TodayScreen 2-col (e621fba); Plan и Diary уже были
+- [x] Адаптивная вёрстка (все размеры/ориентации): ScaffoldWithNavBar NavigationRail + HealthScreen 2-col (cfc5029); Plan + Diary 2-col (dc5a059); TodayScreen 2-col (e621fba) — все 4 главных таба (2026-06-16)
 - [x] Аналитика образа жизни: _LifeInsightsCard в Diary (сон/вода rule-based) (2026-06-16, e8d3043)
 - [x] Пользовательское соглашение + дисклеймер: Terms&Privacy screen (2026-06-16, b445c81)
 - [x] Выбор даты тапом через календарь (2026-06-16): DatePicker в Water/Sleep/Diary-history
