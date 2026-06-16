@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/tone_provider.dart';
+import '../../core/utils/breakpoints.dart';
 import '../../services/streak/streak_service.dart';
 import '../../services/widget/widget_service.dart';
 import 'widgets/add_task_sheet.dart';
@@ -82,41 +83,130 @@ class TodayScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Failed to load tasks: $err')),
         data: (items) {
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96), // место под FAB
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _Header(now: now)),
-                  const _ToneToggle(),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const MorningReviewCard(),
-              const EveningReviewCard(),
-              const SizedBox(height: 8),
-              Center(child: ProgressRing(items: mainItems)),
-              const SizedBox(height: 24),
-              const StreakRow(),
-              if (allMainDone) ...[
-                const SizedBox(height: 16),
-                Center(
-                  child: Text(
-                    ToneCopy.allDone(tone),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              TaskList(items: items, day: now),
-            ],
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= Breakpoints.tablet) {
+                return _buildTabletBody(
+                    context, now, items, mainItems, tone, allMainDone);
+              }
+              return _buildMobileBody(
+                  context, now, items, mainItems, tone, allMainDone);
+            },
           );
         },
       ),
+    );
+  }
+
+  /// Mobile single-column layout.
+  Widget _buildMobileBody(
+    BuildContext context,
+    DateTime now,
+    List<ItemsTableData> items,
+    List<ItemsTableData> mainItems,
+    AppTone tone,
+    bool allMainDone,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96), // место под FAB
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _Header(now: now)),
+            const _ToneToggle(),
+          ],
+        ),
+        const SizedBox(height: 16),
+        const MorningReviewCard(),
+        const EveningReviewCard(),
+        const SizedBox(height: 8),
+        Center(child: ProgressRing(items: mainItems)),
+        const SizedBox(height: 24),
+        const StreakRow(),
+        if (allMainDone) ...[
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              ToneCopy.allDone(tone),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        TaskList(items: items, day: now),
+      ],
+    );
+  }
+
+  /// Tablet 2-column layout (≥600px).
+  /// Left (~40%): ring + streak + review cards.
+  /// Right: task list.
+  Widget _buildTabletBody(
+    BuildContext context,
+    DateTime now,
+    List<ItemsTableData> items,
+    List<ItemsTableData> mainItems,
+    AppTone tone,
+    bool allMainDone,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Left panel ---
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return SizedBox(
+              width: MediaQuery.sizeOf(context).width * 0.4,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 12, 96),
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _Header(now: now)),
+                      const _ToneToggle(),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const MorningReviewCard(),
+                  const EveningReviewCard(),
+                  const SizedBox(height: 8),
+                  Center(child: ProgressRing(items: mainItems)),
+                  const SizedBox(height: 24),
+                  const StreakRow(),
+                  if (allMainDone) ...[
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        ToneCopy.allDone(tone),
+                        textAlign: TextAlign.center,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+        const VerticalDivider(width: 1),
+        // --- Right panel: task list ---
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(12, 8, 16, 96),
+            children: [
+              TaskList(items: items, day: now),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

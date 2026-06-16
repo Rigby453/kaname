@@ -1,8 +1,11 @@
 // Оболочка с BottomNavigationBar и AppBar с кнопкой профиля
 // Profile открывается из leading кнопки AppBar, а НЕ из нижней навигации
+// На широких экранах (≥900px) — NavigationRail вместо BottomNavigationBar.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+import '../utils/breakpoints.dart';
 
 class ScaffoldWithNavBar extends StatelessWidget {
   const ScaffoldWithNavBar({
@@ -14,6 +17,61 @@ class ScaffoldWithNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= Breakpoints.desktop) {
+          return _buildWideLayout(context);
+        }
+        return _buildMobileLayout(context);
+      },
+    );
+  }
+
+  /// Wide layout (≥900px): NavigationRail + no AppBar bottom bar.
+  Widget _buildWideLayout(BuildContext context) {
+    return Scaffold(
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: navigationShell.currentIndex,
+            onDestinationSelected: (i) => _onTabTap(context, i),
+            labelType: NavigationRailLabelType.all,
+            leading: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: const ProfileAvatarButton(),
+            ),
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.wb_sunny_outlined),
+                selectedIcon: Icon(Icons.wb_sunny),
+                label: Text('Today'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.calendar_today_outlined),
+                selectedIcon: Icon(Icons.calendar_today),
+                label: Text('Plan'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.favorite_border),
+                selectedIcon: Icon(Icons.favorite),
+                label: Text('Health'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.menu_book_outlined),
+                selectedIcon: Icon(Icons.menu_book),
+                label: Text('Diary'),
+              ),
+            ],
+          ),
+          const VerticalDivider(thickness: 1, width: 1),
+          Expanded(child: navigationShell),
+        ],
+      ),
+    );
+  }
+
+  /// Mobile/tablet layout (<900px): AppBar + BottomNavigationBar.
+  Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         // Profile — leading кнопка, НЕ таб
