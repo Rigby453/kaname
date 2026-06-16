@@ -182,6 +182,18 @@ class HealthScreen extends ConsumerWidget {
             onTap: () => context.push('/posture'),
           ),
         ),
+        const SizedBox(height: 16),
+
+        // --- Трекер привычек ---
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.track_changes, color: colorScheme.primary),
+            title: const Text('Habits'),
+            subtitle: const Text('Build good habits · break bad ones'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/habits'),
+          ),
+        ),
       ],
     );
   }

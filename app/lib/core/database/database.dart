@@ -6,6 +6,8 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import 'daos/habits_dao.dart';
+
 // Импорт сгенерированного файла (создаётся build_runner)
 part 'database.g.dart';
 
@@ -296,6 +298,32 @@ class GoalsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Привычки пользователя (трекер). Добавлено в schemaVersion 10.
+/// type: 'good' (нужно делать) | 'bad' (нужно избегать).
+class HabitsTable extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get type => text().withDefault(const Constant('good'))(); // 'good' | 'bad'
+  TextColumn get emoji => text().withDefault(const Constant('✅'))();
+  IntColumn get targetPerDay => integer().withDefault(const Constant(1))();
+  BoolColumn get archived => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Логи выполнения привычек по дням. Добавлено в schemaVersion 10.
+class HabitLogsTable extends Table {
+  TextColumn get id => text()();
+  TextColumn get habitId => text().references(HabitsTable, #id)();
+  DateTimeColumn get date => dateTime()(); // нормализована до 00:00 UTC
+  IntColumn get count => integer().withDefault(const Constant(1))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Шаги (подзадачи) долгосрочной цели. Добавлено в schemaVersion 9.
 class GoalStepsTable extends Table {
   @override
@@ -425,6 +453,8 @@ class SyncQueueTable extends Table {
     WorkoutSessionsTable,
     GoalsTable,
     GoalStepsTable,
+    HabitsTable,
+    HabitLogsTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -433,8 +463,11 @@ class AppDatabase extends _$AppDatabase {
   /// Для тестов: in-memory исполнитель (NativeDatabase.memory()).
   AppDatabase.forTesting(super.e);
 
+  /// DAO для трекера привычек (schemaVersion 10).
+  HabitsDao get habitsDao => HabitsDao(this);
+
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -474,6 +507,11 @@ class AppDatabase extends _$AppDatabase {
           if (from < 9) {
             await m.createTable(goalsTable);
             await m.createTable(goalStepsTable);
+          }
+          // v10: добавлены таблицы habits и habit_logs (трекер привычек).
+          if (from < 10) {
+            await m.createTable(habitsTable);
+            await m.createTable(habitLogsTable);
           }
         },
       );

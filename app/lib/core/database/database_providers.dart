@@ -15,6 +15,7 @@ import 'daos/recipes_dao.dart';
 import 'daos/sleep_dao.dart';
 import 'daos/workouts_dao.dart';
 import 'daos/goals_dao.dart';
+import 'daos/habits_dao.dart';
 
 /// Единственный экземпляр базы данных
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -82,4 +83,9 @@ final workoutsDaoProvider = Provider<WorkoutsDao>((ref) {
 final goalsDaoProvider = Provider<GoalsDao>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return GoalsDao(db);
+});
+
+/// DAO для трекера привычек (schemaVersion 10)
+final habitsDaoProvider = Provider<HabitsDao>((ref) {
+  return ref.watch(appDatabaseProvider).habitsDao;
 });
