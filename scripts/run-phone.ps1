@@ -46,10 +46,9 @@ try {
 }
 
 # --- 3. flutter run с нужным dart-define ---
-# Если устройство не указано — берём Android (иначе flutter падает,
-# когда подключено несколько устройств: Windows/Chrome/Edge + телефон).
+# Если устройство не указано — берём конкретный ID телефона.
 if (-not ($FlutterArgs -contains '-d')) {
-    $FlutterArgs = @('-d', 'android') + $FlutterArgs
+    $FlutterArgs = @('-d', '69KFKRQOPJBITGC6') + $FlutterArgs
 }
 Push-Location $appDir
 try {
