@@ -38,6 +38,27 @@ class TodayScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Регистрируем listener здесь, на уровне build, так как ref доступен
+    ref.listen(todayMainItemsProvider, (_, _) async {
+      await ref.read(streakServiceProvider).recomputeForDay(DateTime.now());
+      await refreshHomeWidget(
+        itemsDao: ref.read(itemsDaoProvider),
+        streakDao: ref.read(streakDaoProvider),
+      );
+    });
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= Breakpoints.tablet) {
+          return _buildTabletLayout(context, ref);
+        }
+        return _buildMobileLayout(context, ref);
+      },
+    );
+  }
+
+  /// Мобильный макет — одна колонка, оригинальный вид.
+  Widget _buildMobileLayout(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
     final itemsAsync = ref.watch(todayItemsProvider);
     final mainItems = ref.watch(todayMainItemsProvider).valueOrNull ??
@@ -46,123 +67,19 @@ class TodayScreen extends ConsumerWidget {
     final allMainDone = mainItems.isNotEmpty &&
         mainItems.every((i) => i.status == 'done' || i.status == 'skipped');
 
-    // При изменении main-задач: пересчитываем серию (offline-first, идемпотентно)
-    // и обновляем домашний виджет (Android).
-    ref.listen(todayMainItemsProvider, (_, _) async {
-      // Сначала серия — чтобы виджет подхватил свежее значение.
-      await ref.read(streakServiceProvider).recomputeForDay(DateTime.now());
-      await refreshHomeWidget(
-        itemsDao: ref.read(itemsDaoProvider),
-        streakDao: ref.read(streakDaoProvider),
-      );
-    });
-
     return Stack(
       children: [
-        _buildScaffold(context, now, itemsAsync, mainItems, tone, allMainDone),
-        // Слой празднования (конфетти) поверх всего; тапы не перехватывает.
-        const Positioned.fill(child: CelebrationOverlay()),
-      ],
-    );
-  }
-
-  Widget _buildScaffold(
-    BuildContext context,
-    DateTime now,
-    AsyncValue<List<ItemsTableData>> itemsAsync,
-    List<ItemsTableData> mainItems,
-    AppTone tone,
-    bool allMainDone,
-  ) {
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => showAddTaskSheet(context, day: now),
-        child: const Icon(Icons.add),
-      ),
-      body: itemsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Failed to load tasks: $err')),
-        data: (items) {
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth >= Breakpoints.tablet) {
-                return _buildTabletBody(
-                    context, now, items, mainItems, tone, allMainDone);
-              }
-              return _buildMobileBody(
-                  context, now, items, mainItems, tone, allMainDone);
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  /// Mobile single-column layout.
-  Widget _buildMobileBody(
-    BuildContext context,
-    DateTime now,
-    List<ItemsTableData> items,
-    List<ItemsTableData> mainItems,
-    AppTone tone,
-    bool allMainDone,
-  ) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96), // место под FAB
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _Header(now: now)),
-            const _ToneToggle(),
-          ],
-        ),
-        const SizedBox(height: 16),
-        const MorningReviewCard(),
-        const EveningReviewCard(),
-        const SizedBox(height: 8),
-        Center(child: ProgressRing(items: mainItems)),
-        const SizedBox(height: 24),
-        const StreakRow(),
-        if (allMainDone) ...[
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              ToneCopy.allDone(tone),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-            ),
+        Scaffold(
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => showAddTaskSheet(context, day: now),
+            child: const Icon(Icons.add),
           ),
-        ],
-        const SizedBox(height: 24),
-        TaskList(items: items, day: now),
-      ],
-    );
-  }
-
-  /// Tablet 2-column layout (≥600px).
-  /// Left (~40%): ring + streak + review cards.
-  /// Right: task list.
-  Widget _buildTabletBody(
-    BuildContext context,
-    DateTime now,
-    List<ItemsTableData> items,
-    List<ItemsTableData> mainItems,
-    AppTone tone,
-    bool allMainDone,
-  ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // --- Left panel ---
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return SizedBox(
-              width: MediaQuery.sizeOf(context).width * 0.4,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 12, 96),
+          body: itemsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => Center(child: Text('Failed to load tasks: $err')),
+            data: (items) {
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                 children: [
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,28 +101,106 @@ class TodayScreen extends ConsumerWidget {
                       child: Text(
                         ToneCopy.allDone(tone),
                         textAlign: TextAlign.center,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                       ),
                     ),
                   ],
+                  const SizedBox(height: 24),
+                  TaskList(items: items, day: now),
                 ],
-              ),
-            );
-          },
-        ),
-        const VerticalDivider(width: 1),
-        // --- Right panel: task list ---
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 8, 16, 96),
-            children: [
-              TaskList(items: items, day: now),
-            ],
+              );
+            },
           ),
         ),
+        const Positioned.fill(child: CelebrationOverlay()),
+      ],
+    );
+  }
+
+  /// Планшетный макет ≥600px — две колонки равной ширины.
+  /// Левая: шапка + ProgressRing + StreakRow + карточки обзора.
+  /// Правая: список задач.
+  Widget _buildTabletLayout(BuildContext context, WidgetRef ref) {
+    final now = DateTime.now();
+    final itemsAsync = ref.watch(todayItemsProvider);
+    final mainItems = ref.watch(todayMainItemsProvider).valueOrNull ??
+        const <ItemsTableData>[];
+    final tone = ref.watch(toneProvider);
+    final allMainDone = mainItems.isNotEmpty &&
+        mainItems.every((i) => i.status == 'done' || i.status == 'skipped');
+
+    return Stack(
+      children: [
+        Scaffold(
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => showAddTaskSheet(context, day: now),
+            child: const Icon(Icons.add),
+          ),
+          body: itemsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => Center(child: Text('Failed to load tasks: $err')),
+            data: (items) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- Левая колонка: шапка, кольцо, серия, карточки обзора ---
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: _Header(now: now)),
+                              const _ToneToggle(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Center(child: ProgressRing(items: mainItems)),
+                          const SizedBox(height: 24),
+                          const StreakRow(),
+                          if (allMainDone) ...[
+                            const SizedBox(height: 16),
+                            Center(
+                              child: Text(
+                                ToneCopy.allDone(tone),
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                    ),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          const MorningReviewCard(),
+                          const EveningReviewCard(),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const VerticalDivider(width: 1),
+                  // --- Правая колонка: список задач ---
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: TaskList(items: items, day: now),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        const Positioned.fill(child: CelebrationOverlay()),
       ],
     );
   }
