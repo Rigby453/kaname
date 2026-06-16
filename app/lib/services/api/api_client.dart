@@ -196,6 +196,39 @@ class ApiClient {
     }
   }
 
+  /// Запрос кода сброса пароля. Возвращает dev_code если есть (dev-режим).
+  Future<String?> forgotPassword(String email) async {
+    try {
+      final resp = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/auth/forgot-password',
+        data: {'email': email},
+      );
+      return resp.data?['dev_code'] as String?;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Сброс пароля по коду.
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      await _dio.post<void>(
+        '/api/v1/auth/reset-password',
+        data: {
+          'email': email,
+          'code': code,
+          'new_password': newPassword,
+        },
+      );
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Items
   // ---------------------------------------------------------------------------

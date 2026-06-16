@@ -100,6 +100,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
 
   bool get _isEditing => widget.existing != null;
 
+  // Кэшированное число main-задач на текущий день — загружается при initState.
+  int _mainCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -115,6 +118,14 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _customMinutesController = TextEditingController(
       text: isCustom ? '$_durationMinutes' : '',
     );
+    // Загружаем число main-задач для отображения подсказки лимита.
+    _loadMainCount();
+  }
+
+  Future<void> _loadMainCount() async {
+    final dao = ref.read(itemsDaoProvider);
+    final count = await dao.countMainItems(widget.day);
+    if (mounted) setState(() => _mainCount = count);
   }
 
   /// Сегодня, следующий круглый час
@@ -137,6 +148,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (priority == 'main' && _priority != 'main') {
       final dao = ref.read(itemsDaoProvider);
       final mainCount = await dao.countMainItems(widget.day);
+      // Обновляем кэш для отображения подсказки лимита.
+      if (mounted) setState(() => _mainCount = mainCount);
       final alreadyCountsSelf = _isEditing && widget.existing!.priority == 'main';
       final effective = alreadyCountsSelf ? mainCount - 1 : mainCount;
       if (effective >= _maxMainPerDay) {
@@ -352,6 +365,15 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 16),
 
+            // Быстрые шаблоны — горизонтальный скролл, заполняют форму одним тапом.
+            _TemplatesRow(
+              onSelect: (title, type) => setState(() {
+                _titleController.text = title;
+                if (_types.contains(type)) _type = type;
+              }),
+            ),
+            const SizedBox(height: 8),
+
             // Заголовок
             TextField(
               controller: _titleController,
@@ -446,6 +468,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 ],
               ),
             ],
+            // Подпись лимита: показывается когда уже занято 3 слота main.
+            if (_mainCount >= _maxMainPerDay && _priority != 'main')
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '3 main tasks max — keeps focus sharp 🎯',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
             const SizedBox(height: 16),
 
             // Длительность — пресеты + ручной ввод минут + End time (Баг 2)
@@ -571,6 +604,60 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quick templates — горизонтальный скролл, заполняют поля одним тапом.
+// ---------------------------------------------------------------------------
+
+class _TemplatesRow extends StatelessWidget {
+  const _TemplatesRow({required this.onSelect});
+
+  final void Function(String title, String type) onSelect;
+
+  static const _templates = [
+    (emoji: '📚', title: 'Study session', type: 'task'),
+    (emoji: '📝', title: 'Assignment due', type: 'deadline'),
+    (emoji: '🏋️', title: 'Workout', type: 'task'),
+    (emoji: '📖', title: 'Read chapter', type: 'task'),
+    (emoji: '💻', title: 'Coding practice', type: 'task'),
+    (emoji: '🧘', title: 'Meditation', type: 'task'),
+    (emoji: '📞', title: 'Call parents', type: 'task'),
+    (emoji: '🛒', title: 'Groceries', type: 'task'),
+    (emoji: '🎓', title: 'Lecture', type: 'event'),
+    (emoji: '👥', title: 'Group meeting', type: 'event'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _templates.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final t = _templates[i];
+          return GestureDetector(
+            onTap: () => onSelect(t.title, t.type),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${t.emoji} ${t.title}',
+                style: textTheme.bodySmall,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

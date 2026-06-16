@@ -238,6 +238,12 @@ class ProfileScreen extends ConsumerWidget {
                 );
               },
             ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('Terms & Privacy'),
+              onTap: () => context.push('/terms'),
+            ),
           ],
         );
   }

@@ -36,6 +36,8 @@ import '../../features/health/water_report_screen.dart';
 import '../../features/diary/diary_history_screen.dart';
 import '../../features/plan/goals_screen.dart';
 import '../../features/health/habits_screen.dart';
+import '../../features/auth/forgot_password_screen.dart';
+import '../../features/profile/terms_screen.dart';
 import 'scaffold_with_nav_bar.dart';
 
 /// Индексы табов
@@ -98,6 +100,12 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Экран входа / регистрации (вне оболочки)
       GoRoute(path: '/auth', builder: (context, state) => const AuthScreen()),
+
+      // Восстановление пароля (вне оболочки)
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
 
       // Настройка после входа: интересы → импорт → время разборов → тон →
       // тема → нормы (SPEC C1, единый поток)
@@ -267,6 +275,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // /habits — трекер привычек (хорошие/плохие), вне оболочки
       GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
+
+      // /terms — пользовательское соглашение и политика конфиденциальности
+      GoRoute(path: '/terms', builder: (context, state) => const TermsScreen()),
     ],
   );
 });

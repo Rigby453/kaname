@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/api/api_client.dart';
 import 'auth_controller.dart';
@@ -165,6 +166,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           : 'Already have an account? Log in',
                     ),
                   ),
+                  if (_isLogin)
+                    TextButton(
+                      onPressed: _loading ? null : () => context.push('/forgot-password'),
+                      child: const Text('Forgot password?'),
+                    ),
                   const Divider(height: 32),
                   // Google/Apple Sign-In — заглушки (SPEC C1). OAuth — не MVP
                   // (глобальное правило: email/password only). TODO(phase1):
