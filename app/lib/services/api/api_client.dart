@@ -572,6 +572,71 @@ class ApiClient {
       _throw(e);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Co-study (Ф3, ADR-030)
+  // ---------------------------------------------------------------------------
+
+  /// Список друзей с их статусом (in_session, session_minutes).
+  Future<List<Map<String, dynamic>>> getFriends() async {
+    try {
+      final r = await _dio.get<List<dynamic>>('/api/v1/friends');
+      return List<Map<String, dynamic>>.from(r.data ?? []);
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Добавить друга по email.
+  Future<void> addFriend(String email) async {
+    try {
+      await _dio.post<void>('/api/v1/friends', data: {'email': email});
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Отписаться от друга.
+  Future<void> removeFriend(String friendId) async {
+    try {
+      await _dio.delete<void>('/api/v1/friends/$friendId');
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Начать учебную сессию. Возвращает { id, started_at }.
+  Future<Map<String, dynamic>> startSession() async {
+    try {
+      final r = await _dio.post<Map<String, dynamic>>('/api/v1/study-sessions');
+      return r.data!;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Завершить учебную сессию. Возвращает обновлённую запись.
+  Future<Map<String, dynamic>> endSession(String sessionId, int minutes) async {
+    try {
+      final r = await _dio.patch<Map<String, dynamic>>(
+        '/api/v1/study-sessions/$sessionId',
+        data: {'minutes': minutes},
+      );
+      return r.data!;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
+  /// Недельная таблица лидеров (rank, email, minutes, is_me).
+  Future<List<Map<String, dynamic>>> getLeaderboard() async {
+    try {
+      final r = await _dio.get<List<dynamic>>('/api/v1/leaderboard');
+      return List<Map<String, dynamic>>.from(r.data ?? []);
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

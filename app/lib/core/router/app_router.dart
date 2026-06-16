@@ -36,6 +36,7 @@ import '../../features/health/water_report_screen.dart';
 import '../../features/diary/diary_history_screen.dart';
 import '../../features/plan/goals_screen.dart';
 import '../../features/health/habits_screen.dart';
+import '../../features/health/costudy_screen.dart';
 import '../../features/auth/forgot_password_screen.dart';
 import '../../features/profile/terms_screen.dart';
 import 'scaffold_with_nav_bar.dart';
@@ -275,6 +276,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // /habits — трекер привычек (хорошие/плохие), вне оболочки
       GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
+
+      // /costudy — совместная учёба с друзьями (Ф3), вне оболочки
+      GoRoute(path: '/costudy', builder: (context, state) => const CoStudyScreen()),
 
       // /terms — пользовательское соглашение и политика конфиденциальности
       GoRoute(path: '/terms', builder: (context, state) => const TermsScreen()),

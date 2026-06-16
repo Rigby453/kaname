@@ -278,6 +278,18 @@ class HealthScreen extends ConsumerWidget {
             onTap: () => context.push('/habits'),
           ),
         ),
+        const SizedBox(height: 12),
+
+        // --- Совместная учёба ---
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.people_outline),
+            title: const Text('Co-study'),
+            subtitle: const Text('Study with friends · leaderboard'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/costudy'),
+          ),
+        ),
       ],
     );
   }
