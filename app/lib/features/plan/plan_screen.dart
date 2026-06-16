@@ -24,6 +24,7 @@ class PlanScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedDay = ref.watch(selectedDayProvider);
     final view = ref.watch(planViewProvider);
+    final searchVisible = ref.watch(planSearchVisibleProvider);
 
     return Scaffold(
       floatingActionButton: FloatingActionButton(
@@ -32,7 +33,7 @@ class PlanScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // Переключатель вида + импорт
+          // Переключатель вида + поиск + импорт
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
             child: Row(
@@ -52,6 +53,26 @@ class PlanScreen extends ConsumerWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Иконка поиска (только в режиме Day)
+                    if (view == PlanView.day)
+                      IconButton(
+                        icon: Icon(
+                          searchVisible
+                              ? Icons.search_off
+                              : Icons.search,
+                        ),
+                        tooltip: 'Search tasks',
+                        onPressed: () {
+                          final notifier =
+                              ref.read(planSearchVisibleProvider.notifier);
+                          notifier.state = !notifier.state;
+                          if (notifier.state == false) {
+                            // Сбрасываем запрос при закрытии
+                            ref.read(planSearchQueryProvider.notifier).state =
+                                '';
+                          }
+                        },
+                      ),
                     IconButton(
                       icon: const Icon(Icons.flag_outlined),
                       tooltip: 'Long-term goals',
@@ -68,6 +89,15 @@ class PlanScreen extends ConsumerWidget {
               ],
             ),
           ),
+          // Строка поиска (разворачивается при searchVisible в режиме Day)
+          if (view == PlanView.day && searchVisible)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: _SearchField(
+                onChanged: (v) =>
+                    ref.read(planSearchQueryProvider.notifier).state = v,
+              ),
+            ),
           const Divider(height: 1),
           Expanded(child: _body(view)),
         ],
@@ -96,5 +126,56 @@ class PlanScreen extends ConsumerWidget {
           ],
         );
     }
+  }
+}
+
+/// Поле ввода поискового запроса с иконкой очистки.
+class _SearchField extends StatefulWidget {
+  const _SearchField({required this.onChanged});
+
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      autofocus: true,
+      decoration: InputDecoration(
+        hintText: 'Search tasks…',
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: _controller.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, size: 20),
+                onPressed: () {
+                  _controller.clear();
+                  widget.onChanged('');
+                },
+              )
+            : null,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      onChanged: (v) {
+        setState(() {}); // обновляем suffixIcon
+        widget.onChanged(v);
+      },
+    );
   }
 }

@@ -18,3 +18,9 @@ final rangeItemsProvider = StreamProvider.autoDispose
     .family<List<ItemsTableData>, (DateTime, DateTime)>((ref, range) {
   return ref.watch(itemsDaoProvider).watchItemsInRange(range.$1, range.$2);
 });
+
+/// Видимость строки поиска на экране Plan.
+final planSearchVisibleProvider = StateProvider<bool>((ref) => false);
+
+/// Текущий поисковый запрос на экране Plan.
+final planSearchQueryProvider = StateProvider<String>((ref) => '');

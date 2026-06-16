@@ -7,6 +7,7 @@
 // ANIMATIONS.md §1.1+§1.2: карточка обёрнута в Pressable (scale/lift).
 // ANIMATIONS.md §2.3: AnimatedCheck + AnimatedDefaultTextStyle для done-строк.
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -103,12 +104,20 @@ class TaskList extends ConsumerWidget {
         final dao = ref.read(itemsDaoProvider);
         if (direction == DismissDirection.startToEnd) {
           await dao.markDone(item.id);
-          // §3.1: тост «задача выполнена» после async-операции
+          // §3.1: тост «задача выполнена» с кнопкой Undo (отмена завершения)
           if (context.mounted) {
             showAppToast(
               context,
               variant: AppToastVariant.done,
-              message: 'Done! Great work.',
+              message: '"${item.title}" marked as done',
+              onUndo: () async {
+                await ref.read(itemsDaoProvider).updateItem(
+                      item.id,
+                      const ItemsTableCompanion(
+                        status: Value('pending'),
+                      ),
+                    );
+              },
             );
           }
         } else {

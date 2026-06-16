@@ -11,6 +11,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../today/widgets/add_task_sheet.dart';
+import 'plan_providers.dart';
 import 'week_strip.dart';
 
 /// StreamProvider с autoDispose + family: один провайдер на каждую дату.
@@ -37,15 +38,23 @@ class DayTimeline extends ConsumerWidget {
         ),
       ),
       data: (items) {
-        if (items.isEmpty) {
+        // Фильтрация по поисковому запросу
+        final query = ref.watch(planSearchQueryProvider).toLowerCase();
+        final filtered = query.isEmpty
+            ? items
+            : items
+                .where((i) => i.title.toLowerCase().contains(query))
+                .toList();
+
+        if (filtered.isEmpty) {
           return _EmptyState(day: selectedDay);
         }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-          itemCount: items.length,
+          itemCount: filtered.length,
           separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
-            final item = items[index];
+            final item = filtered[index];
             return _ItemCard(
               item: item,
               selectedDay: selectedDay,

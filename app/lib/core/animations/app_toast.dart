@@ -256,9 +256,8 @@ class _AppToastOverlayState extends State<_AppToastOverlay>
                     ),
                   ),
                 ),
-                // Кнопка Undo — только для removed и только если передан onUndo
-                if (widget.variant == AppToastVariant.removed &&
-                    widget.onUndo != null) ...[
+                // Кнопка Undo — для removed и done (если передан onUndo)
+                if (widget.onUndo != null) ...[
                   const SizedBox(width: 8),
                   TextButton(
                     style: TextButton.styleFrom(
