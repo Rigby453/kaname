@@ -3,13 +3,17 @@
 // Остальное (тренировки/дыхание/осанка) — Phase 2/3, плитки «скоро».
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/timezone.dart' as tz;
 import '../../core/animations/app_toast.dart';
 import '../../core/animations/constants.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/water_goal_provider.dart';
+import '../../core/theme/theme_provider.dart';
 import 'sleep_stats.dart';
 
 /// Сумма выпитого за сегодня (реактивно).
@@ -34,6 +38,72 @@ final recentNightsProvider =
     StreamProvider.autoDispose<List<SleepLogsTableData>>((ref) {
       return ref.watch(sleepDaoProvider).watchRecentNights(7);
     });
+
+/// Провайдер напоминаний о воде — включить/выключить расписание уведомлений.
+final waterReminderProvider =
+    StateNotifierProvider<WaterReminderNotifier, bool>((ref) {
+  final prefs = ref.read(sharedPreferencesProvider);
+  return WaterReminderNotifier(prefs);
+});
+
+class WaterReminderNotifier extends StateNotifier<bool> {
+  WaterReminderNotifier(this._prefs)
+      : super(_prefs.getBool('water_reminders') ?? false);
+  final SharedPreferences _prefs;
+  // FlutterLocalNotificationsPlugin uses a factory/singleton — not const.
+  static final _plugin = FlutterLocalNotificationsPlugin();
+  static const _baseId = 400;
+
+  Future<void> toggle(bool value) async {
+    state = value;
+    await _prefs.setBool('water_reminders', value);
+    if (value) {
+      await _schedule();
+    } else {
+      await _cancel();
+    }
+  }
+
+  Future<void> _schedule() async {
+    await _cancel();
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'kaizen_water',
+        'Water reminders',
+        channelDescription: 'Hydration reminders every 2 hours',
+        importance: Importance.low,
+        priority: Priority.low,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+    for (var i = 0; i < 8; i++) {
+      final hour = 8 + i * 2;
+      final scheduled = _nextInstance(hour);
+      await _plugin.zonedSchedule(
+        id: _baseId + i,
+        title: 'Time to drink water 💧',
+        body: 'Stay hydrated!',
+        scheduledDate: scheduled,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    }
+  }
+
+  Future<void> _cancel() async {
+    for (var i = 0; i < 8; i++) {
+      await _plugin.cancel(id: _baseId + i);
+    }
+  }
+
+  tz.TZDateTime _nextInstance(int hour) {
+    final now = tz.TZDateTime.now(tz.local);
+    var t = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
+    if (t.isBefore(now)) t = t.add(const Duration(days: 1));
+    return t;
+  }
+}
 
 class HealthScreen extends ConsumerWidget {
   const HealthScreen({super.key});
@@ -100,6 +170,20 @@ class HealthScreen extends ConsumerWidget {
                       tooltip: 'Undo',
                       icon: const Icon(Icons.undo),
                       onPressed: () => dao.undoLast(DateTime.now()),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.notifications_outlined, size: 16),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                        child: Text('Drink reminders (every 2 h)')),
+                    Switch.adaptive(
+                      value: ref.watch(waterReminderProvider),
+                      onChanged: (v) =>
+                          ref.read(waterReminderProvider.notifier).toggle(v),
                     ),
                   ],
                 ),

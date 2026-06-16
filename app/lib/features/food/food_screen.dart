@@ -17,6 +17,7 @@ import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/nutrition_goals_provider.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
@@ -339,15 +340,19 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
       );
       return;
     }
-    // Привязка к системному языку устройства (ревью: без этого распознавание
-    // мешало русский и английский одновременно).
-    final systemLocale = await _speech.systemLocale();
-    if (!mounted) return;
+    // Привязка к языку приложения (а не системному), чтобы STT совпадал
+    // с выбранным пользователем языком интерфейса.
+    final appLocale = ref.read(localeNotifierProvider);
+    final localeId = switch (appLocale.languageCode) {
+      'ru' => 'ru-RU',
+      'de' => 'de-DE',
+      _ => 'en-US',
+    };
 
     setState(() => _listening = true);
     await _speech.listen(
       listenOptions: stt.SpeechListenOptions(
-        localeId: systemLocale?.localeId,
+        localeId: localeId,
       ),
       onResult: (result) {
         if (!mounted) return;
