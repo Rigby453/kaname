@@ -32,6 +32,7 @@ import '../../features/health/workouts_screen.dart';
 import '../../features/health/workout_editor_screen.dart';
 import '../../features/health/workout_trainer_screen.dart';
 import '../../features/health/sleep_report_screen.dart';
+import '../../features/health/water_fullscreen_screen.dart';
 import '../../features/health/water_report_screen.dart';
 import '../../features/diary/diary_history_screen.dart';
 import '../../features/plan/goals_screen.dart';
@@ -209,6 +210,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SleepReportScreen(),
       ),
 
+      // /water — полноэкранный трекер воды
+      GoRoute(
+        path: '/water',
+        builder: (context, state) => const WaterFullscreenScreen(),
+      ),
       // /water-report — полный отчёт воды, вне оболочки
       GoRoute(
         path: '/water-report',

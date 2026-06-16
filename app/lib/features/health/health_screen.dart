@@ -142,6 +142,12 @@ class HealthScreen extends ConsumerWidget {
                       '$total / $waterGoalMl ml',
                       style: textTheme.titleMedium,
                     ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      tooltip: 'Full view',
+                      onPressed: () => context.push('/water'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
