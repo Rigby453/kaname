@@ -354,6 +354,16 @@ class HealthScreen extends ConsumerWidget {
           onTap: () => context.push('/breathing'),
         ),
       ),
+      // --- Медитация (Ф2) ---
+      Card(
+        child: ListTile(
+          leading: Icon(Icons.spa_outlined, color: colorScheme.primary),
+          title: const Text('Meditation'),
+          subtitle: const Text('Guided text sessions · 5–15 min'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/meditation'),
+        ),
+      ),
       // --- Осанка (Ф2) ---
       Card(
         child: ListTile(
@@ -362,6 +372,16 @@ class HealthScreen extends ConsumerWidget {
           subtitle: const Text('Exercises · stand-tall reminders'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.push('/posture'),
+        ),
+      ),
+      // --- Экранное время ---
+      Card(
+        child: ListTile(
+          leading: Icon(Icons.phone_android_outlined, color: colorScheme.primary),
+          title: const Text('Screen Time'),
+          subtitle: const Text('Set daily limits for distracting apps'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/screen-time'),
         ),
       ),
       // --- Трекер привычек ---

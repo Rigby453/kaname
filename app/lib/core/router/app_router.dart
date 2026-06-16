@@ -38,6 +38,8 @@ import '../../features/diary/diary_history_screen.dart';
 import '../../features/plan/goals_screen.dart';
 import '../../features/health/habits_screen.dart';
 import '../../features/health/costudy_screen.dart';
+import '../../features/health/meditation_screen.dart';
+import '../../features/health/screen_time_screen.dart';
 import '../../features/auth/forgot_password_screen.dart';
 import '../../features/profile/terms_screen.dart';
 import 'scaffold_with_nav_bar.dart';
@@ -285,6 +287,17 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // /costudy — совместная учёба с друзьями (Ф3), вне оболочки
       GoRoute(path: '/costudy', builder: (context, state) => const CoStudyScreen()),
+
+      // /meditation — текстовые медитации (Ф2), вне оболочки
+      GoRoute(
+        path: '/meditation',
+        builder: (context, state) => const MeditationScreen(),
+      ),
+      // /screen-time — лимиты экранного времени по категориям
+      GoRoute(
+        path: '/screen-time',
+        builder: (context, state) => const ScreenTimeScreen(),
+      ),
 
       // /terms — пользовательское соглашение и политика конфиденциальности
       GoRoute(path: '/terms', builder: (context, state) => const TermsScreen()),
