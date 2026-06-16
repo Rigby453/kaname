@@ -16,6 +16,7 @@ import '../../core/database/database_providers.dart';
 import '../../core/settings/text_scale_provider.dart';
 import '../../core/utils/id.dart';
 import 'shared_plan.dart';
+import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../services/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -152,6 +153,34 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             Text('Preferences', style: textTheme.titleMedium),
             const SizedBox(height: 8),
+            // --- Язык ---
+            Consumer(
+              builder: (context, ref, _) {
+                final locale = ref.watch(localeNotifierProvider);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.language),
+                  title: const Text('Language'),
+                  trailing: DropdownButton<String>(
+                    value: locale.languageCode,
+                    underline: const SizedBox.shrink(),
+                    items: localeNames.entries
+                        .map((e) => DropdownMenuItem(
+                              value: e.key,
+                              child: Text(e.value),
+                            ))
+                        .toList(),
+                    onChanged: (code) {
+                      if (code != null) {
+                        ref
+                            .read(localeNotifierProvider.notifier)
+                            .setLocale(Locale(code));
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
             const _ToneSetting(),
             const SizedBox(height: 16),
             const _TextSizeSetting(),

@@ -3,10 +3,12 @@
 // AppLifecycleListener запускает syncNow() при возврате приложения на передний план.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/database/database_providers.dart';
+import 'core/l10n/locale_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/settings/text_scale_provider.dart';
 import 'core/theme/app_theme.dart';
@@ -89,6 +91,7 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
   Widget build(BuildContext context) {
     final theme = ref.watch(themeDataProvider);
     final router = ref.watch(routerProvider);
+    final locale = ref.watch(localeNotifierProvider);
     // Итоговый масштаб текста = пользовательская настройка × бонус Contrast-темы.
     final isContrast =
         ref.watch(themeNotifierProvider) == AppThemeKey.contrast;
@@ -100,6 +103,13 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
       debugShowCheckedModeBanner: false,
       theme: theme,
       routerConfig: router,
+      locale: locale,
+      supportedLocales: supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
         if (scale == 1.0) return child;
