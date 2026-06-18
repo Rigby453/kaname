@@ -90,12 +90,18 @@ async function geminiGenerate({
   // дефолт обновлён на 2.5 (проверено живым вызовом 2026-06-10).
   const model = process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite";
 
-  const parts: Array<Record<string, unknown>> = [{ text: user }];
+  // Gemini REST API v1beta использует snake_case для всех полей.
+  // Для multimodal-запросов изображение должно идти ПЕРЕД текстом-промптом.
+  const parts: Array<Record<string, unknown>> = [];
   if (image) {
     parts.push({
-      inlineData: { mimeType: image.mediaType, data: image.base64 },
+      // Правильное имя поля — inline_data (snake_case), не inlineData.
+      // mime_type тоже snake_case. Ошибка в этих именах → API игнорирует
+      // изображение → пустой ответ → "AI service unavailable".
+      inline_data: { mime_type: image.mediaType, data: image.base64 },
     });
   }
+  parts.push({ text: user });
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,

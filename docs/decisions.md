@@ -49,6 +49,11 @@
 
 <!-- Add new ADRs below this line -->
 
+## ADR-035: Fix Gemini REST inline_data field names for multimodal (food-photo) requests
+**Date:** 2026-06-18
+**Decision:** Corrected the image part in `backend/src/ai/provider.ts` `geminiGenerate()`: the field was `inlineData: { mimeType, data }` (camelCase, JavaScript convention) but the Gemini REST API v1beta requires snake_case — `inline_data: { mime_type, data }`. Simultaneously moved the image part before the text part in the `parts` array (Gemini docs: image first, prompt after for vision tasks).
+**Reason:** The camelCase `inlineData` key is unknown to the Gemini REST API; it silently ignores the field. The request reaches the model with no image, the model returns an empty response (or blocks), `geminiGenerate` throws `"Gemini returned an empty response"`, which propagates to the `aiError` handler in the route and returns HTTP 502 `"AI service unavailable. Please try again later."` — the exact error the user sees. This affected every multimodal call (AI-03 food photo, AI-06 schedule-import). Text-only AI calls (AI-01 redistribute, AI-02 morning message, AI-04 diary insight) were unaffected because they never set `image`. Fix is in `backend/src/ai/provider.ts` only; no contract or schema changes. All 11 AI integration tests pass (they mock the provider module).
+
 ## ADR-034: AI usage limits persisted in an AiUsage table (not in-memory)
 **Date:** 2026-06-18
 **Decision:** Replace the in-memory `Map` that enforces the food-photo daily limit (3/day, AI-03) in `backend/src/routes/ai.ts` with a persistent `AiUsage` table (`userId`, `day` `YYYY-MM-DD` UTC, `feature`, `count`, unique `(userId, day, feature)`). The quota check becomes an atomic upsert-with-increment and a compare against the limit. Keyed by `feature` so future paid AI features reuse the same table.
