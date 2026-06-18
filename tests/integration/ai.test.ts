@@ -234,6 +234,41 @@ test('food-recognize: 4th call same day → 429 (limit 3/day)', async () => {
   expect(fourth.statusCode).toBe(429);
 });
 
+// DB-backed counter: AiUsage таблица хранит счётчик между запросами (ADR-034).
+// Три успешных вызова → одна строка с count ≥ 3; четвёртый → 429.
+test('food-recognize: AiUsage row persisted in DB with count >= 3 after 3 calls', async () => {
+  const prem = await registerUser(app);
+  userIds.push(prem.userId);
+  await makePremium(prem.userId);
+
+  const call = () =>
+    app.inject({
+      method: 'POST',
+      url: '/api/v1/ai/food-recognize',
+      headers: { Authorization: `Bearer ${prem.token}` },
+      payload: { image_base64: 'ZmFrZQ==', media_type: 'image/jpeg' },
+    });
+
+  // Три вызова — все должны вернуть 200
+  for (let i = 0; i < 3; i++) {
+    expect((await call()).statusCode).toBe(200);
+  }
+
+  // Четвёртый вызов — превышение лимита
+  const fourth = await call();
+  expect(fourth.statusCode).toBe(429);
+
+  // Проверяем DB: ровно одна запись на сегодня для этого пользователя/фичи
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await prisma.aiUsage.findMany({
+    where: { userId: prem.userId, feature: 'food_photo' },
+  });
+  expect(rows).toHaveLength(1);
+  // Счётчик может быть 4 — четвёртый вызов тоже инкрементирует (per ADR-034)
+  expect(rows[0]!.count).toBeGreaterThanOrEqual(3);
+  expect(rows[0]!.day).toBe(today);
+});
+
 test('morning-message without auth → 401', async () => {
   const res = await app.inject({
     method: 'POST',

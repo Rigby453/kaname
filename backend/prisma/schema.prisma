@@ -24,6 +24,7 @@ model User {
   waterLogs        WaterLog[]
   foodLogs         FoodLog[]
   tombstones       Tombstone[]
+  aiUsages         AiUsage[]
   friends          Friend[]         @relation("UserFriends")
   friendOf         Friend[]         @relation("FriendOf")
   coStudySessions  CoStudySession[]
@@ -111,6 +112,20 @@ model Tombstone {
 
   @@unique([userId, itemId])
   @@index([userId, deletedAt])
+}
+
+// Учёт дневных лимитов платных AI-фич. Устойчив к рестарту и мультиинстансу (ADR-034).
+// day — UTC-дата YYYY-MM-DD; feature — напр. 'food_photo'.
+model AiUsage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  day       String
+  feature   String
+  count     Int      @default(0)
+
+  @@unique([userId, day, feature])
+  @@index([userId, day])
 }
 
 model Friend {

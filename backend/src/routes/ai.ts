@@ -68,22 +68,19 @@ const wrappedSummarySchema = z.object({
   tone: toneSchema,
 });
 
-// --- Лимит фото-распознаваний: 3 на пользователя в день (AI-03) ---
-// In-memory: сбрасывается при рестарте процесса — для текущего масштаба ок.
-// TODO(phase1+): вынести в таблицу AiUsage для устойчивого учёта токенов/лимитов.
+// --- Лимит фото-распознаваний: 3 на пользователя в день (AI-03, ADR-034) ---
+// Атомарный upsert в таблицу AiUsage: устойчив к рестарту и нескольким инстансам.
 const kFoodPhotoDailyLimit = 3;
-const _foodPhotoUsage = new Map<string, { day: string; count: number }>();
 
-function consumeFoodPhotoQuota(userId: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = _foodPhotoUsage.get(userId);
-  if (!rec || rec.day !== today) {
-    _foodPhotoUsage.set(userId, { day: today, count: 1 });
-    return true;
-  }
-  if (rec.count >= kFoodPhotoDailyLimit) return false;
-  rec.count += 1;
-  return true;
+async function consumeFoodPhotoQuota(userId: string): Promise<boolean> {
+  const day = new Date().toISOString().slice(0, 10);
+  const rec = await prisma.aiUsage.upsert({
+    where: { userId_day_feature: { userId, day, feature: "food_photo" } },
+    create: { userId, day, feature: "food_photo", count: 1 },
+    update: { count: { increment: 1 } },
+  });
+  // count 1-3 → разрешено; count 4+ → превышен лимит
+  return rec.count <= kFoodPhotoDailyLimit;
 }
 
 // FoodProduct → snake_case (тот же формат, что /food/search)
@@ -186,7 +183,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (!(await ensurePremium(request, reply))) return reply;
 
-      if (!consumeFoodPhotoQuota(request.user.userId)) {
+      if (!(await consumeFoodPhotoQuota(request.user.userId))) {
         return reply.status(429).send({
           error: `Daily limit reached — up to ${kFoodPhotoDailyLimit} food photos per day.`,
         });

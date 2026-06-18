@@ -85,6 +85,16 @@
 | item_id    | uuid     | удалённый Item (ADR-021, delete sync)    |
 | deleted_at | timestamp| unique (user_id, item_id)                |
 
+## AiUsage
+Учёт расхода платных AI-фич (дневные лимиты), устойчивый к рестарту процесса и мультиинстансу (ADR-034). Заменяет in-memory `Map` в `routes/ai.ts`.
+| Column   | Type     | Notes                                       |
+|----------|----------|----------------------------------------------|
+| id       | uuid PK  |                                              |
+| user_id  | uuid FK  | -> users.id                                  |
+| day      | string   | `YYYY-MM-DD` (UTC-день)                       |
+| feature  | string   | напр. `food_photo`                           |
+| count    | integer  | default 0; unique (user_id, day, feature)    |
+
 ## Prisma schema
 
 ```prisma
@@ -112,6 +122,7 @@ model User {
   waterLogs        WaterLog[]
   foodLogs         FoodLog[]
   tombstones       Tombstone[]
+  aiUsages         AiUsage[]
 }
 model Item {
   id              String   @id @default(uuid())
@@ -182,5 +193,15 @@ model Tombstone {
   deletedAt DateTime @default(now())
   @@unique([userId, itemId])
   @@index([userId, deletedAt])
+}
+model AiUsage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  day       String
+  feature   String
+  count     Int      @default(0)
+  @@unique([userId, day, feature])
+  @@index([userId, day])
 }
 ```
