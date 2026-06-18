@@ -1,17 +1,26 @@
 // Темы приложения Kaizen — источник правды: /docs/design-tokens.json
-// Реализованы все 5 тем: focus (по умолчанию), calm, black (OLED), white, contrast.
+// Реализованы все 5 предустановленных тем + пользовательская тема (custom).
 // Тема собирается из палитры единым билдером, чтобы все темы были консистентны.
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Ключи тем — соответствуют ключам в design-tokens.json
+import 'custom_theme_provider.dart' show CustomThemeConfig;
+
+// Алгоритм вывода пользовательской палитры — часть этой библиотеки,
+// чтобы получить доступ к приватному классу _Palette.
+part 'custom_theme_palette.dart';
+
+/// Ключи тем — соответствуют ключам в design-tokens.json + custom (6-я тема)
 enum AppThemeKey {
   focus,
   calm,
   black,
   white,
   contrast,
+  custom, // Пользовательская тема («Мой стиль»)
 }
 
 /// Человекочитаемые метки (из design-tokens.json .label)
@@ -22,9 +31,10 @@ extension AppThemeKeyLabel on AppThemeKey {
         AppThemeKey.black => 'Black (OLED full-black)',
         AppThemeKey.white => 'White (clean light)',
         AppThemeKey.contrast => 'Contrast (accessibility, large type)',
+        AppThemeKey.custom => 'My Theme',
       };
 
-  String get prefsKey => name; // 'focus', 'calm', etc.
+  String get prefsKey => name; // 'focus', 'calm', ..., 'custom'
 }
 
 /// Палитра одной темы (значения из design-tokens.json + 01-color.md).
@@ -199,14 +209,34 @@ class AppTheme {
         isContrast: true,
       );
 
-  /// Получить ThemeData по ключу темы
+  /// Получить ThemeData по ключу темы (только предустановленные — без custom)
   static ThemeData forKey(AppThemeKey key) => switch (key) {
         AppThemeKey.focus => focusTheme,
         AppThemeKey.calm => calmTheme,
         AppThemeKey.black => blackTheme,
         AppThemeKey.white => whiteTheme,
         AppThemeKey.contrast => contrastTheme,
+        // custom без config → откат на focus (защита от ошибочного вызова)
+        AppThemeKey.custom => focusTheme,
       };
+
+  /// Получить ThemeData с поддержкой custom-темы.
+  /// Использовать в [themeDataProvider] вместо [forKey].
+  static ThemeData forKeyWithCustom(
+      AppThemeKey key, CustomThemeConfig? config) {
+    if (key == AppThemeKey.custom) {
+      // Нет сохранённой конфигурации → откат на focus
+      if (config == null) return focusTheme;
+      final result = CustomThemePalette.derive(config);
+      return _buildTheme(
+        result.palette,
+        bodyTextTheme: GoogleFonts.hankenGroteskTextTheme,
+        displayFont: ({textStyle, color}) =>
+            GoogleFonts.fraunces(textStyle: textStyle, color: color),
+      );
+    }
+    return forKey(key);
+  }
 
   /// Универсальный билдер темы из палитры.
   static ThemeData _buildTheme(

@@ -37,14 +37,15 @@ enum KaiEmotion {
 /// Маскот Kai — мягкий squircle с двумя глазами-тире.
 ///
 /// Параметры:
-///   [size]    — размер квадрата, в который вписывается маскот (default 44).
+///   [size]    — размер квадрата, в который вписывается маскот (default 56).
 ///   [emotion] — одно из шести выражений [KaiEmotion].
 ///   [isHarsh] — жёсткий тон: глаза → узкие щели, цвет → ember, углы резче.
+///               Теперь КОМПОЗИРУЕТСЯ с emotion, а не переопределяет его.
 ///   [onTap]   — необязательный коллбек (для дисмисса / цикла выражений).
 class KaiMascot extends StatefulWidget {
   const KaiMascot({
     super.key,
-    this.size = 44,
+    this.size = 56,
     this.emotion = KaiEmotion.neutral,
     this.isHarsh = false,
     this.onTap,
@@ -181,6 +182,17 @@ class _KaiMascotState extends State<KaiMascot>
     super.dispose();
   }
 
+  /// Амплитуда дыхания по 04-kai.md §3.1:
+  ///   anxious / thinking → 0 (дыхание заменено другой анимацией)
+  ///   harsh              → 0.01 (половина: напряжённое, едва дышит)
+  ///   всё остальное      → 0.02 (штатные ±2%)
+  double get _breathAmplitude {
+    if (widget.emotion == KaiEmotion.anxious) return 0;
+    if (widget.emotion == KaiEmotion.thinking) return 0;
+    if (widget.isHarsh) return 0.01;
+    return 0.02;
+  }
+
   @override
   Widget build(BuildContext context) {
     final reduce = reduceMotionOf(context);
@@ -224,8 +236,10 @@ class _KaiMascotState extends State<KaiMascot>
             final morphT = _morphAnim.value;
             final interpolated = _lerpState(_from, _to, morphT);
 
-            // Дыхание ±2% по масштабу
-            final breathScale = 1.0 + (_breathAnim.value - 0.5) * 0.04;
+            // Дыхание: амплитуда зависит от emotion + tone (04-kai.md §3.1).
+            // anxious/thinking → 0 (дыхание отключено), harsh → ±1%, остальное → ±2%.
+            final breathScale = 1.0 +
+                (_breathAnim.value - 0.5) * (_breathAmplitude * 2);
             final jitter = _jitterAnim.value * 1.5; // px
 
             return Transform.scale(
@@ -282,27 +296,12 @@ class _KaiState {
   final double opacity;
 }
 
-/// Статические состояния для каждого выражения.
-_KaiState _stateFor(KaiEmotion emotion, bool isHarsh) {
+/// Чистая эмоциональная база — без учёта isHarsh.
+/// Все шесть выражений по MASCOT.md §5.
+_KaiState _emotionBase(KaiEmotion emotion) {
   // Базовая асимметрия: левый глаз на ~1.5 условных единицы выше правого.
-  // В координатах состояния это смещение Y: левый = -1.5, правый = 0.
   const leftBaseY = -1.5;
   const rightBaseY = 0.0;
-
-  if (isHarsh) {
-    return const _KaiState(
-      cornerRadius: 0.52,      // немного резче
-      scaleY: 1.04,
-      leftEyeHeight: 0.15,    // тонкие щели
-      rightEyeHeight: 0.15,
-      leftEyeArch: 0,
-      rightEyeArch: 0,
-      leftEyeOffsetY: leftBaseY,
-      rightEyeOffsetY: rightBaseY,
-      showBrow: 1,             // бровь всегда при harsh
-      opacity: 1,
-    );
-  }
 
   switch (emotion) {
     case KaiEmotion.neutral:
@@ -348,7 +347,7 @@ _KaiState _stateFor(KaiEmotion emotion, bool isHarsh) {
       );
 
     case KaiEmotion.harsh:
-      // Emotion.harsh без флага isHarsh — используем как «строгий» вариант
+      // emotion.harsh без флага isHarsh — строгий вариант сам по себе
       return const _KaiState(
         cornerRadius: 0.50,
         scaleY: 1.06,
@@ -390,6 +389,35 @@ _KaiState _stateFor(KaiEmotion emotion, bool isHarsh) {
         opacity: 0.75,         // тускнее
       );
   }
+}
+
+/// Вычисляет итоговое состояние: emotion-база + harsh-оверлей (04-kai.md §3.2).
+///
+/// Раньше isHarsh полностью заменял emotion — теперь он КОМПОНУЕТСЯ:
+///   • emotion управляет основной формой (success → арки, anxious → сжатие, etc.)
+///   • isHarsh добавляет: ember-цвет глаз (через eyeColor в build), brow=1,
+///     сужение глаз ~55%, подавление арок ~30%, cornerRadius -0.08, scaleY +0.04.
+/// Результат: harsh-success всё ещё арочные глаза, но с бровью и ember-цветом.
+_KaiState _stateFor(KaiEmotion emotion, bool isHarsh) {
+  var base = _emotionBase(emotion);
+  if (!isHarsh) return base;
+
+  // Harsh-оверлей поверх базы: форма натянутее, глаза сужаются, бровь появляется.
+  return _KaiState(
+    cornerRadius: (base.cornerRadius - 0.08).clamp(0.40, 0.90),
+    scaleY: base.scaleY + 0.04,
+    // Глаза сплющены до ~55% от эмоциональной базы — сохраняют относительную
+    // разницу высот (thinking-прищур остаётся, но обе щели уже).
+    leftEyeHeight: base.leftEyeHeight * 0.55,
+    rightEyeHeight: base.rightEyeHeight * 0.55,
+    // Арки подавляются до ~30% — success всё ещё читается как дуга, но сдержанно.
+    leftEyeArch: base.leftEyeArch * 0.3,
+    rightEyeArch: base.rightEyeArch * 0.3,
+    leftEyeOffsetY: base.leftEyeOffsetY,
+    rightEyeOffsetY: base.rightEyeOffsetY,
+    showBrow: 1.0, // бровь всегда при harsh
+    opacity: base.opacity,
+  );
 }
 
 /// Линейная интерполяция между двумя состояниями.

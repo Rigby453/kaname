@@ -17,12 +17,15 @@ import 'package:intl/intl.dart';
 import '../../../core/animations/ai_insight_reveal.dart';
 import '../../../core/animations/ai_pulse_dot.dart';
 import '../../../core/animations/app_sheet.dart';
+import '../../../core/animations/constants.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/settings/mascot_provider.dart';
 import '../../../core/settings/tone_provider.dart';
 import '../../../services/api/api_client.dart';
 import '../../auth/auth_controller.dart';
+import '../../mascot/kai_mascot.dart';
 import '../../paywall/paywall_screen.dart';
 import 'review_engine.dart';
 import 'review_variant_card.dart';
@@ -88,6 +91,11 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
     final count = overdue.length;
     final tone = ref.watch(toneProvider);
 
+    // Показываем ли Kai (04-kai.md T13): leading slot в заголовке карточки.
+    // Gated by showKaiProvider + reduce-motion. Не добавляет тапов (IgnorePointer).
+    final showKai = ref.watch(showKaiProvider);
+    final reduce = reduceMotionOf(context);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -96,7 +104,18 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
           children: [
             Row(
               children: [
-                Icon(Icons.wb_twilight, color: colorScheme.secondary),
+                // Kai «подаёт» карточку утреннего разбора (MASCOT.md §6, T13).
+                // При showKai=false или reduce-motion — обычная иконка.
+                if (showKai && !reduce)
+                  IgnorePointer(
+                    child: KaiMascot(
+                      size: 48,
+                      emotion: KaiEmotion.thinking,
+                      isHarsh: tone == AppTone.harsh,
+                    ),
+                  )
+                else
+                  Icon(Icons.wb_twilight, color: colorScheme.secondary),
                 const SizedBox(width: 8),
                 Text(context.s('today.morning_review'), style: textTheme.titleMedium),
                 const Spacer(),

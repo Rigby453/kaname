@@ -22,6 +22,7 @@ import '../../features/diary/diary_screen.dart';
 import '../../features/focus/focus_screen.dart';
 import '../../features/food/food_screen.dart';
 import '../../features/profile/profile_screen.dart';
+import '../../features/profile/custom_theme_editor_screen.dart';
 import '../../features/wrapped/wrapped_screen.dart';
 import '../../features/food/shopping_list_screen.dart';
 import '../../features/food/recipes_screen.dart';
@@ -192,6 +193,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+
+      // /profile/custom-theme — редактор пользовательской темы (05-custom-theme.md §2)
+      GoRoute(
+        path: '/profile/custom-theme',
+        builder: (context, state) => const CustomThemeEditorScreen(),
       ),
 
       // /focus — фокус-сессии (из Health), вне оболочки

@@ -12,12 +12,15 @@ import 'package:intl/intl.dart';
 import '../../../core/animations/ai_insight_reveal.dart';
 import '../../../core/animations/ai_pulse_dot.dart';
 import '../../../core/animations/app_sheet.dart';
+import '../../../core/animations/constants.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/settings/mascot_provider.dart';
 import '../../../core/settings/tone_provider.dart';
 import '../../../services/api/api_client.dart';
 import '../../auth/auth_controller.dart';
+import '../../mascot/kai_mascot.dart';
 import '../../paywall/paywall_screen.dart';
 import 'review_engine.dart';
 import 'review_variant_card.dart';
@@ -58,6 +61,11 @@ class EveningReviewCard extends ConsumerWidget {
     final pending = ref.watch(_todayPendingProvider).valueOrNull ??
         const <ItemsTableData>[];
 
+    // Показываем ли Kai (04-kai.md T14): leading slot в заголовке вечерней карточки.
+    // Gated by showKaiProvider + reduce-motion. Не добавляет тапов (IgnorePointer).
+    final showKai = ref.watch(showKaiProvider);
+    final reduce = reduceMotionOf(context);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -66,7 +74,18 @@ class EveningReviewCard extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.bedtime_outlined, color: colorScheme.secondary),
+                // Kai «подаёт» вечерний разбор (MASCOT.md §6, T14).
+                // При showKai=false или reduce-motion — обычная иконка.
+                if (showKai && !reduce)
+                  IgnorePointer(
+                    child: KaiMascot(
+                      size: 48,
+                      emotion: KaiEmotion.thinking,
+                      isHarsh: tone == AppTone.harsh,
+                    ),
+                  )
+                else
+                  Icon(Icons.bedtime_outlined, color: colorScheme.secondary),
                 const SizedBox(width: 8),
                 Text(context.s('today.plan_tomorrow'), style: textTheme.titleMedium),
               ],

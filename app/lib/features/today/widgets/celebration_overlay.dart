@@ -332,11 +332,12 @@ class _CelebrationOverlayState extends ConsumerState<CelebrationOverlay>
         children: [
           // Kai в режиме «success»: появляется вместе с галочкой,
           // уже пружинит к кругу (виджет делает это сам для KaiEmotion.success).
+          // Размер 72dp по 04-kai.md §1.2 (focal point, T7).
           if (showKai) ...[
             Opacity(
               opacity: checkScaleVal.clamp(0.0, 1.0),
               child: KaiMascot(
-                size: 56,
+                size: 72,
                 emotion: KaiEmotion.success,
                 isHarsh: isHarsh,
               ),

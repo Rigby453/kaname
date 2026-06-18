@@ -83,6 +83,88 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ru': 'Contrast',
     'de': 'Contrast',
   },
+  'profile.theme_custom': {
+    'en': 'My Theme',
+    'ru': 'Мой стиль',
+    'de': 'Mein Stil',
+  },
+  'profile.theme_custom_edit': {
+    'en': 'Edit my theme',
+    'ru': 'Изменить стиль',
+    'de': 'Stil bearbeiten',
+  },
+
+  // ---- Редактор пользовательской темы ----
+  'custom_theme.title': {
+    'en': 'My Theme',
+    'ru': 'Мой стиль',
+    'de': 'Mein Stil',
+  },
+  'custom_theme.reset': {
+    'en': 'Reset',
+    'ru': 'Сбросить',
+    'de': 'Zurücksetzen',
+  },
+  'custom_theme.save': {
+    'en': 'Save',
+    'ru': 'Сохранить',
+    'de': 'Speichern',
+  },
+  'custom_theme.base_mode': {
+    'en': 'Base mode',
+    'ru': 'Режим',
+    'de': 'Basismodus',
+  },
+  'custom_theme.dark': {
+    'en': 'Dark',
+    'ru': 'Тёмная',
+    'de': 'Dunkel',
+  },
+  'custom_theme.light': {
+    'en': 'Light',
+    'ru': 'Светлая',
+    'de': 'Hell',
+  },
+  'custom_theme.accent_color': {
+    'en': 'Accent color',
+    'ru': 'Акцент',
+    'de': 'Akzentfarbe',
+  },
+  'custom_theme.custom_color': {
+    'en': 'Custom color',
+    'ru': 'Свой цвет',
+    'de': 'Eigene Farbe',
+  },
+  'custom_theme.customize_more': {
+    'en': 'Customize more',
+    'ru': 'Дополнительно',
+    'de': 'Mehr anpassen',
+  },
+  'custom_theme.bg_warmth': {
+    'en': 'Background warmth',
+    'ru': 'Теплота фона',
+    'de': 'Hintergrundwärme',
+  },
+  'custom_theme.preview': {
+    'en': 'Preview',
+    'ru': 'Предпросмотр',
+    'de': 'Vorschau',
+  },
+  'custom_theme.accent_forced': {
+    'en': 'Your color was too close to the background. We adjusted it slightly for readability.',
+    'ru': 'Выбранный цвет был слишком близок к фону. Мы чуть скорректировали его для читаемости.',
+    'de': 'Deine Farbe war dem Hintergrund zu ähnlich. Wir haben sie leicht angepasst, damit sie lesbar bleibt.',
+  },
+  'custom_theme.reset_confirm_title': {
+    'en': 'Reset theme?',
+    'ru': 'Сбросить стиль?',
+    'de': 'Stil zurücksetzen?',
+  },
+  'custom_theme.reset_confirm_body': {
+    'en': 'Your custom theme will be deleted and the app will switch back to Focus.',
+    'ru': 'Пользовательский стиль будет удалён, а тема вернётся к Focus.',
+    'de': 'Dein benutzerdefinierter Stil wird gelöscht und die App wechselt zurück zu Focus.',
+  },
 
   // ---- Profile: тон ----
   'profile.default_tone': {

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
+import 'custom_theme_provider.dart';
 
 const _kThemePrefsKey = 'app_theme_key';
 
@@ -42,8 +43,10 @@ class ThemeNotifier extends Notifier<AppThemeKey> {
 final themeNotifierProvider =
     NotifierProvider<ThemeNotifier, AppThemeKey>(ThemeNotifier.new);
 
-/// Удобный провайдер ThemeData — используется в MaterialApp.router
+/// Удобный провайдер ThemeData — используется в MaterialApp.router.
+/// Поддерживает custom-тему: наблюдает за обоими провайдерами.
 final themeDataProvider = Provider<ThemeData>((ref) {
   final key = ref.watch(themeNotifierProvider);
-  return AppTheme.forKey(key);
+  final customConfig = ref.watch(customThemeNotifierProvider);
+  return AppTheme.forKeyWithCustom(key, customConfig);
 });

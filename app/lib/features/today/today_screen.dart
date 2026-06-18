@@ -330,10 +330,15 @@ class _ToneToggle extends ConsumerWidget {
   }
 }
 
-/// Маскот Kai в шапке Today — компактный, 44×44, вертикально выровнен по центру.
+/// Маскот Kai в шапке Today — 56×56, вертикально выровнен по центру.
 /// Виден только если showKaiProvider == true (условие проверяется в _buildMobileLayout
 /// и _buildTabletLayout, сюда попадаем уже внутри if-блока).
-class _KaiHeader extends StatelessWidget {
+///
+/// Tap micro-interaction (04-kai.md §3.4):
+///   Tap циклически переключает _tapOverride через neutral → success → thinking → null
+///   (возврат к app-state-driven emotion через 3 секунды).
+///   Только если emotion не блокирует смысловой onTap снаружи.
+class _KaiHeader extends StatefulWidget {
   const _KaiHeader({
     required this.emotion,
     required this.isHarsh,
@@ -343,15 +348,62 @@ class _KaiHeader extends StatelessWidget {
   final bool isHarsh;
 
   @override
+  State<_KaiHeader> createState() => _KaiHeaderState();
+}
+
+class _KaiHeaderState extends State<_KaiHeader> {
+  // null = показываем реальную app-state emotion; non-null = tap-overide
+  KaiEmotion? _tapOverride;
+  int _tapCycleIndex = 0; // индекс внутри цикла
+  // Таймер сброса override после 3 секунд
+  dynamic _resetTimer; // Timer, но import dart:async не нужен — используем Future+bool
+
+  // Порядок цикла по 04-kai.md §3.4
+  static const _tapCycle = [
+    KaiEmotion.neutral,
+    KaiEmotion.success,
+    KaiEmotion.thinking,
+  ];
+
+  @override
+  void dispose() {
+    // Отменяем ожидающий сброс при удалении виджета
+    _resetTimer = null; // флаг: callback не выполняется
+    super.dispose();
+  }
+
+  void _handleTap() {
+    // Отменяем предыдущий таймер (через флаг)
+    final resetId = Object(); // уникальный токен для каждого тапа
+    _resetTimer = resetId;
+
+    setState(() {
+      _tapOverride = _tapCycle[_tapCycleIndex % _tapCycle.length];
+      _tapCycleIndex++;
+    });
+
+    // Сбрасываем override через 3 секунды
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (_resetTimer != resetId) return; // был ещё один тап — не сбрасываем
+      setState(() {
+        _tapOverride = null;
+        _tapCycleIndex = 0;
+      });
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
-      // Небольшой отступ сверху, чтобы выровнять оптически с иконкой тона
-      padding: const EdgeInsets.only(top: 2),
+      // top: 4 — оптическое выравнивание с базовой линией двустрочного заголовка
+      // (04-kai.md §1.3)
+      padding: const EdgeInsets.only(top: 4),
       child: KaiMascot(
-        size: 44,
-        emotion: emotion,
-        isHarsh: isHarsh,
-        // onTap — зарезервировано для будущего цикла выражений
+        size: 56,
+        emotion: _tapOverride ?? widget.emotion,
+        isHarsh: widget.isHarsh,
+        onTap: _handleTap,
       ),
     );
   }

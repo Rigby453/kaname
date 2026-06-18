@@ -22,6 +22,7 @@ import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../services/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/custom_theme_provider.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
@@ -343,7 +344,7 @@ class _ShowKaiSetting extends ConsumerWidget {
   }
 }
 
-/// Выбор темы оформления. Доступны все 5 тем: focus / calm / black / white / contrast.
+/// Выбор темы оформления. Доступны все 5 предустановленных тем + пользовательская.
 class _ThemePicker extends ConsumerWidget {
   const _ThemePicker();
 
@@ -358,17 +359,55 @@ class _ThemePicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(themeNotifierProvider);
+    final hasCustom = ref.watch(customThemeNotifierProvider) != null;
+
     return Wrap(
       spacing: 8,
-      children: _available.map((entry) {
-        final (key, labelKey) = entry;
-        return ChoiceChip(
-          label: Text(context.s(labelKey)),
-          selected: current == key,
-          onSelected: (_) =>
-              ref.read(themeNotifierProvider.notifier).setTheme(key),
-        );
-      }).toList(),
+      runSpacing: 8,
+      children: [
+        // Предустановленные темы
+        ..._available.map((entry) {
+          final (key, labelKey) = entry;
+          return ChoiceChip(
+            label: Text(context.s(labelKey)),
+            selected: current == key,
+            onSelected: (_) =>
+                ref.read(themeNotifierProvider.notifier).setTheme(key),
+          );
+        }),
+
+        // 6-й чип — «Мой стиль» (custom) + кнопка редактирования
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChoiceChip(
+              label: Text(context.s('profile.theme_custom')),
+              selected: current == AppThemeKey.custom,
+              onSelected: (_) {
+                if (hasCustom) {
+                  // Уже есть сохранённый стиль → просто активируем
+                  ref
+                      .read(themeNotifierProvider.notifier)
+                      .setTheme(AppThemeKey.custom);
+                } else {
+                  // Ещё нет → открываем редактор
+                  context.push('/profile/custom-theme');
+                }
+              },
+            ),
+            if (hasCustom) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                tooltip: context.s('profile.theme_custom_edit'),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () => context.push('/profile/custom-theme'),
+              ),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }
