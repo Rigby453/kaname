@@ -22,17 +22,35 @@ class AuthController extends Notifier<bool> {
   /// Вошли ли по реальному аккаунту (есть токен), а не как гость.
   bool get isAuthenticated => ref.read(apiClientProvider).token != null;
 
-  Future<void> login(String email, String password) async {
-    await ref.read(apiClientProvider).login(email: email, password: password);
+  /// Вход по паролю. Передайте [email] ИЛИ [phone] — не оба.
+  Future<void> login({
+    String? email,
+    String? phone,
+    required String password,
+  }) async {
+    await ref.read(apiClientProvider).login(
+          email: email,
+          phone: phone,
+          password: password,
+        );
     await _clearGuest();
     state = true;
     _syncInBackground();
   }
 
-  Future<void> register(String email, String password, String name) async {
-    await ref
-        .read(apiClientProvider)
-        .register(email: email, password: password, name: name);
+  /// Регистрация. Передайте [email] ИЛИ [phone] — не оба.
+  Future<void> register({
+    String? email,
+    String? phone,
+    required String password,
+    required String name,
+  }) async {
+    await ref.read(apiClientProvider).register(
+          email: email,
+          phone: phone,
+          password: password,
+          name: name,
+        );
     await _clearGuest();
     state = true;
     _syncInBackground();

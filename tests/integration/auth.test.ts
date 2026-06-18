@@ -1,9 +1,17 @@
 /**
- * QA-01: Auth flow — регистрация, вход, /me
+ * QA-01: Auth flow — регистрация, вход, /me (ADR-031: 406-ФЗ)
+ *
+ * Покрывает:
+ *  - регистрация/логин по email (только российские домены)
+ *  - регистрация/логин по телефону (E.164 нормализация)
+ *  - запрет иностранных email-доменов
+ *  - запрет нескольких/отсутствующих идентификаторов
+ *  - дублирование email и phone → 409
+ *  - /me с токеном и без
  */
 import { buildServer } from '../../backend/src/app';
 import type { FastifyInstance } from 'fastify';
-import { randomEmail, cleanupUser } from '../helpers';
+import { randomEmail, randomPhone, cleanupUser } from '../helpers';
 
 let app: FastifyInstance;
 // Список userId для очистки после всех тестов
@@ -22,8 +30,12 @@ afterAll(async () => {
   await app.close();
 });
 
-describe('POST /api/v1/auth/register', () => {
-  test('register → 201, returns { access_token, user: { id, email, name } }', async () => {
+// ---------------------------------------------------------------------------
+// POST /api/v1/auth/register — email-путь
+// ---------------------------------------------------------------------------
+
+describe('POST /api/v1/auth/register — email', () => {
+  test('register by email → 201, returns { access_token, user: { id, email, phone, name } }', async () => {
     const email = randomEmail();
     const res = await app.inject({
       method: 'POST',
@@ -32,11 +44,16 @@ describe('POST /api/v1/auth/register', () => {
     });
 
     expect(res.statusCode).toBe(201);
-    const body = res.json<{ access_token: string; user: { id: string; email: string; name: string } }>();
+    const body = res.json<{
+      access_token: string;
+      user: { id: string; email: string | null; phone: string | null; name: string };
+    }>();
     expect(typeof body.access_token).toBe('string');
     expect(body.access_token.length).toBeGreaterThan(0);
     expect(body.user.id).toBeDefined();
     expect(body.user.email).toBe(email);
+    // При email-регистрации phone должен быть null
+    expect(body.user.phone).toBeNull();
     expect(body.user.name).toBe('Alice');
     // passwordHash никогда не должен утекать
     expect((body.user as Record<string, unknown>)['passwordHash']).toBeUndefined();
@@ -45,7 +62,7 @@ describe('POST /api/v1/auth/register', () => {
     userIdsToCleanup.push(body.user.id);
   });
 
-  test('duplicate email → 409 { error: "Email already exists" }', async () => {
+  test('duplicate email → 409 { error: "Email or phone already exists" }', async () => {
     const email = randomEmail();
 
     // Первая регистрация
@@ -58,7 +75,7 @@ describe('POST /api/v1/auth/register', () => {
     const firstBody = first.json<{ user: { id: string } }>();
     userIdsToCleanup.push(firstBody.user.id);
 
-    // Дубликат
+    // Дубликат — новое сообщение согласно ADR-031
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
@@ -66,14 +83,144 @@ describe('POST /api/v1/auth/register', () => {
     });
     expect(res.statusCode).toBe(409);
     const body = res.json<{ error: string }>();
-    expect(body.error).toBe('Email already exists');
+    expect(body.error).toBe('Email or phone already exists');
   });
 
-  test('missing email → 400 (zod validation)', async () => {
+  test('foreign email domain (gmail.com) → 400', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
-      payload: { password: 'TestPass1!', name: 'Charlie' },
+      payload: {
+        email: 'someone@gmail.com',
+        password: 'TestPass1!',
+        name: 'Foreign User',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ error: string }>();
+    expect(typeof body.error).toBe('string');
+  });
+
+  test('another foreign domain (example.com) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: 'user@example.com',
+        password: 'TestPass1!',
+        name: 'Example User',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/auth/register — phone-путь
+// ---------------------------------------------------------------------------
+
+describe('POST /api/v1/auth/register — phone', () => {
+  test('register by phone (8XXXXXXXXXX input) → 201; user.phone normalized to +7XXXXXXXXXX; user.email is null', async () => {
+    // Отправляем в формате 8... — бэкенд должен нормализовать до +7...
+    const rawPhone = randomPhone().replace(/^\+7/, '8'); // +79XXXXXXXXX → 89XXXXXXXXX
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { phone: rawPhone, password: 'TestPass1!', name: 'PhoneUser' },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{
+      access_token: string;
+      user: { id: string; email: string | null; phone: string | null; name: string };
+    }>();
+    expect(typeof body.access_token).toBe('string');
+    expect(body.user.id).toBeDefined();
+    // Нормализован в E.164: +7...
+    expect(body.user.phone).toMatch(/^\+7\d{10}$/);
+    // При phone-регистрации email должен быть null
+    expect(body.user.email).toBeNull();
+    // passwordHash не должен утекать
+    expect((body.user as Record<string, unknown>)['passwordHash']).toBeUndefined();
+
+    userIdsToCleanup.push(body.user.id);
+  });
+
+  test('register by phone (+7XXXXXXXXXX input) → 201', async () => {
+    const phone = randomPhone(); // уже в формате +7...
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { phone, password: 'TestPass1!', name: 'PhoneUser2' },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{ user: { id: string; phone: string | null } }>();
+    expect(body.user.phone).toBe(phone);
+
+    userIdsToCleanup.push(body.user.id);
+  });
+
+  test('duplicate phone → 409 { error: "Email or phone already exists" }', async () => {
+    const phone = randomPhone();
+
+    // Первая регистрация
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { phone, password: 'TestPass1!', name: 'PhoneDup1' },
+    });
+    expect(first.statusCode).toBe(201);
+    const firstBody = first.json<{ user: { id: string } }>();
+    userIdsToCleanup.push(firstBody.user.id);
+
+    // Дубликат
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { phone, password: 'AnotherPass1!', name: 'PhoneDup2' },
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json<{ error: string }>();
+    expect(body.error).toBe('Email or phone already exists');
+  });
+
+  test('malformed phone (12345) → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { phone: '12345', password: 'TestPass1!', name: 'Bad Phone' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/auth/register — валидация идентификаторов
+// ---------------------------------------------------------------------------
+
+describe('POST /api/v1/auth/register — identifier validation', () => {
+  test('register with BOTH email and phone → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: randomEmail(),
+        phone: randomPhone(),
+        password: 'TestPass1!',
+        name: 'BothUser',
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ error: string }>();
+    expect(typeof body.error).toBe('string');
+  });
+
+  test('register with NEITHER email nor phone → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { password: 'TestPass1!', name: 'NoIdentifier' },
     });
     expect(res.statusCode).toBe(400);
     const body = res.json<{ error: string }>();
@@ -81,8 +228,11 @@ describe('POST /api/v1/auth/register', () => {
   });
 });
 
-describe('POST /api/v1/auth/login', () => {
-  // Регистрируем одного пользователя для всей группы login-тестов
+// ---------------------------------------------------------------------------
+// POST /api/v1/auth/login
+// ---------------------------------------------------------------------------
+
+describe('POST /api/v1/auth/login — email', () => {
   let loginEmail: string;
   const loginPassword = 'LoginPass1!';
 
@@ -97,7 +247,7 @@ describe('POST /api/v1/auth/login', () => {
     userIdsToCleanup.push(body.user.id);
   });
 
-  test('login correct → 200, returns JWT', async () => {
+  test('login by email correct → 200, returns JWT', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
@@ -123,11 +273,78 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { email: 'nonexistent@example.com', password: 'AnyPass123!' },
+      // Используем yandex.ru — разрешённый домен, но пользователь не существует
+      payload: { email: 'nonexistent@yandex.ru', password: 'AnyPass123!' },
     });
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('POST /api/v1/auth/login — phone', () => {
+  let registeredPhone: string; // нормализованный +7...
+  const phonePassword = 'PhoneLogin1!';
+  let phoneUserId: string;
+
+  beforeAll(async () => {
+    registeredPhone = randomPhone(); // +79XXXXXXXXX
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { phone: registeredPhone, password: phonePassword, name: 'PhoneLoginUser' },
+    });
+    const body = res.json<{ user: { id: string } }>();
+    phoneUserId = body.user.id;
+    userIdsToCleanup.push(phoneUserId);
+  });
+
+  test('login by phone (+7... form) → 200, same user', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { phone: registeredPhone, password: phonePassword },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ access_token: string; user: { id: string; phone: string | null } }>();
+    expect(typeof body.access_token).toBe('string');
+    expect(body.user.id).toBe(phoneUserId);
+    expect(body.user.phone).toBe(registeredPhone);
+  });
+
+  test('login by phone (8... form of the same number) → 200, same user', async () => {
+    // Конвертируем +7XXXXXXXXXX → 8XXXXXXXXXX и проверяем нормализацию при логине
+    const eightForm = registeredPhone.replace(/^\+7/, '8');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { phone: eightForm, password: phonePassword },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ user: { id: string } }>();
+    expect(body.user.id).toBe(phoneUserId);
+  });
+
+  test('login by phone wrong password → 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { phone: registeredPhone, password: 'WrongPass999!' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  test('login by malformed phone → 401', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { phone: '12345', password: phonePassword },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/auth/me
+// ---------------------------------------------------------------------------
 
 describe('GET /api/v1/auth/me', () => {
   let token: string;

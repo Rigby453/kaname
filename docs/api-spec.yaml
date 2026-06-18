@@ -59,7 +59,7 @@ paths:
               schema: { $ref: '#/components/schemas/AuthResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409':
-          description: Email already exists
+          description: Email or phone already exists
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -702,17 +702,25 @@ components:
 
     RegisterRequest:
       type: object
-      required: [email, password, name]
+      description: >-
+        Provide exactly one identifier — email OR phone — plus password and name.
+        Per RF law 406-FZ (RU audience): email registration accepts only Russian
+        email providers (e.g. mail.ru, yandex.ru); foreign domains such as
+        gmail.com are rejected with 400. phone is a Russian number in E.164 form.
+      required: [password, name]
       properties:
-        email: { type: string, format: email }
+        email: { type: string, format: email, description: 'Russian email provider only' }
+        phone: { type: string, description: 'Russian phone, E.164: +7XXXXXXXXXX' }
         password: { type: string, minLength: 8 }
         name: { type: string }
 
     LoginRequest:
       type: object
-      required: [email, password]
+      description: Provide exactly one identifier — email OR phone — plus password.
+      required: [password]
       properties:
         email: { type: string, format: email }
+        phone: { type: string, description: 'Russian phone, E.164: +7XXXXXXXXXX' }
         password: { type: string }
 
     AuthResponse:
@@ -727,7 +735,8 @@ components:
       description: passwordHash is never returned
       properties:
         id: { type: string, format: uuid }
-        email: { type: string, format: email }
+        email: { type: string, format: email, nullable: true }
+        phone: { type: string, nullable: true, description: 'Russian phone, E.164: +7XXXXXXXXXX' }
         name: { type: string }
         subscription_tier: { type: string, enum: [free, premium] }
         theme: { type: string, enum: [focus, calm, black, white, contrast] }

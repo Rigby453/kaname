@@ -49,6 +49,15 @@
 
 <!-- Add new ADRs below this line -->
 
+## ADR-031: Auth identifiers comply with RF law 406-FZ — phone + RU-only email, no foreign OAuth
+**Date:** 2026-06-18
+**Decision:** Authentication moves off foreign identity providers to satisfy RF law № 406-ФЗ (ban on authorizing RF-resident users via foreign email/services; fines introduced June 2026). Concretely:
+1. Removed the Google/Apple "Continue with…" buttons from the Flutter auth screen (they were stubs, never wired to any backend).
+2. Added phone-number login: `phone` (Russian E.164 `+7XXXXXXXXXX`, unique, nullable) on the User model alongside `email` (now nullable). Register/login accept **exactly one** identifier — email OR phone — plus password (+ name on register).
+3. Email registration is restricted to Russian email providers via an allow-list (default: mail.ru, bk.ru, list.ru, inbox.ru, yandex.ru, ya.ru, rambler.ru, …), overridable via env `ALLOWED_EMAIL_DOMAINS`. Foreign domains (gmail.com, outlook.com, …) are rejected with 400.
+4. Phone login is **password-only — no SMS verification** (product decision: avoid a paid SMS provider for launch). Consequence: phone-only accounts have no password-recovery path until SMS is added (email reset flow unchanged).
+**Reason:** Target audience is RF, so the product must comply. Phone is the law's primary identifier; RU-only email keeps the familiar flow within the law. Storing the address on our own server does **not** make a foreign address (gmail) compliant — the law governs which provider an address belongs to, not where it is stored. SMS verification is deferred to keep launch cost at zero; revisit with budget (ties to phone-based password reset).
+
 ## ADR-030: Share links are signed JWTs, not DB rows
 **Date:** 2026-06-11
 **Decision:** `POST /api/v1/share` signs a JWT with `{ purpose: 'share', user_id, from, to }` and `expiresIn: '7d'`. The public URL is `/share/<token>`. The handler for both `GET /share/:token` and `GET /api/v1/share/:token` calls `fastify.jwt.verify`, checks `payload.purpose === 'share'`, fetches the owner's items in `[from, to)` from the DB at request time, and returns either HTML (dark Focus theme, inline CSS) or JSON based on the `Accept` header. No new Prisma model, no migration, no revocation in v1.

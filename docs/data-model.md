@@ -4,7 +4,8 @@
 | Column            | Type     | Notes                                   |
 |-------------------|----------|-----------------------------------------|
 | id                | uuid PK  | auto-generated                          |
-| email             | string   | unique                                  |
+| email             | string   | unique, **nullable** (email OR phone required) |
+| phone             | string   | unique, **nullable**; Russian E.164 `+7XXXXXXXXXX` (RF law 406-FZ) |
 | password_hash     | string   | bcrypt                                  |
 | name              | string   |                                         |
 | subscription_tier | enum     | free / premium                          |
@@ -96,7 +97,8 @@ datasource db {
 }
 model User {
   id               String     @id @default(uuid())
-  email            String     @unique
+  email            String?    @unique
+  phone            String?    @unique
   passwordHash     String
   name             String
   subscriptionTier String     @default("free")

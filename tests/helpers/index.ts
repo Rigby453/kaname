@@ -1,9 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import prisma from '../../backend/src/models/prisma';
 
-// Генерирует случайный email для изоляции тестов
+// Генерирует случайный email с российским доменом (mail.ru) для изоляции тестов
+// (иностранные домены типа example.com/gmail.com отклоняются бэкендом — 406-ФЗ)
 export function randomEmail(): string {
-  return `test_${Date.now()}_${Math.random().toString(36).slice(2)}@example.com`;
+  return `test_${Date.now()}_${Math.random().toString(36).slice(2)}@mail.ru`;
+}
+
+// Генерирует уникальный российский номер телефона в формате +79XXXXXXXXX
+// Использует Date.now() и случайный суффикс для уникальности между вызовами
+export function randomPhone(): string {
+  // Берём последние 9 цифр от Date.now() и дополняем случайными, чтобы всегда получить ровно 9 цифр
+  const ts = Date.now() % 1_000_000_000; // 9 цифр максимум
+  const padded = ts.toString().padStart(9, '0');
+  // Итого: +7 9 XXXXXXXXX — 10 цифр после +7, первая всегда 9 (мобильный)
+  return `+79${padded}`;
 }
 
 export interface RegisteredUser {
@@ -12,9 +23,15 @@ export interface RegisteredUser {
   email: string;
 }
 
+export interface RegisteredUserByPhone {
+  token: string;
+  userId: string;
+  phone: string;
+}
+
 /**
  * Регистрирует пользователя через API и возвращает токен, userId, email.
- * Использует случайный email для изоляции.
+ * Использует случайный email с российским доменом для изоляции.
  */
 export async function registerUser(app: FastifyInstance): Promise<RegisteredUser> {
   const email = randomEmail();
@@ -37,6 +54,34 @@ export async function registerUser(app: FastifyInstance): Promise<RegisteredUser
     token: body.access_token,
     userId: body.user.id,
     email,
+  };
+}
+
+/**
+ * Регистрирует пользователя по номеру телефона и возвращает токен, userId, phone.
+ * Использует случайный российский номер телефона для изоляции.
+ */
+export async function registerUserByPhone(app: FastifyInstance): Promise<RegisteredUserByPhone> {
+  const phone = randomPhone();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: {
+      phone,
+      password: 'Test1234!',
+      name: 'Phone User',
+    },
+  });
+
+  if (res.statusCode !== 201) {
+    throw new Error(`registerUserByPhone failed: ${res.statusCode} ${res.body}`);
+  }
+
+  const body = res.json<{ access_token: string; user: { id: string } }>();
+  return {
+    token: body.access_token,
+    userId: body.user.id,
+    phone,
   };
 }
 

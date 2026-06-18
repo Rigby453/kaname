@@ -133,16 +133,25 @@ class ApiClient {
   // ---------------------------------------------------------------------------
 
   /// Регистрирует нового пользователя.
+  /// Передаётся РОВНО ОДИН идентификатор: [email] ИЛИ [phone] (E.164, +7XXXXXXXXXX).
   /// При успехе сохраняет access_token.
   Future<Map<String, dynamic>> register({
-    required String email,
+    String? email,
+    String? phone,
     required String password,
     required String name,
   }) async {
+    assert(
+      (email != null) ^ (phone != null),
+      'register: передайте email ИЛИ phone, но не оба',
+    );
     try {
+      final body = <String, dynamic>{'password': password, 'name': name};
+      if (email != null) body['email'] = email;
+      if (phone != null) body['phone'] = phone;
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/auth/register',
-        data: {'email': email, 'password': password, 'name': name},
+        data: body,
       );
       final data = response.data!;
       await saveToken(data['access_token'] as String);
@@ -152,16 +161,24 @@ class ApiClient {
     }
   }
 
-  /// Вход по email/паролю.
+  /// Вход по паролю. Идентификатор — [email] ИЛИ [phone] (E.164, +7XXXXXXXXXX).
   /// При успехе сохраняет access_token.
   Future<Map<String, dynamic>> login({
-    required String email,
+    String? email,
+    String? phone,
     required String password,
   }) async {
+    assert(
+      (email != null) ^ (phone != null),
+      'login: передайте email ИЛИ phone, но не оба',
+    );
     try {
+      final body = <String, dynamic>{'password': password};
+      if (email != null) body['email'] = email;
+      if (phone != null) body['phone'] = phone;
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/auth/login',
-        data: {'email': email, 'password': password},
+        data: body,
       );
       final data = response.data!;
       await saveToken(data['access_token'] as String);
