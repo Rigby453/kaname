@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.kaizen.app"
-    compileSdk = flutter.compileSdkVersion
+    // Поднято до 36: file_picker → flutter_plugin_android_lifecycle требует compileSdk ≥ 36
+    // (Android 16 / API 36). compileSdk можно повышать отдельно от targetSdk/minSdk.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
