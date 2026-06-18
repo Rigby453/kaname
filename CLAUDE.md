@@ -36,7 +36,7 @@ Full product spec: **/docs/SPEC.md**.
 1. **/CLAUDE.md** (this file) — overview + global rules
 2. **/AGENTS.md** — orchestration: roles, when to spawn sub-agents, MVP build order
 3. The relevant subdir guide: `backend/CLAUDE.md` · `app/CLAUDE.md` · `landing/CLAUDE.md` · `tests/CLAUDE.md`
-4. Per-role task list in `/docs/agents/` (`backend-tasks.md`, `flutter-tasks.md`, `ai-tasks.md`, `qa-tasks.md`)
+4. Project status & backlog: `/docs/STATUS.md` · AI prompt/endpoint reference: `/docs/agents/ai-tasks.md` (the per-role MVP checklists were retired — MVP is long done)
 
 ## Single source of truth (never duplicate — reference these)
 
@@ -48,7 +48,7 @@ Full product spec: **/docs/SPEC.md**.
 | Colors / fonts / spacing | `/docs/design-tokens.json` |
 | Animations (durations / curves / per-element spec) | `/docs/ANIMATIONS.md` |
 | Architecture decisions (ADR) | `/docs/decisions.md` |
-| MVP status board | `/docs/BOARD.md` |
+| Project status & backlog | `/docs/STATUS.md` |
 
 ---
 

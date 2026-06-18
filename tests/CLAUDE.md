@@ -4,7 +4,7 @@
 1. /CLAUDE.md — architecture, offline-first principle
 2. /docs/api-spec.yaml — every endpoint needs at least one test
 3. /docs/data-model.md — DB constraints to verify
-4. /docs/agents/qa-tasks.md — detailed test scenarios
+4. /docs/STATUS.md — project status & backlog
 
 ---
 

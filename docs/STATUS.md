@@ -1,21 +1,49 @@
-﻿﻿# Kaizen («Главное») — Board
+﻿﻿# Kaizen («Главное») — Статус проекта
 
-> Lightweight status board. Orchestrator updates this after every block of work.
-> Statuses: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
-> Full task detail lives in `/docs/agents/*-tasks.md`.
+> Единственный файл «где мы сейчас / что осталось». Оркестратор обновляет его после каждого блока.
+> *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
+> Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
-## Текущая фаза: Ф1 (платный контур) — ЗАКРЫТА 2026-06-11 (кроме OAuth)
+## Сводка для пользователя (обновлено 2026-06-18)
 
-Весь порядок выполнен: Water → Баланс → штрихкод → AI-03 фото → Wrapped (+AI-05) →
-список покупок → анимации §5/§7 → RevenueCat-срез (ADR-028) → рецепты →
-«Собрать ИИ» (AI-07) → голос. Ресторан-меню → Ф3 (ADR-029).
-Остаток: OAuth Google/Apple (нужны аккаунты сторов — на пользователе);
-утром с пользователем: живая проверка на телефоне (особенно голос) +
-отложенный им бэклог (онбординг, тайминги анимаций).
+### ✅ Готово (работает, под тестами)
+- **MVP целиком** — аккаунты + синхронизация (офлайн-первый), Today/Plan/Diary, rule-разборы утро/вечер, импорт расписания (текст / клон недели / фото-AI), стрики + заморозка, онбординг (расчёт воды по весу/росту, кнопка «Назад»), 5 тем, Android-виджет, локальные уведомления, все MVP-анимации (≤300 мс).
+- **Ф1 целиком, кроме OAuth** — Food (поиск OFF / штрихкод / фото-AI / голос / рецепты / «Собрать ИИ» / баланс рациона / список покупок), Water с графиком, Wrapped Неделя/Месяц + AI-абзац, все 7 AI-фич через провайдер Gemini⇄Claude, paywall + Subscribe (срез под RevenueCat), лимит фото 3/день.
+- **Ф2, кроме Health Connect** — Sleep-трекер, дыхание (3 пресета с авто-фазами), медитации (5 текстовых сессий), осанка (упражнения + напоминания), Workouts (шаблоны → редактор → режим «тренер» → журнал «Did it as planned»), фокус-сессии (вкл. фирменный 67/15).
+- **Ф3-шеринг и соц-слой** — веб-ссылка на план (открывается без приложения), «поделились со мной» + копирование к себе, co-study (друзья по email, сессии по коду, общий таймер, недельный лидерборд), реферальная карточка.
+- **Цели C4** — Месяц / Год / 5 / 10 лет → шаг цели становится задачей на сегодня («Plan today»).
+- **UX-бэклог 16–17 июня** — история за прошлые даты (Water/Sleep/Diary/Plan), выбор даты календарём, восстановление пароля, трекер привычек, шаблоны задач, хештеги + поиск, глобальный undo, вложения фото/видео к задачам, адаптивная вёрстка всех 4 табов, экранное время (лимиты по категориям), аналитика образа жизни, Terms & Privacy, **импорт из планнеров (ICS + Todoist CSV)**.
 
-## В работе
+### ⏸ Осталось — упирается в тебя / железо / аккаунты (не в код)
+- **OAuth Google/Apple** — кнопки-заглушки; нужны аккаунты сторов.
+- **Health Connect / Apple Health** — нет устройств для проверки.
+- **iOS-сборка и iOS-виджет** — нужен Mac.
+- **Реальные платежи (RevenueCat)** — срез готов, нужны аккаунт и ключи.
+- **Умные часы [Ф4]** — Wear OS / watchOS; нужны часы + Apple Developer Account.
+- **Реклама на free-тарифе** — нужны рекламные аккаунты (осознанно отложено).
+- **Живые проверки на телефоне** — голос, сканер, уведомления, диагностика «connection refused»/премиум через `scripts/run-phone.ps1`.
+- **Дизайн-полиш (нужна проверка на устройстве)** — виджет Android (больше данных, оформление под темы, размеры), онбординг-UX, Calm-тема по всем экранам, тайминги конфетти/переходов вживую, прогон на 360px и планшете.
 
-- [x] Аудит всего проекта (2026-06-10): полный отчёт — **docs/AUDIT.md** (реализовано/в процессе/не начато/баги/техдолг)
+### 🐞 Баги / техдолг (мелочь, не блокирует)
+- Лимит AI-фото (3/день) хранится в памяти процесса → сбрасывается при рестарте; для прода нужна таблица AiUsage (`backend/src/routes/ai.ts`).
+- Шрифт Geist — временная замена, ждём пакет (`app/.../app_theme.dart`).
+- Ссылки сторов / Privacy / Terms на лендинге — плейсхолдеры (`landing/index.html`).
+- `widget_test.dart` — пустышка (реальные тесты в `screens_smoke_test.dart`).
+
+### 🙋 Нужна твоя помощь (без тебя не двинется)
+1. **Телефон + `run-phone.ps1`** — проверить голос, сканер, уведомления, премиум.
+2. **Аккаунты** — Google Play / App Store (OAuth, RevenueCat, публикация), Firebase (пуши), рекламная сеть (free).
+3. **Правки ТЗ** — если хочешь что-то поменять: пиши списком, внесу в `SPEC.md` через ADR и пересоберу бэклог.
+4. **Контент** — видео техник упражнений, аудио медитаций; подключу, когда появится.
+
+### Тесты
+На 2026-06-16 зелёные (`flutter analyze` — 0). Точные числа меняются по мере добавления фич — проверяй командами из `docs/SETUP-IDE.md` (`npx jest`, `flutter test`).
+
+---
+
+## Журнал работ (хронология сделанного по блокам)
+
+- [x] Аудит всего проекта (2026-06-10): сводка вынесена наверх этого файла (раздел «Сводка для пользователя») — реализовано/в процессе/не начато/баги/техдолг
 - [x] Ф1 — Water: анимированный стакан §4.2 + график 7 дней + настраиваемая норма (2026-06-10)
 - [x] Ф1 — Food: баланс рациона (rule-based, unit-тесты) + сканер штрихкода + поиск OFF (2026-06-10)
 - [x] Ф1 — AI-03 еда по фото: бэк (premium, 3/день) + Flutter UI камера/галерея (2026-06-10, 47fa586)
@@ -138,7 +166,7 @@
 - [x] Design tokens — `docs/design-tokens.json`
 - [x] Orchestration + agent guides — `AGENTS.md`, `*/CLAUDE.md`
 
-## Backend (see docs/agents/backend-tasks.md)
+## Backend
 
 - [x] SETUP-01 Project scaffolding (Fastify + TS)
 - [x] SETUP-02 Prisma schema + migration
@@ -149,7 +177,7 @@
 - [x] SYNC-01 Sync endpoint (last-write-wins); recomputes streak when a main item transitions to done (regression fix — previously only PATCH /items did); + water_logs sync + deleted_item_ids (server deletes owned items) + day_logs sync (upsert by user+date, LWW; DayLog.updatedAt migration on Neon); also syncs water logs (append-only, ADR-017)
 - [x] ENGINE-01 Rule redistribution (POST /api/v1/redistribute)
 
-## Flutter (see docs/agents/flutter-tasks.md)
+## Flutter
 
 - [x] FL-SETUP-01..03 Project + Focus theme + 4-tab nav (profile = AppBar leading)
 - [x] FL-DB-01..02 Drift schema + DAOs
@@ -173,7 +201,7 @@
 - [x] Cross-device delete propagation: backend Tombstone table → /sync returns deleted_item_ids (deletes from other devices) → client applies locally. DELETE /items also tombstones. Closes the ADR-019 limitation. 57/57 backend tests.
 - [x] Profile Settings (C7): default-tone selector + Text size (accessibility, global textScaler, generalizes the Contrast bump); Profile made scrollable
 
-## QA (see docs/agents/qa-tasks.md)
+## QA
 
 - [x] QA-01 Auth flow
 - [x] QA-02 Items CRUD

@@ -30,7 +30,10 @@ cd ../app
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # генерация Drift
 flutter run -d windows|chrome|<device>
-# На телефоне: ../scripts/run-phone.ps1 (подставит IP ПК вместо localhost)
+# На телефоне (USB, та же Wi-Fi): ../scripts/run-phone.ps1 (подставит IP ПК вместо localhost;
+#   доп. аргументы flutter — после --, напр.: run-phone.ps1 -- -d <device-id>).
+# Если телефон не достучался до бэкенда — один раз открыть порт (admin PowerShell):
+#   New-NetFirewallRule -DisplayName "Kaizen backend 3000" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow
 
 # Тесты
 cd ../backend ; npx jest          # 80 тестов бэкенда
@@ -59,10 +62,10 @@ cd ../app ; flutter test          # 119 тестов приложения
 
 ```
 Ты — оркестратор проекта Kaizen («Главное») в этом репозитории.
-Прочитай в таком порядке: CLAUDE.md → AGENTS.md → docs/BOARD.md →
-docs/AUDIT.md → docs/PROJECT-MAP.md. Правила: .claude/rules/rules.md.
-Статус: MVP+Ф1+Ф2 закрыты, Ф3-шеринг и цели сделаны; текущий бэклог —
-секция «Ревью 2026-06-11» в BOARD.md (баги/новые функции/co-study).
+Прочитай в таком порядке: CLAUDE.md → AGENTS.md → docs/STATUS.md →
+docs/PROJECT-MAP.md. Правила: .claude/rules/rules.md.
+Статус: MVP+Ф1+Ф2 закрыты, Ф3-шеринг, co-study и цели сделаны; что
+осталось — раздел «Сводка для пользователя» в docs/STATUS.md.
 Контракты (docs/api-spec.yaml, data-model.md, design-tokens.json,
 ANIMATIONS.md) не менять без ADR в docs/decisions.md. Тесты держать
 зелёными: backend `npx jest` (80), app `flutter analyze` + `flutter test`

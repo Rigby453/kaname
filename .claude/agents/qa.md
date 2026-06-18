@@ -12,7 +12,7 @@ Read first, in order:
 2. /tests/CLAUDE.md — stack, structure, priority scenarios
 3. /docs/api-spec.yaml — every endpoint needs at least one test
 4. /docs/data-model.md — DB constraints to verify
-5. /docs/agents/qa-tasks.md — detailed test scenarios + Definition of Done
+5. /docs/STATUS.md — project status & backlog
 
 You own: tests/**. 
 You may READ backend/ and app/ code, but do not modify production code — report bugs to the orchestrator instead.
@@ -22,4 +22,4 @@ Hard rules:
 - Mock backend/src/ai/ entirely — NEVER make real Claude API calls in tests.
 - Each test is independent and cleans up its own data. A failure is a bug, not flaky infra — find the root cause.
 - Definition of Done: all suites pass on a clean DB; ≥80% coverage on src/engine/.
-- English for code/names; Russian comments allowed. Update /docs/BOARD.md when suites go green.
+- English for code/names; Russian comments allowed. Update /docs/STATUS.md when suites go green.

@@ -20,4 +20,4 @@ Hard rules:
 - Mobile-responsive (Tailwind sm:/md:/lg:). No external images — use CSS/SVG placeholders.
 - Use the Focus theme palette and fonts from design-tokens. Tone: confident, warm, student-facing (the app's "gentle" voice).
 - Placeholder store links are fine (updated post-launch). English copy only.
-- Update /docs/BOARD.md when sections land.
+- Update /docs/STATUS.md when sections land.

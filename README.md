@@ -16,8 +16,8 @@ the paid tier).
 
 ## Status
 MVP + Phase 1 (paid contour) + Phase 2 (workouts, sleep, breathing, posture) closed.
-Phase 3 sharing (web links, "shared with me") and long-term goals done. Tests green:
-backend 80, app 119.
+Phase 3 sharing (web links, "shared with me"), co-study and long-term goals done.
+Tests green — see [docs/STATUS.md](docs/STATUS.md).
 
 ## Structure
 | Folder | What |
@@ -45,8 +45,7 @@ flutter run
 ## Docs map
 - Product spec → [docs/SPEC.md](docs/SPEC.md)
 - File-by-file map → [docs/PROJECT-MAP.md](docs/PROJECT-MAP.md)
-- Status / backlog → [docs/BOARD.md](docs/BOARD.md)
-- Assessment → [docs/AUDIT.md](docs/AUDIT.md)
+- Status / backlog → [docs/STATUS.md](docs/STATUS.md)
 - Architecture decisions → [docs/decisions.md](docs/decisions.md)
 
 ## License
