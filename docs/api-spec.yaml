@@ -409,6 +409,26 @@ paths:
                   items: { type: string }
                   default: [breakfast, lunch, dinner]
                 tone: { $ref: '#/components/schemas/Tone' }
+                health_profile:
+                  type: object
+                  description: >
+                    Optional free-text health notes used only to bias/filter candidate
+                    selection. All sub-fields are optional strings (max 500 chars each).
+                    Absent = unchanged behavior (backward compatible).
+                    Not medical advice — numbers remain code-computed.
+                  properties:
+                    allergies:
+                      type: string
+                      maxLength: 500
+                      description: Allergies or intolerances the model must avoid.
+                    healing:
+                      type: string
+                      maxLength: 500
+                      description: Free-text note about wound healing speed.
+                    deficiencies:
+                      type: string
+                      maxLength: 500
+                      description: Known vitamin or mineral deficiencies.
       responses:
         '200':
           description: Proposed menu (names + grams only) and a one-sentence note

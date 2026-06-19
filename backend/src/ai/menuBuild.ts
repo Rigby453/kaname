@@ -49,6 +49,10 @@ const RawMenuSchema = z.object({
  * @param meals - приёмы пищи (напр. ["breakfast","lunch","dinner"])
  * @param tone - тон заметки (gentle/harsh), без шейминга в обоих
  * @param language - язык заметки (напр. "Russian"), по умолчанию "English"
+ * @param healthProfile - необязательный профиль здоровья пользователя (свободный текст):
+ *   allergies — аллергии/непереносимости; healing — скорость заживления ран;
+ *   deficiencies — известные дефициты витаминов/минералов.
+ *   Используется ТОЛЬКО для фильтрации и смещения выбора — числа КБЖУ считает код.
  */
 export async function buildMenu(params: {
   candidates: MenuCandidate[];
@@ -57,12 +61,18 @@ export async function buildMenu(params: {
   meals: string[];
   tone: "gentle" | "harsh";
   language?: string;
+  healthProfile?: {
+    allergies?: string;
+    healing?: string;
+    deficiencies?: string;
+  };
 }): Promise<{ meals: MenuMeal[]; note: string }> {
-  const { candidates, calorieGoal, proteinGoalG, meals, tone, language = "English" } = params;
+  const { candidates, calorieGoal, proteinGoalG, meals, tone, language = "English", healthProfile } = params;
 
   const validNames = new Set(candidates.map((c) => c.name));
 
-  const system =
+  // Базовый системный промпт — правила компоновки меню и формат вывода.
+  let system =
     "You are a nutrition menu composer for a student planner. Compose a one-day " +
     "menu USING ONLY the provided candidate foods (names must match EXACTLY, " +
     "character for character). Target the calorie goal within ±10% and protein " +
@@ -76,6 +86,32 @@ export async function buildMenu(params: {
     '[{"meal": string, "items": [{"name": string, "grams": number}]}], ' +
     '"note": string}. The "meal" values must be exactly the requested meal names.' +
     `\n\nIMPORTANT: Write all human-readable text (the note field) in ${language}. Keep JSON keys, meal names, food item names, and grams values exactly as specified in English.`;
+
+  // Если передан профиль здоровья — добавляем блок с инструкциями по фильтрации/смещению.
+  // Это не медицинские рекомендации; числа КБЖУ по-прежнему считает код, не модель.
+  if (healthProfile) {
+    const hp = healthProfile;
+    const hasAny = hp.allergies?.trim() || hp.healing?.trim() || hp.deficiencies?.trim();
+    if (hasAny) {
+      system +=
+        "\n\nUSER HEALTH NOTES (free text from the user; treat as preferences, NOT medical advice):\n";
+      if (hp.allergies?.trim()) {
+        system += `- Allergies/intolerances to AVOID: ${hp.allergies.trim()}\n`;
+      }
+      if (hp.healing?.trim()) {
+        system += `- Wound healing speed: ${hp.healing.trim()}\n`;
+      }
+      if (hp.deficiencies?.trim()) {
+        system += `- Known deficiencies: ${hp.deficiencies.trim()}\n`;
+      }
+      system +=
+        "Rules: NEVER include any candidate food that conflicts with the stated allergies/intolerances. " +
+        "Bias selection toward foods rich in nutrients relevant to the notes " +
+        "(e.g. slow wound healing → protein, vitamin C, zinc; stated deficiency → foods rich in it), " +
+        "while still hitting the calorie/protein goals from the user's own candidate foods. " +
+        "You still output ONLY name+grams and NEVER any nutrition numbers.";
+    }
+  }
 
   const user = JSON.stringify({
     calorie_goal: calorieGoal,

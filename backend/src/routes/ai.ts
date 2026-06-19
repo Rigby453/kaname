@@ -62,6 +62,16 @@ const menuCandidateSchema = z.object({
     fiber: z.number().nullable(),
   }),
 });
+// Необязательный профиль здоровья (свободный текст, ≤500 символов каждое поле).
+// Backward-compatible: отсутствие поля не меняет поведение.
+const healthProfileSchema = z
+  .object({
+    allergies: z.string().max(500).trim().optional(),
+    healing: z.string().max(500).trim().optional(),
+    deficiencies: z.string().max(500).trim().optional(),
+  })
+  .optional();
+
 const menuBuildSchema = z.object({
   candidates: z.array(menuCandidateSchema).min(5).max(40),
   calorie_goal: z.number().min(800).max(6000),
@@ -72,6 +82,7 @@ const menuBuildSchema = z.object({
     .max(6)
     .default(["breakfast", "lunch", "dinner"]),
   tone: toneSchema.default("gentle"),
+  health_profile: healthProfileSchema,
 });
 const wrappedSummarySchema = z.object({
   period_days: z.number().int().min(1).max(366),
@@ -292,6 +303,9 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           meals: parsed.data.meals,
           tone: parsed.data.tone,
           language: langName(request.headers["accept-language"]),
+          ...(parsed.data.health_profile !== undefined
+            ? { healthProfile: parsed.data.health_profile }
+            : {}),
         });
         return reply.status(200).send({
           meals: result.meals,
