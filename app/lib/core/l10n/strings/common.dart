@@ -109,6 +109,20 @@ const Map<String, Map<String, String>> commonStrings = {
     'ru': 'Ничего не добавлено.\nНажми «Добавить еду» для поиска.',
     'de': 'Noch nichts eingetragen.\nTippe auf „Essen hinzufügen".',
   },
+  // Загрузочные метки KaiLoader
+  'loading.generic': {'en': 'Loading…', 'ru': 'Загрузка…', 'de': 'Laden…'},
+  'loading.tasks': {'en': 'Loading tasks…', 'ru': 'Загрузка задач…', 'de': 'Aufgaben laden…'},
+  'loading.habits': {'en': 'Loading habits…', 'ru': 'Загрузка привычек…', 'de': 'Gewohnheiten laden…'},
+  'loading.buddies': {'en': 'Loading buddies…', 'ru': 'Загрузка друзей…', 'de': 'Partner laden…'},
+  'loading.workout': {'en': 'Loading workout…', 'ru': 'Загрузка тренировки…', 'de': 'Training laden…'},
+  'loading.workouts': {'en': 'Loading workouts…', 'ru': 'Загрузка тренировок…', 'de': 'Trainings laden…'},
+  'loading.sleep': {'en': 'Loading sleep data…', 'ru': 'Загрузка данных сна…', 'de': 'Schlafdaten laden…'},
+  'loading.water': {'en': 'Loading water data…', 'ru': 'Загрузка данных воды…', 'de': 'Wasserdaten laden…'},
+  'loading.recipe': {'en': 'Loading recipe…', 'ru': 'Загрузка рецепта…', 'de': 'Rezept laden…'},
+  'loading.processing': {'en': 'Processing…', 'ru': 'Обработка…', 'de': 'Verarbeitung…'},
+  'loading.kai_menu': {'en': 'Kai is composing your menu…', 'ru': 'Kai составляет твоё меню…', 'de': 'Kai erstellt dein Menü…'},
+  'loading.kai_food': {'en': 'Kai is finding food…', 'ru': 'Kai ищет продукт…', 'de': 'Kai sucht Lebensmittel…'},
+
   // Стрики
   'streak.freeze': {
     'en': 'Freeze streak',

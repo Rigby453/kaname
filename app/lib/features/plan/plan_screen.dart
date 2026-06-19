@@ -72,12 +72,12 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ? FloatingActionButton.extended(
               onPressed: () => showAddTaskSheet(context, day: selectedDay),
               icon: const Icon(Icons.add),
-              label: const Text('+ Add'),
+              label: Text(context.s('today.fab_add')),
             )
           : CollapsingFab(
               onPressed: () => showAddTaskSheet(context, day: selectedDay),
               icon: const Icon(Icons.add),
-              label: const Text('+ Add'),
+              label: Text(context.s('today.fab_add')),
             ),
       body: isTablet
           ? _buildTabletLayout(context, selectedDay, view, searchVisible)

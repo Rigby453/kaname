@@ -275,7 +275,7 @@ class HealthScreen extends ConsumerWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.local_drink, size: 18),
-                    label: const Text('+250 ml'),
+                    label: Text(context.s('health.water_add_250')),
                     onPressed: () => dao.addWater(250),
                   ),
                 ),
@@ -283,7 +283,7 @@ class HealthScreen extends ConsumerWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.sports_bar, size: 18),
-                    label: const Text('+500 ml'),
+                    label: Text(context.s('health.water_add_500')),
                     onPressed: () => dao.addWater(500),
                   ),
                 ),
@@ -742,7 +742,11 @@ class _SleepCard extends ConsumerWidget {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Night logged: ${h}h ${m}m'),
+                                content: Text(
+                                  context.s('health.sleep_night_logged')
+                                      .replaceAll('{h}', '$h')
+                                      .replaceAll('{m}', '$m'),
+                                ),
                                 duration: const Duration(seconds: 3),
                               ),
                             );

@@ -2,16 +2,30 @@
 // ИИ глубже — paid)». Считается ЛОКАЛЬНО из Drift, без сети и без бэкенда:
 // % закрытых главных задач за неделю, текущая серия, главная причина срывов,
 // среднее настроение. Премиум-AI-инсайт (глубже) остаётся отдельной кнопкой.
+//
+// Строки локализуются в UI-слое (DiaryInsightLines.resolve) через context.s(),
+// чтобы провайдер оставался без BuildContext.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database_providers.dart';
+import '../../core/l10n/app_strings.dart';
 
 /// Формат тегов «What went wrong?» в note (зеркалит diary_screen):
 /// свободный текст + "\n\nIssues: tag1, tag2".
 const String _kIssuesPrefix = '\n\nIssues: ';
 
-/// Ключ тега → человекочитаемая подпись (зеркалит diary_screen).
+/// Ключ тега → ключ локализации для отображаемого имени блокера.
+const Map<String, String> _kIssueLabelKeys = {
+  'social_media': 'diary.issue_label_social_media',
+  'went_out': 'diary.issue_label_went_out',
+  'was_tired': 'diary.issue_label_was_tired',
+  'sick': 'diary.issue_label_sick',
+  'other': 'diary.issue_label_other',
+};
+
+/// Ключ тега → человекочитаемая подпись на английском (fallback для парсинга).
 const Map<String, String> _kIssueLabels = {
   'social_media': 'social media',
   'went_out': 'going out',
@@ -22,14 +36,76 @@ const Map<String, String> _kIssueLabels = {
 
 const List<String> _kMoodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
 
+/// Сырые данные для недельного инсайта (без строк — строки резолвятся в UI).
+class WeeklyInsightData {
+  const WeeklyInsightData({
+    required this.mainTotal,
+    required this.mainDone,
+    required this.streak,
+    this.moodAvg,
+    this.topIssueKey,
+  });
+
+  final int mainTotal;
+  final int mainDone;
+  final int streak;
+  final double? moodAvg;
+  /// Ключ тега (e.g. 'social_media') или null если нет данных.
+  final String? topIssueKey;
+
+  bool get isEmpty => mainTotal == 0 && streak == 0 && moodAvg == null;
+
+  /// Резолвит строки через context.s() и возвращает готовый список строк.
+  List<String> resolve(BuildContext context) {
+    final lines = <String>[];
+
+    if (mainTotal > 0) {
+      final pct = ((mainDone / mainTotal) * 100).round();
+      lines.add(
+        context.s('diary.weekly_tasks')
+            .replaceAll('{done}', '$mainDone')
+            .replaceAll('{total}', '$mainTotal')
+            .replaceAll('{pct}', '$pct'),
+      );
+    }
+
+    if (streak > 0) {
+      lines.add(
+        context.s('diary.weekly_streak').replaceAll('{streak}', '$streak'),
+      );
+    }
+
+    if (topIssueKey != null) {
+      final labelKey = _kIssueLabelKeys[topIssueKey!];
+      final label = labelKey != null ? context.s(labelKey) : topIssueKey!;
+      lines.add(
+        context.s('diary.weekly_blocker').replaceAll('{label}', label),
+      );
+    }
+
+    if (moodAvg != null) {
+      final idx = (moodAvg!.round() - 1).clamp(0, _kMoodEmojis.length - 1);
+      lines.add(
+        context.s('diary.weekly_mood')
+            .replaceAll('{emoji}', _kMoodEmojis[idx])
+            .replaceAll('{avg}', moodAvg!.toStringAsFixed(1)),
+      );
+    }
+
+    return lines;
+  }
+}
+
 /// Результат инсайта: список коротких строк (пусто = показывать нечего).
+/// Используется в _QuickInsightCard после резолва строк.
 class DiaryInsight {
   const DiaryInsight(this.lines);
   final List<String> lines;
   bool get isEmpty => lines.isEmpty;
 }
 
-/// Чистая функция построения инсайта — без I/O, легко тестируется.
+/// Совместимая функция для юнит-тестов: строит инсайт на английском без BuildContext.
+/// В продакшн UI используйте WeeklyInsightData.resolve(context) для локализации.
 DiaryInsight buildWeeklyInsight({
   required int mainTotal,
   required int mainDone,
@@ -98,9 +174,10 @@ final todayPlanVsFactProvider =
   );
 });
 
-/// Провайдер: собирает локальные данные за последние 7 дней и строит инсайт.
+/// Провайдер: собирает локальные данные за последние 7 дней.
+/// Возвращает WeeklyInsightData (без строк). Строки резолвятся в _QuickInsightCard.
 final weeklyDiaryInsightProvider =
-    FutureProvider.autoDispose<DiaryInsight>((ref) async {
+    FutureProvider.autoDispose<WeeklyInsightData>((ref) async {
   final now = DateTime.now();
   final todayStart = DateTime.utc(now.year, now.month, now.day);
   final weekStart = todayStart.subtract(const Duration(days: 6));
@@ -122,24 +199,24 @@ final weeklyDiaryInsightProvider =
   final double? moodAvg =
       moods.isEmpty ? null : moods.reduce((a, b) => a + b) / moods.length;
 
-  // Самая частая причина срывов
+  // Самая частая причина срывов (возвращаем ключ, не строку)
   final counts = <String, int>{};
   for (final l in logs) {
     for (final key in parseIssueKeys(l.note)) {
       counts[key] = (counts[key] ?? 0) + 1;
     }
   }
-  String? topIssueLabel;
+  String? topIssueKey;
   if (counts.isNotEmpty) {
-    final top = counts.entries.reduce((a, b) => a.value >= b.value ? a : b);
-    topIssueLabel = _kIssueLabels[top.key];
+    topIssueKey =
+        counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
   }
 
-  return buildWeeklyInsight(
+  return WeeklyInsightData(
     mainTotal: main.length,
     mainDone: mainDone,
     streak: streak?.current ?? 0,
     moodAvg: moodAvg,
-    topIssueLabel: topIssueLabel,
+    topIssueKey: topIssueKey,
   );
 });

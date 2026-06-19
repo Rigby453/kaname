@@ -166,6 +166,28 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'de': 'Dein benutzerdefinierter Stil wird gelöscht und die App wechselt zurück zu Focus.',
   },
 
+  // ---- Profile: размер текста (опции селектора) ----
+  'profile.text_size_small': {
+    'en': 'Small',
+    'ru': 'Маленький',
+    'de': 'Klein',
+  },
+  'profile.text_size_default': {
+    'en': 'Default',
+    'ru': 'Обычный',
+    'de': 'Standard',
+  },
+  'profile.text_size_large': {
+    'en': 'Large',
+    'ru': 'Крупный',
+    'de': 'Groß',
+  },
+  'profile.text_size_xlarge': {
+    'en': 'Extra large',
+    'ru': 'Очень крупный',
+    'de': 'Sehr groß',
+  },
+
   // ---- Profile: тон ----
   'profile.default_tone': {
     'en': 'Default tone',
@@ -330,6 +352,25 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'en': 'No events in this plan',
     'ru': 'В этом плане нет событий',
     'de': 'Keine Ereignisse in diesem Plan',
+  },
+  // Шит просмотра чужого плана
+  // {name} — имя владельца
+  'profile.plan_of': {
+    'en': "{name}'s plan",
+    'ru': 'План {name}',
+    'de': 'Plan von {name}',
+  },
+  // {n} — число событий; английская форма с одним словом (без plural-рисков в РУ — используем число)
+  'profile.copy_to_my_plan': {
+    'en': 'Copy to my plan ({n})',
+    'ru': 'Скопировать в мой план ({n})',
+    'de': 'In meinen Plan kopieren ({n})',
+  },
+  // {n} — число скопированных событий
+  'profile.events_copied': {
+    'en': '{n} events copied to your plan',
+    'ru': 'Скопировано событий в ваш план: {n}',
+    'de': '{n} Ereignisse in deinen Plan kopiert',
   },
 
   // ---- Terms ----

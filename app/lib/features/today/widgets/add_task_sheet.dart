@@ -569,7 +569,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
               spacing: 8,
               children: _types
                   .map((t) => ChoiceChip(
-                        label: Text(t),
+                        label: Text(context.s('today.type_$t')),
                         selected: _type == t,
                         onSelected: (_) => setState(() => _type = t),
                       ))
@@ -617,9 +617,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                         label: p == 'main'
                             ? Tooltip(
                                 message: context.s('today.priority_tooltip'),
-                                child: const Text('main'),
+                                child: Text(context.s('today.priority_main')),
                               )
-                            : Text(p),
+                            : Text(context.s('today.priority_$p')),
                         selected: _priority == p,
                         onSelected: (_) => _onPriorityTap(p),
                       ))

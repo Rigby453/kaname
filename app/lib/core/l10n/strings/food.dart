@@ -300,6 +300,20 @@ const Map<String, Map<String, String>> foodStrings = {
   // ---------------------------------------------------------------------------
   // Сканер штрихкода
   // ---------------------------------------------------------------------------
+  // Снэкбар «нужно больше продуктов» для AI-меню; {n} — минимальное число
+  'food.ai_menu_need_more': {
+    'en': 'Need at least {n} foods to build a menu — log a few meals or create recipes first.',
+    'ru': 'Нужно хотя бы {n} продукта(ов), чтобы составить меню — запиши пару приёмов пищи или создай рецепты.',
+    'de': 'Mindestens {n} Lebensmittel erforderlich — trage einige Mahlzeiten ein oder erstelle Rezepte.',
+  },
+
+  // Снэкбар после записи рецепта; {name} — имя рецепта, {meal} — приём пищи
+  'food.recipe_logged_snack': {
+    'en': '"{name}" logged as {meal}',
+    'ru': '«{name}» записан как {meal}',
+    'de': '„{name}" als {meal} eingetragen',
+  },
+
   'food.scan_barcode_title': {
     'en': 'Scan barcode',
     'ru': 'Сканирование штрихкода',

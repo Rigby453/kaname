@@ -149,8 +149,8 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
   Widget build(BuildContext context) {
     // Показываем KaiLoader пока грузятся данные из Drift
     if (!_loaded) {
-      return const Center(
-        child: KaiLoader(label: 'Loading…'),
+      return Center(
+        child: KaiLoader(label: context.s('loading.generic')),
       );
     }
 
@@ -453,8 +453,12 @@ class _QuickInsightCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(weeklyDiaryInsightProvider);
-    final insight = async.valueOrNull;
-    if (insight == null || insight.isEmpty) return const SizedBox.shrink();
+    final data = async.valueOrNull;
+    if (data == null || data.isEmpty) return const SizedBox.shrink();
+
+    // Строки резолвятся здесь, где есть BuildContext и локаль
+    final lines = data.resolve(context);
+    if (lines.isEmpty) return const SizedBox.shrink();
 
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
@@ -477,7 +481,7 @@ class _QuickInsightCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 8),
-            ...insight.lines.map(
+            ...lines.map(
               (line) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text('• $line', style: textTheme.bodyMedium),

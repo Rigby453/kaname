@@ -115,6 +115,21 @@ const Map<String, Map<String, String>> todayStrings = {
   // Кольцо прогресса — подпись «main» внутри кольца
   'today.ring_main': {'en': 'main', 'ru': 'главных', 'de': 'Haupt'},
 
+  // Типы задач (чипы в форме добавления)
+  'today.type_task': {'en': 'task', 'ru': 'задача', 'de': 'Aufgabe'},
+  'today.type_event': {'en': 'event', 'ru': 'событие', 'de': 'Termin'},
+  'today.type_exam': {'en': 'exam', 'ru': 'экзамен', 'de': 'Prüfung'},
+  'today.type_deadline': {'en': 'deadline', 'ru': 'дедлайн', 'de': 'Frist'},
+
+  // Приоритеты (чипы в форме добавления)
+  'today.priority_low': {'en': 'low', 'ru': 'низкий', 'de': 'niedrig'},
+  'today.priority_medium': {'en': 'medium', 'ru': 'средний', 'de': 'mittel'},
+  'today.priority_high': {'en': 'high', 'ru': 'высокий', 'de': 'hoch'},
+  'today.priority_main': {'en': 'main', 'ru': 'главное', 'de': 'Haupt'},
+
+  // FAB «+ Добавить»
+  'today.fab_add': {'en': '+ Add', 'ru': '+ Добавить', 'de': '+ Hinzufügen'},
+
   // Строка streak — «день/дней»
   'today.streak_day': {'en': 'day', 'ru': 'день', 'de': 'Tag'},
   'today.streak_days': {'en': 'days', 'ru': 'дн.', 'de': 'Tage'},

@@ -136,12 +136,12 @@ class TodayScreen extends ConsumerWidget {
           floatingActionButton: CollapsingFab(
             onPressed: () => showAddTaskSheet(context, day: now),
             icon: const Icon(Icons.add),
-            label: const Text('+ Add'),
+            label: Text(context.s('today.fab_add')),
           ),
           body: itemsAsync.when(
             // Заменяем стандартный спиннер на KaiLoader (BOLD design system)
-            loading: () => const Center(
-              child: KaiLoader(label: 'Loading tasks…'),
+            loading: () => Center(
+              child: KaiLoader(label: context.s('loading.tasks')),
             ),
             error: (err, _) => Center(child: Text('Failed to load tasks: $err')),
             data: (items) {
@@ -225,7 +225,7 @@ class TodayScreen extends ConsumerWidget {
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => showAddTaskSheet(context, day: now),
             icon: const Icon(Icons.add),
-            label: const Text('+ Add'),
+            label: Text(context.s('today.fab_add')),
           ),
           body: Row(
               crossAxisAlignment: CrossAxisAlignment.start,

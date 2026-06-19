@@ -281,6 +281,58 @@ const Map<String, Map<String, String>> planDiaryStrings = {
     'de': '📊 Erfasse Schlaf und Wasser regelmäßig, um persönliche Einblicke zu sehen.',
   },
 
+  // Diary — строки недельного (rule-based) инсайта
+  // {done}/{total}/{pct} подставляются в коде
+  'diary.weekly_tasks': {
+    'en': 'Closed {done} of {total} main tasks this week ({pct}%).',
+    'ru': 'Закрыто {done} из {total} главных задач за неделю ({pct}%).',
+    'de': '{done} von {total} Hauptaufgaben diese Woche abgeschlossen ({pct}%).',
+  },
+  // {streak} подставляется в коде
+  'diary.weekly_streak': {
+    'en': '🔥 {streak}-day streak — keep it going.',
+    'ru': '🔥 Серия {streak} дней — так держать.',
+    'de': '🔥 {streak}-Tage-Serie — weiter so.',
+  },
+  // {label} — имя главного блокера
+  'diary.weekly_blocker': {
+    'en': 'Most common blocker lately: {label}.',
+    'ru': 'Самый частый блокер в последнее время: {label}.',
+    'de': 'Häufigster Blocker zuletzt: {label}.',
+  },
+  // {emoji} — эмодзи настроения, {avg} — число (1 знак после запятой)
+  'diary.weekly_mood': {
+    'en': 'Average mood: {emoji} ({avg}/5).',
+    'ru': 'Среднее настроение: {emoji} ({avg}/5).',
+    'de': 'Durchschnittliche Stimmung: {emoji} ({avg}/5).',
+  },
+  // Имена блокеров (для подстановки в diary.weekly_blocker)
+  'diary.issue_label_social_media': {
+    'en': 'social media',
+    'ru': 'соцсети',
+    'de': 'soziale Medien',
+  },
+  'diary.issue_label_went_out': {
+    'en': 'going out',
+    'ru': 'прогулки',
+    'de': 'Ausgehen',
+  },
+  'diary.issue_label_was_tired': {
+    'en': 'tiredness',
+    'ru': 'усталость',
+    'de': 'Müdigkeit',
+  },
+  'diary.issue_label_sick': {
+    'en': 'feeling sick',
+    'ru': 'болезнь',
+    'de': 'Krankheit',
+  },
+  'diary.issue_label_other': {
+    'en': 'other',
+    'ru': 'другое',
+    'de': 'Sonstiges',
+  },
+
   // ---------------------------------------------------------------------------
   // Diary History
   // ---------------------------------------------------------------------------

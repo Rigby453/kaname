@@ -100,9 +100,16 @@ class RecipeEditorScreen extends ConsumerWidget {
           fiber: scaled.fiber,
         );
     if (context.mounted) {
+      // Локализуем название приёма пищи через food.meal_* ключ
+      final mealLabel = context.s('food.meal_${result.meal}');
       ScaffoldMessenger.of(context).showSnackBar(
-        // Строка интерполирована — оставляем как есть (имя + приём пищи динамические)
-        SnackBar(content: Text('"${recipe.name}" logged as ${result.meal}')),
+        SnackBar(
+          content: Text(
+            context.s('food.recipe_logged_snack')
+                .replaceAll('{name}', recipe.name)
+                .replaceAll('{meal}', mealLabel),
+          ),
+        ),
       );
       Navigator.of(context).pop();
     }
@@ -125,8 +132,8 @@ class RecipeEditorScreen extends ConsumerWidget {
       // Рецепт удалён или ещё грузится первая выборка.
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(
-          child: KaiLoader(label: 'Loading recipe…'),
+        body: Center(
+          child: KaiLoader(label: context.s('loading.recipe')),
         ),
       );
     }
@@ -437,10 +444,10 @@ class _IngredientSearchSheetState
             const SizedBox(height: 12),
             // Загрузка ингредиентов — KaiLoader
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(
-                  child: KaiLoader(label: 'Kai is finding food…'),
+                  child: KaiLoader(label: context.s('loading.kai_food')),
                 ),
               )
             else if (_error != null)

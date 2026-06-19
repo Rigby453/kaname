@@ -11,7 +11,7 @@ import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/animations/ai_skeleton.dart';
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database_providers.dart';
-import '../../core/settings/nutrition_goals_provider.dart';
+import '../../core/settings/nutrition_targets.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
@@ -50,12 +50,11 @@ Future<void> showAiMenuSheet(BuildContext context, WidgetRef ref) async {
 
   if (!context.mounted) return;
   if (candidates.length < kMenuCandidatesMin) {
-    // Строка интерполирована (kMenuCandidatesMin динамический) — оставляем как есть
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Need at least $kMenuCandidatesMin foods to build a menu — '
-          'log a few meals or create recipes first.',
+          context.s('food.ai_menu_need_more')
+              .replaceAll('{n}', '$kMenuCandidatesMin'),
         ),
       ),
     );
@@ -113,8 +112,8 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
                       },
                     })
                 .toList(),
-            calorieGoal: ref.read(calorieGoalProvider),
-            proteinGoalG: ref.read(proteinGoalProvider),
+            calorieGoal: ref.read(nutritionTargetsProvider).kcal,
+            proteinGoalG: ref.read(nutritionTargetsProvider).proteinG,
             tone: tone,
           );
       final meals = parseProposedMenu(response, widget.candidates);
@@ -200,8 +199,8 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
             const SizedBox(height: 16),
             if (_loading) ...[
               // KaiLoader вместо спиннера + AiSkeleton для каркаса контента
-              const Center(
-                child: KaiLoader(label: 'Kai is composing your menu…'),
+              Center(
+                child: KaiLoader(label: context.s('loading.kai_menu')),
               ),
               const SizedBox(height: 16),
               const AiSkeleton(lines: 4),
@@ -278,6 +277,24 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
   }
 }
 
+/// Маппинг ключа приёма пищи (backend) → ключ локализации для ОТОБРАЖЕНИЯ.
+/// Бэкенду всегда отправляем оригинальный английский ключ (breakfast/lunch/...).
+String _mealL10nKey(String meal) {
+  switch (meal) {
+    case 'breakfast':
+      return 'food.meal_breakfast';
+    case 'lunch':
+      return 'food.meal_lunch';
+    case 'dinner':
+      return 'food.meal_dinner';
+    case 'snack':
+      return 'food.meal_snack';
+    default:
+      // Неизвестный приём — показываем ключ через S (откат на en → на сам ключ)
+      return meal;
+  }
+}
+
 class _MealBlock extends StatelessWidget {
   const _MealBlock({required this.meal});
 
@@ -290,6 +307,12 @@ class _MealBlock extends StatelessWidget {
     // Строки блюд — textMuted (не конкурируют с заголовком)
     final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(140);
 
+    // Локализованное название приёма пищи; первая буква в верхнем регистре
+    final mealLabel = context.s(_mealL10nKey(meal.meal));
+    final mealDisplayName = mealLabel.isNotEmpty
+        ? mealLabel[0].toUpperCase() + mealLabel.substring(1)
+        : meal.meal;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -297,7 +320,7 @@ class _MealBlock extends StatelessWidget {
         children: [
           // Название приёма пищи — titleSmall (14sp w600)
           Text(
-            meal.meal[0].toUpperCase() + meal.meal.substring(1),
+            mealDisplayName,
             style: textTheme.titleSmall,
           ),
           const SizedBox(height: 4),

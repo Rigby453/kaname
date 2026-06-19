@@ -115,10 +115,10 @@ class ProfileScreen extends ConsumerWidget {
       children: [
         // Заголовок аккаунта
         userAsync.when(
-          loading: () => const Center(
+          loading: () => Center(
             child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: KaiLoader(label: 'Loading…'),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: KaiLoader(label: context.s('loading.generic')),
             ),
           ),
           error: (_, _) => const SizedBox.shrink(),
@@ -611,8 +611,15 @@ class _TextSizeSetting extends ConsumerWidget {
         Wrap(
           spacing: 8,
           children: TextSizePref.values.map((p) {
+            // Маппинг enum → ключ локализации (резолвится здесь, в виджете)
+            final labelKey = switch (p) {
+              TextSizePref.small => 'profile.text_size_small',
+              TextSizePref.normal => 'profile.text_size_default',
+              TextSizePref.large => 'profile.text_size_large',
+              TextSizePref.larger => 'profile.text_size_xlarge',
+            };
             return ChoiceChip(
-              label: Text(p.label),
+              label: Text(context.s(labelKey)),
               selected: current == p,
               onSelected: (_) => ref.read(textScaleProvider.notifier).set(p),
             );
@@ -843,7 +850,11 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
     if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$copied event${copied == 1 ? '' : 's'} copied to your plan')),
+        SnackBar(
+          content: Text(
+            context.s('profile.events_copied').replaceAll('{n}', '$copied'),
+          ),
+        ),
       );
     }
   }
@@ -919,7 +930,7 @@ class _PlanSheetContent extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "$ownerName's plan",
+                        context.s('profile.plan_of').replaceAll('{name}', ownerName),
                         style: textTheme.headlineSmall,
                       ),
                       if (rangeLabel.isNotEmpty)
@@ -964,7 +975,10 @@ class _PlanSheetContent extends StatelessWidget {
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
               ),
-              child: Text('Copy to my plan (${rawItems.length} event${rawItems.length == 1 ? '' : 's'})'),
+              child: Text(
+                context.s('profile.copy_to_my_plan')
+                    .replaceAll('{n}', '${rawItems.length}'),
+              ),
             ),
           ),
         ],

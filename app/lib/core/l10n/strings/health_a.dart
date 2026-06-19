@@ -60,6 +60,23 @@ const Map<String, Map<String, String>> healthAStrings = {
     'ru': 'Ночей пока нет',
     'de': 'Noch keine Nächte erfasst',
   },
+  // Кнопки добавления воды
+  'health.water_add_250': {
+    'en': '+250 ml',
+    'ru': '+250 мл',
+    'de': '+250 ml',
+  },
+  'health.water_add_500': {
+    'en': '+500 ml',
+    'ru': '+500 мл',
+    'de': '+500 ml',
+  },
+  // Снэкбар после логирования ночи; {h} — часы, {m} — минуты
+  'health.sleep_night_logged': {
+    'en': 'Night logged: {h}h {m}m',
+    'ru': 'Ночь записана: {h}ч {m}м',
+    'de': 'Nacht erfasst: {h}h {m}m',
+  },
 
   // ---------------------------------------------------------------------------
   // Health hub — Nav tiles subtitles (titles reuse health.* from common)

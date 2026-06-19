@@ -611,10 +611,10 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
             const SizedBox(height: 4),
             // Загрузка: KaiLoader («Kai is finding food») вместо спиннера
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(
-                  child: KaiLoader(label: 'Kai is finding food…'),
+                  child: KaiLoader(label: context.s('loading.kai_food')),
                 ),
               )
             else if (_error != null)

@@ -63,6 +63,10 @@ class ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          // Язык пользователя → бэкенд (AI отвечает на этом языке).
+          // Ключ 'app_locale' пишется LocaleNotifier (locale_provider.dart).
+          final lang = _prefs.getString('app_locale') ?? 'en';
+          options.headers['Accept-Language'] = lang;
           handler.next(options);
         },
         onError: (DioException e, handler) async {
