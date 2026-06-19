@@ -546,10 +546,18 @@ class AppDatabase extends _$AppDatabase {
       );
 }
 
-/// Открывает соединение с БД через drift_flutter
-/// Работает на всех платформах: iOS, Android, Web (IndexedDB)
+/// Открывает соединение с БД через drift_flutter.
+/// Работает на всех платформах: iOS, Android, Web.
+/// На вебе нужны ассеты в app/web/ (sqlite3.wasm + drift_worker.js) и явные
+/// web-опции — иначе drift_flutter бросает «the `web` parameter needs to be set».
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    return driftDatabase(name: 'kaizen');
+    return driftDatabase(
+      name: 'kaizen',
+      web: DriftWebOptions(
+        sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+        driftWorker: Uri.parse('drift_worker.js'),
+      ),
+    );
   });
 }
