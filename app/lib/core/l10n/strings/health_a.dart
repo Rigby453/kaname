@@ -334,6 +334,16 @@ const Map<String, Map<String, String>> healthAStrings = {
     'ru': 'Сделано! 🎉',
     'de': 'Erledigt! 🎉',
   },
+  'habits.removed': {
+    'en': 'Habit removed',
+    'ru': 'Привычка удалена',
+    'de': 'Gewohnheit entfernt',
+  },
+  'habits.delete': {
+    'en': 'Delete',
+    'ru': 'Удалить',
+    'de': 'Löschen',
+  },
 
   // ---------------------------------------------------------------------------
   // Health profile (health_profile_provider.dart, setup_flow.dart, profile_screen.dart)

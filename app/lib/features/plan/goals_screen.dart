@@ -13,6 +13,8 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/id.dart';
 import '../../core/widgets/kai_loader.dart';
+import '../../core/widgets/swipe_to_delete.dart';
+import '../../core/widgets/undo_snack_bar.dart';
 import 'goal_progress.dart';
 
 // ---------------------------------------------------------------------------
@@ -336,30 +338,47 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
             controlAffinity: ListTileControlAffinity.leading,
             children: [
               // Список шагов-чекбоксов
+              // SwipeToDelete + кнопка-корзина на каждой строке шага
               for (final step in steps)
-                ListTile(
-                  contentPadding: const EdgeInsets.only(left: 16, right: 8),
-                  leading: Checkbox(
-                    value: step.done,
-                    // success цвет при завершении (01-color.md)
-                    activeColor: ext?.success ?? colorScheme.primary,
-                    onChanged: (val) => ref
-                        .read(goalsDaoProvider)
-                        .setStepDone(step.id, val ?? false),
-                  ),
-                  title: Text(
-                    step.title,
-                    style: step.done
-                        ? textTheme.bodyMedium?.copyWith(
-                            decoration: TextDecoration.lineThrough,
-                            color: textMuted,
-                          )
-                        : textTheme.bodyMedium,
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(Icons.today_outlined, size: 20, color: textMuted),
-                    tooltip: context.s('plan.goals_plan_today_tooltip'),
-                    onPressed: () => _planToday(context, step),
+                SwipeToDelete(
+                  key: ValueKey('step_${step.id}'),
+                  onDelete: () => _deleteStep(context, step),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.only(left: 16, right: 8),
+                    leading: Checkbox(
+                      value: step.done,
+                      // success цвет при завершении (01-color.md)
+                      activeColor: ext?.success ?? colorScheme.primary,
+                      onChanged: (val) => ref
+                          .read(goalsDaoProvider)
+                          .setStepDone(step.id, val ?? false),
+                    ),
+                    title: Text(
+                      step.title,
+                      style: step.done
+                          ? textTheme.bodyMedium?.copyWith(
+                              decoration: TextDecoration.lineThrough,
+                              color: textMuted,
+                            )
+                          : textTheme.bodyMedium,
+                    ),
+                    // trailing: кнопка «запланировать сегодня» + кнопка удаления шага
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.today_outlined, size: 20, color: textMuted),
+                          tooltip: context.s('plan.goals_plan_today_tooltip'),
+                          onPressed: () => _planToday(context, step),
+                        ),
+                        // Кнопка удаления шага (ember цвет — деструктивное действие)
+                        IconButton(
+                          icon: Icon(Icons.delete_outline, size: 20, color: textMuted),
+                          tooltip: context.s('plan.step_delete_tooltip'),
+                          onPressed: () => _deleteStep(context, step),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -399,6 +418,24 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     if (title.isEmpty) return;
     _stepController.clear();
     await ref.read(goalsDaoProvider).addStep(widget.goal.id, title);
+  }
+
+  /// Паттерн безопасного удаления шага:
+  /// 1. Снапшот шага ДО удаления (сохраняем id, goalId, title, done, sortOrder)
+  /// 2. Удаляем из БД через removeStep
+  /// 3. Показываем Undo snackbar
+  /// 4. По Undo — восстанавливаем через restoreStep (тот же id, sortOrder)
+  Future<void> _deleteStep(BuildContext context, GoalStepsTableData step) async {
+    final dao = ref.read(goalsDaoProvider);
+    // Снапшот шага до удаления (step пришёл из stream — актуальная запись)
+    final snapshot = step;
+    await dao.removeStep(step.id);
+    if (!context.mounted) return;
+    showUndoSnackBar(
+      context,
+      message: '"${step.title}" — ${context.s('plan.step_removed')}',
+      onUndo: () => dao.restoreStep(snapshot),
+    );
   }
 }
 

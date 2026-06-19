@@ -1,5 +1,8 @@
 // Трекер привычек (бэклог): хорошие с прогрессом + счётчик плохих.
 // Локально-первый, без синхронизации.
+// Удаление: SwipeToDelete (свайп влево) + кнопка в popup → Undo через snackbar.
+// Прогресс (HabitLogsTable) сохраняется при удалении — логи остаются в БД,
+// привязаны по habitId. После Undo тот же id возвращается и логи снова видны.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +11,8 @@ import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
+import '../../core/widgets/swipe_to_delete.dart';
+import '../../core/widgets/undo_snack_bar.dart';
 
 final _habitsProvider = StreamProvider.autoDispose<List<HabitsTableData>>((ref) {
   return ref.watch(habitsDaoProvider).watchActive();
@@ -81,18 +86,58 @@ class HabitsScreen extends ConsumerWidget {
                 // Секционный заголовок — titleMedium (body font, w600)
                 Text(context.s('habits.good_habits'), style: textTheme.titleMedium),
                 const SizedBox(height: 8),
-                ...good.map((h) => _GoodHabitCard(habit: h)),
+                ...good.map(
+                  (h) => SwipeToDelete(
+                    key: ValueKey('habit_${h.id}'),
+                    onDelete: () => _deleteHabit(context, ref, h),
+                    child: _GoodHabitCard(
+                      habit: h,
+                      onDelete: () => _deleteHabit(context, ref, h),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
               ],
               if (bad.isNotEmpty) ...[
                 Text(context.s('habits.break_these'), style: textTheme.titleMedium),
                 const SizedBox(height: 8),
-                ...bad.map((h) => _BadHabitCard(habit: h)),
+                ...bad.map(
+                  (h) => SwipeToDelete(
+                    key: ValueKey('habit_${h.id}'),
+                    onDelete: () => _deleteHabit(context, ref, h),
+                    child: _BadHabitCard(
+                      habit: h,
+                      onDelete: () => _deleteHabit(context, ref, h),
+                    ),
+                  ),
+                ),
               ],
             ],
           );
         },
       ),
+    );
+  }
+
+  /// Паттерн безопасного удаления:
+  /// 1. Делаем снапшот данных привычки ДО удаления
+  /// 2. Удаляем из БД (HabitLogsTable не трогаем — прогресс сохраняется по habitId)
+  /// 3. Показываем Undo snackbar
+  /// 4. По Undo — восстанавливаем через insertOnConflictUpdate снапшота (тот же id)
+  Future<void> _deleteHabit(
+    BuildContext context,
+    WidgetRef ref,
+    HabitsTableData habit,
+  ) async {
+    final dao = ref.read(habitsDaoProvider);
+    // Снапшот сделан до удаления (habit уже пришёл из stream — это актуальная запись)
+    final snapshot = habit;
+    await dao.deleteHabit(habit.id);
+    if (!context.mounted) return;
+    showUndoSnackBar(
+      context,
+      message: '"${habit.name}" ${context.s('habits.removed')}',
+      onUndo: () => dao.restoreHabit(snapshot),
     );
   }
 
@@ -172,8 +217,9 @@ class HabitsScreen extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 class _GoodHabitCard extends ConsumerWidget {
-  const _GoodHabitCard({required this.habit});
+  const _GoodHabitCard({required this.habit, required this.onDelete});
   final HabitsTableData habit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -224,15 +270,25 @@ class _GoodHabitCard extends ConsumerWidget {
                     else
                       // Done state — accent moment (success)
                       Icon(Icons.check_circle, color: ext.success),
+                    // Кнопка меню: архив + удалить (пользователь хочет оба способа)
                     PopupMenuButton<String>(
                       icon: Icon(Icons.more_vert, color: ext.textMuted, size: 20),
                       onSelected: (v) {
                         if (v == 'archive') dao.archive(habit.id);
+                        if (v == 'delete') onDelete();
                       },
                       itemBuilder: (_) => [
                         PopupMenuItem(
                           value: 'archive',
                           child: Text(context.s('habits.archive')),
+                        ),
+                        // Пункт удаления с Undo (ember цвет — деструктивное действие)
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text(
+                            context.s('habits.delete'),
+                            style: TextStyle(color: ext.ember),
+                          ),
                         ),
                       ],
                     ),
@@ -273,8 +329,9 @@ class _GoodHabitCard extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 class _BadHabitCard extends ConsumerWidget {
-  const _BadHabitCard({required this.habit});
+  const _BadHabitCard({required this.habit, required this.onDelete});
   final HabitsTableData habit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -328,15 +385,25 @@ class _BadHabitCard extends ConsumerWidget {
                   icon: Icon(Icons.add, color: ext.textMuted),
                   onPressed: () => dao.logHabit(habit.id),
                 ),
+                // Кнопка меню: архив + удалить (пользователь хочет оба способа)
                 PopupMenuButton<String>(
                   icon: Icon(Icons.more_vert, color: ext.textMuted, size: 20),
                   onSelected: (v) {
                     if (v == 'archive') dao.archive(habit.id);
+                    if (v == 'delete') onDelete();
                   },
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       value: 'archive',
                       child: Text(context.s('habits.archive')),
+                    ),
+                    // Пункт удаления с Undo (ember цвет — деструктивное действие)
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text(
+                        context.s('habits.delete'),
+                        style: TextStyle(color: ext.ember),
+                      ),
                     ),
                   ],
                 ),

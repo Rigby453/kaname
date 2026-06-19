@@ -23,6 +23,8 @@ import '../../core/database/database_providers.dart';
 import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/nutrition_targets.dart';
 import '../../core/widgets/kai_loader.dart';
+import '../../core/widgets/swipe_to_delete.dart';
+import '../../core/widgets/undo_snack_bar.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
 import 'ai_menu_sheet.dart';
@@ -318,6 +320,21 @@ class _FoodRow extends ConsumerWidget {
   const _FoodRow({required this.log});
   final FoodLogsTableData log;
 
+  /// Снапшот → удалить → показать Undo (единый паттерн безопасного удаления).
+  Future<void> _deleteWithUndo(BuildContext context, WidgetRef ref) async {
+    final dao = ref.read(foodLogsDaoProvider);
+    // Снапшот строки до удаления — для восстановления через Undo
+    final snapshot = log;
+    await dao.deleteLog(log.id);
+    if (!context.mounted) return;
+    showUndoSnackBar(
+      context,
+      // «"Банан" removed» — имя продукта + ключ food.log_removed
+      message: '"${log.name}" ${context.s('food.log_removed')}',
+      onUndo: () => dao.restoreLog(snapshot),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
@@ -325,24 +342,30 @@ class _FoodRow extends ConsumerWidget {
     final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
     final kcal = log.calories == null ? '—' : '${log.calories!.round()} kcal';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        // Название продукта — bodyLarge из темы (titleText style уже задан в ListTileTheme)
-        title: Text(log.name),
-        subtitle: Text(
-          '${log.grams.round()} g · ${log.meal} · $kcal',
-          style: textTheme.bodySmall?.copyWith(color: mutedColor),
-        ),
-        trailing: IconButton(
-          tooltip: context.s('food.remove_tooltip'),
-          // Иконка удаления — нейтральный textFaint (не акцент, не ember)
-          icon: Icon(
-            Icons.close,
-            size: 18,
-            color: ext?.textFaint,
+    // SwipeToDelete обёртка: свайп влево = удалить с Undo
+    return SwipeToDelete(
+      key: ValueKey('food_log_${log.id}'),
+      onDelete: () => _deleteWithUndo(context, ref),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          // Название продукта — bodyLarge из темы (titleText style уже задан в ListTileTheme)
+          title: Text(log.name),
+          subtitle: Text(
+            '${log.grams.round()} g · ${log.meal} · $kcal',
+            style: textTheme.bodySmall?.copyWith(color: mutedColor),
           ),
-          onPressed: () => ref.read(foodLogsDaoProvider).deleteLog(log.id),
+          trailing: IconButton(
+            tooltip: context.s('food.remove_tooltip'),
+            // Иконка удаления — нейтральный textFaint (не акцент, не ember)
+            icon: Icon(
+              Icons.close,
+              size: 18,
+              color: ext?.textFaint,
+            ),
+            // Кнопка-корзина: тот же снапшот-паттерн, что и свайп
+            onPressed: () => _deleteWithUndo(context, ref),
+          ),
         ),
       ),
     );
@@ -406,6 +429,29 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
   /// Монотонно растущий счётчик запросов — чтобы игнорировать устаревшие ответы.
   int _requestSeq = 0;
 
+  // --- Недавние продукты (Task 2) ---
+  // Загружаются один раз при открытии листа; обновляются если нужно.
+  List<FoodLogsTableData> _recentLogs = [];
+  bool _recentLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Загружаем недавние продукты в фоне сразу при открытии листа
+    _loadRecent();
+  }
+
+  Future<void> _loadRecent() async {
+    final dao = ref.read(foodLogsDaoProvider);
+    final logs = await dao.recentDistinctLogs(limit: 10);
+    if (mounted) {
+      setState(() {
+        _recentLogs = logs;
+        _recentLoaded = true;
+      });
+    }
+  }
+
   @override
   void dispose() {
     if (_listening) _speech.stop();
@@ -463,6 +509,28 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
         }
       },
     );
+  }
+
+  /// Повторно залогировать недавний продукт одним тапом (Task 2).
+  /// Берём те же граммы и приём что были в последней записи этого продукта.
+  /// КБЖУ — из сохранённой записи, сеть не нужна.
+  Future<void> _relogRecent(FoodLogsTableData recent) async {
+    final dao = ref.read(foodLogsDaoProvider);
+    // Определяем приём по текущему времени суток, если хочется;
+    // но используем meal из записи — студент обычно ест в одно и то же время.
+    await dao.addLog(
+      date: DateTime.now(),
+      meal: recent.meal,
+      name: recent.name,
+      grams: recent.grams,
+      calories: recent.calories,
+      protein: recent.protein,
+      fat: recent.fat,
+      carbs: recent.carbs,
+      sugar: recent.sugar,
+      fiber: recent.fiber,
+    );
+    if (mounted) Navigator.of(context).pop();
   }
 
   /// Нормализованный запрос: без лишних пробелов, в нижнем регистре.
@@ -551,7 +619,14 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
               onSubmitted: (_) => _search(),
               onChanged: (value) {
                 _debounce?.cancel();
-                if (value.trim().isEmpty) return;
+                if (value.trim().isEmpty) {
+                  // Запрос очищен — сбрасываем результаты, покажем «Недавнее»
+                  setState(() {
+                    _results = [];
+                    _error = null;
+                  });
+                  return;
+                }
                 _debounce = Timer(const Duration(milliseconds: 400), _search);
               },
               decoration: InputDecoration(
@@ -626,6 +701,53 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                   style: textTheme.bodyMedium?.copyWith(color: mutedColor),
                 ),
               )
+            // Когда запрос пустой — показываем «Недавнее» (Task 2)
+            else if (_controller.text.trim().isEmpty && _recentLoaded)
+              _recentLogs.isEmpty
+                  ? const SizedBox.shrink()
+                  : Flexible(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 4),
+                            child: Text(
+                              context.s('food.recent_title'),
+                              style: textTheme.labelMedium
+                                  ?.copyWith(color: mutedColor),
+                            ),
+                          ),
+                          Flexible(
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: _recentLogs.length,
+                              itemBuilder: (context, i) {
+                                final r = _recentLogs[i];
+                                final kcal = r.calories == null
+                                    ? null
+                                    : '${r.calories!.round()} kcal';
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: FoodIconTile(name: r.name),
+                                  title: Text(r.name),
+                                  subtitle: Text(
+                                    [
+                                      '${r.grams.round()} g',
+                                      ?kcal,
+                                    ].join(' · '),
+                                    style: textTheme.bodySmall
+                                        ?.copyWith(color: mutedColor),
+                                  ),
+                                  // 1 тап — залогировать повторно без ввода граммов
+                                  onTap: () => _relogRecent(r),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
             else
               Flexible(
                 child: ListView.builder(

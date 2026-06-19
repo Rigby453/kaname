@@ -113,4 +113,15 @@ class GoalsDao extends DatabaseAccessor<AppDatabase> with _$GoalsDaoMixin {
   Future<void> removeStep(String id) async {
     await (delete(goalStepsTable)..where((t) => t.id.equals(id))).go();
   }
+
+  /// Восстановить шаг из снапшота (после Undo).
+  /// Сохраняет тот же id и sortOrder, чтобы порядок не нарушился.
+  /// Также сдвигает updatedAt родительской цели для правильной сортировки.
+  Future<void> restoreStep(GoalStepsTableData snapshot) async {
+    await into(goalStepsTable).insertOnConflictUpdate(snapshot);
+    // Обновляем updatedAt родительской цели
+    await (update(goalsTable)..where((t) => t.id.equals(snapshot.goalId))).write(
+      GoalsTableCompanion(updatedAt: Value(DateTime.now())),
+    );
+  }
 }

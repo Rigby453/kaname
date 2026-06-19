@@ -320,6 +320,25 @@ const Map<String, Map<String, String>> foodStrings = {
     'de': '„{name}" als {meal} eingetragen',
   },
 
+  // Undo-снэкбар после удаления лога еды (Task 1)
+  'food.log_removed': {
+    'en': 'removed',
+    'ru': 'удалено',
+    'de': 'entfernt',
+  },
+
+  // Секция «Недавнее» в листе поиска (Task 2)
+  'food.recent_title': {
+    'en': 'Recent',
+    'ru': 'Недавнее',
+    'de': 'Zuletzt',
+  },
+  'food.recent_log_added': {
+    'en': 'Added again',
+    'ru': 'Добавлено снова',
+    'de': 'Erneut hinzugefügt',
+  },
+
   'food.scan_barcode_title': {
     'en': 'Scan barcode',
     'ru': 'Сканирование штрихкода',

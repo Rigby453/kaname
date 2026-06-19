@@ -76,4 +76,38 @@ class FoodLogsDao extends DatabaseAccessor<AppDatabase>
           ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
         .get();
   }
+
+  /// Восстановить запись из снапшота (Undo после удаления).
+  /// Если запись с тем же id уже есть — заменяем (insertOnConflictUpdate).
+  /// Не меняет схему БД.
+  Future<void> restoreLog(FoodLogsTableData snapshot) {
+    return into(foodLogsTable).insertOnConflictUpdate(snapshot);
+  }
+
+  /// Последние N уникальных (по имени) продуктов из истории.
+  /// Используется для секции «Недавнее» в листе поиска.
+  /// Дедупликация по [name]: берём последнюю запись для каждого имени,
+  /// сортируем по createdAt убывающе, возвращаем не более [limit].
+  Future<List<FoodLogsTableData>> recentDistinctLogs({int limit = 10}) async {
+    // Drift не имеет DISTINCT ON, поэтому делаем через raw query с подзапросом.
+    // Безопасно: читаем только, не меняем схему.
+    final rows = await customSelect(
+      '''
+      SELECT f.*
+      FROM food_logs f
+      INNER JOIN (
+        SELECT name, MAX(created_at) AS max_created
+        FROM food_logs
+        GROUP BY name
+      ) latest ON f.name = latest.name AND f.created_at = latest.max_created
+      ORDER BY f.created_at DESC
+      LIMIT ?
+      ''',
+      variables: [Variable.withInt(limit)],
+      readsFrom: {foodLogsTable},
+    ).get();
+
+    // Конвертируем QueryRow → FoodLogsTableData через Drift-маппинг
+    return rows.map((row) => foodLogsTable.map(row.data)).toList();
+  }
 }

@@ -162,6 +162,16 @@ const Map<String, Map<String, String>> planDiaryStrings = {
     'ru': 'Добавлено на сегодня',
     'de': 'Für heute hinzugefügt',
   },
+  'plan.step_removed': {
+    'en': 'Step removed',
+    'ru': 'Шаг удалён',
+    'de': 'Schritt entfernt',
+  },
+  'plan.step_delete_tooltip': {
+    'en': 'Delete step',
+    'ru': 'Удалить шаг',
+    'de': 'Schritt löschen',
+  },
 
   // Plan — GoalsScreen: диалог новой цели
   'plan.goals_new_title': {'en': 'New goal', 'ru': 'Новая цель', 'de': 'Neues Ziel'},

@@ -85,4 +85,20 @@ class HabitsDao extends DatabaseAccessor<AppDatabase> with _$HabitsDaoMixin {
     return (update(habitsTable)..where((t) => t.id.equals(id)))
         .write(const HabitsTableCompanion(archived: Value(true)));
   }
+
+  /// Полностью удалить привычку по id.
+  /// Логи выполнения (HabitLogsTable) при этом НЕ удаляются — они привязаны
+  /// по habitId, но foreign key не каскадирует на delete в Drift (нет ON DELETE CASCADE).
+  /// При восстановлении через [restoreHabit] привычка вернётся с тем же id,
+  /// и существующие логи снова будут доступны.
+  Future<void> deleteHabit(String id) {
+    return (delete(habitsTable)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Восстановить привычку из снапшота (после Undo).
+  /// insertOnConflictUpdate перезапишет запись если она вдруг уже существует.
+  /// Логи выполнения сохраняются в HabitLogsTable — прогресс не теряется.
+  Future<void> restoreHabit(HabitsTableData snapshot) {
+    return into(habitsTable).insertOnConflictUpdate(snapshot);
+  }
 }
