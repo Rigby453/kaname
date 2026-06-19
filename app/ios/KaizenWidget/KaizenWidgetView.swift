@@ -6,8 +6,16 @@
 // Стрик — theme.textMuted (нейтрально, НЕ accent, §5 WIDGET.md, §5 design-tokens).
 // Фон — theme.surface, скругление radius 24 (§5 WIDGET.md).
 //
-// Deep-link: тап виджета → открывает приложение по URL kaizen://widget/today
-// (нужно зарегистрировать URL scheme в Runner Info.plist, см. SETUP-ios-widget.md).
+// Deep-link (§4 WIDGET.md, [iOS-UNVERIFIED]):
+//   Малый/средний: .widgetURL(URL(string: "kaizen://widget/today")) — один URL на весь виджет.
+//   Большой:       Link(destination:) на каждую строку задачи → kaizen://widget/day?date=<ISO>
+//                  + Link на кнопку «+» → kaizen://add-task.
+//                  Остальной фон (.widgetURL) → kaizen://widget/today.
+//   Kai тапается → open_today (через .widgetURL или явный Link).
+//
+// URL scheme 'kaizen' должен быть зарегистрирован в Runner Info.plist:
+//   URL Types → identifier com.kaizen.app, URL Schemes: kaizen.
+//   (Подробнее: docs/SETUP-ios-widget.md §6)
 
 import SwiftUI
 import WidgetKit
@@ -220,6 +228,7 @@ struct LargeWidgetView: View {
                     .padding(.vertical, 10)
 
                 // Список пунктов (до 4)
+                // [iOS-UNVERIFIED] каждая строка обёрнута в Link с deep-link URL
                 if entry.nextItems.isEmpty {
                     Spacer()
                     Text("Nothing scheduled")
@@ -230,8 +239,12 @@ struct LargeWidgetView: View {
                 } else {
                     let visible = Array(entry.nextItems.prefix(4))
                     ForEach(visible) { item in
-                        TaskRowView(item: item, theme: entry.theme, fontSize: 14)
-                            .padding(.vertical, 3)
+                        // Строка задачи → open_day для сегодняшней даты.
+                        // Дату берём из todayISOString (вычисляется при рендере).
+                        Link(destination: URL(string: "kaizen://widget/day?date=\(todayISOString)")!) {
+                            TaskRowView(item: item, theme: entry.theme, fontSize: 14)
+                                .padding(.vertical, 3)
+                        }
                     }
                     // «Ещё N» если больше 4
                     let extra = entry.nextItems.count - 4
@@ -272,6 +285,14 @@ struct LargeWidgetView: View {
     private var mainFraction: CGFloat {
         guard entry.mainTotal > 0 else { return 0 }
         return CGFloat(entry.mainDone) / CGFloat(entry.mainTotal)
+    }
+
+    /// Сегодняшняя дата в формате yyyy-MM-dd (для deep-link URL строк задач).
+    /// [iOS-UNVERIFIED]
+    private var todayISOString: String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        return fmt.string(from: entry.date)
     }
 }
 

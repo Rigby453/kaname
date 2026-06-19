@@ -19,6 +19,7 @@ import 'services/api/api_client.dart';
 import 'services/notifications/notification_service.dart';
 import 'services/sync/sync_service.dart';
 import 'services/widget/widget_service.dart' show refreshHomeWidget, saveLastOpenedAt;
+import 'services/widget/widget_actions.dart' show initWidgetActions;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,11 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
 
     // Записываем timestamp первого открытия (для «дней без захода» в виджете).
     saveLastOpenedAt();
+
+    // Инициализируем обработку deep-link действий из домашнего виджета.
+    // Cold start: post-frame callback запрашивает pending action через getLaunchAction.
+    // Warm start: handler слушает invokeMethod("onWidgetAction") от нативной стороны.
+    initWidgetActions(ref);
 
     // Запускаем синхронизацию при возврате приложения на передний план.
     // Ошибки поглощаются внутри syncNow — UI не затрагивается.

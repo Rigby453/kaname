@@ -113,18 +113,27 @@ kai_away_harsh.png
 
 ## Шаг 6 — URL Scheme для deep-link виджета
 
-Тапы из виджета открывают приложение по URL:
-- `kaizen://widget/today` — тап по телу виджета
-- `kaizen://add-task` — кнопка `+` в большом виджете
+Тапы из виджета открывают приложение по URL (scheme `kaizen://`):
+
+| URL | Зона виджета | Действие |
+|-----|-------------|---------|
+| `kaizen://widget/today` | фон, Kai (small/medium), `.widgetURL` large | open_today → /today |
+| `kaizen://widget/day?date=yyyy-MM-dd` | строки задач в large | open_day → /plan (выбранный день) |
+| `kaizen://add-task` | кнопка «+» в large | add_task → AddTaskSheet |
 
 Чтобы приложение открывалось:
 1. Runner target → **Info** tab → **URL Types** → нажми `+`.
 2. Identifier: `com.kaizen.app`
 3. URL Schemes: `kaizen`
 
-В коде Flutter (main.dart или go_router) обработай входящий URL через
-`getInitialUri()` / `uriLinkStream` из пакета `app_links` (или `uni_links`).
-Это отдельная задача — виджет работает и без неё, просто откроет приложение на главном экране.
+Обработка URL реализована в `AppDelegate.swift` (`application(_:open:options:)`) без
+дополнительных пакетов. Используется MethodChannel `kaizen/widget` (те же два метода
+`getLaunchAction` и `onWidgetAction`, что и на Android):
+- **Cold start**: URL из `launchOptions` сохраняется как pending, Flutter вызывает
+  `getLaunchAction` при старте и получает `{action, date?}`.
+- **Warm start**: URL передаётся немедленно через `channel.invokeMethod("onWidgetAction")`.
+
+Flutter-обработчик навигирует: `widget_actions.dart` (тот же, что и на Android).
 
 ---
 

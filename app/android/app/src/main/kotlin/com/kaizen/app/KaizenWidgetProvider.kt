@@ -14,6 +14,8 @@ import android.widget.RemoteViews
 import org.json.JSONArray
 import org.json.JSONException
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 /**
@@ -28,6 +30,12 @@ import java.time.temporal.ChronoUnit
  *
  * Темизация: цвета приходят из SharedPreferences (Flutter пишет через MethodChannel).
  * Away-логика: если last_opened_at старше 2 дней — emotion переопределяется в "away".
+ *
+ * Deep-links (§4 WIDGET.md):
+ *   - фон/Kai        → widget_action="open_today"
+ *   - строки пунктов → widget_action="open_day" + widget_date="yyyy-MM-dd" (сегодня)
+ *   - кнопка «+»     → widget_action="add_task"
+ * Flutter читает действие через getLaunchAction (cold start) или onWidgetAction (warm).
  */
 class KaizenWidgetProvider : AppWidgetProvider() {
 
@@ -49,6 +57,60 @@ class KaizenWidgetProvider : AppWidgetProvider() {
         "deadline" -> "⚑"
         "task" -> "●"
         else -> "•"
+    }
+
+    // ─── Формирование PendingIntent с заданным действием ─────────────────────
+
+    /**
+     * Базовый Intent на MainActivity с extra widget_action (и опционально widget_date).
+     * FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT — стандарт для API 23+.
+     * requestCode должен быть уникальным для каждой зоны/строки, иначе Android
+     * переиспользует тот же PendingIntent (подменяя extras).
+     */
+    private fun makeActionPendingIntent(
+        context: Context,
+        requestCode: Int,
+        action: String,
+        date: String? = null,
+    ): PendingIntent {
+        val intent = context.packageManager
+            .getLaunchIntentForPackage(context.packageName)
+            ?.apply {
+                // Очищаем флаги нового task-стека чтобы попасть в onNewIntent
+                // если приложение уже открыто (singleTop).
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("widget_action", action)
+                if (date != null) putExtra("widget_date", date)
+            }
+            ?: Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("widget_action", action)
+                if (date != null) putExtra("widget_date", date)
+            }
+
+        val pendingFlags = if (Build.VERSION.SDK_INT >= 23)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        else
+            PendingIntent.FLAG_UPDATE_CURRENT
+
+        return PendingIntent.getActivity(context, requestCode, intent, pendingFlags)
+    }
+
+    /**
+     * Сегодняшняя дата в ISO формате yyyy-MM-dd (для extra widget_date).
+     * Используется для всех пунктов виджета, т.к. виджет показывает задачи сегодняшнего дня.
+     */
+    private fun todayIso(): String {
+        return if (Build.VERSION.SDK_INT >= 26) {
+            LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+        } else {
+            // Fallback для API < 26 — форматируем через java.util.Calendar
+            val c = java.util.Calendar.getInstance()
+            val y = c.get(java.util.Calendar.YEAR)
+            val m = c.get(java.util.Calendar.MONTH) + 1
+            val d = c.get(java.util.Calendar.DAY_OF_MONTH)
+            "%04d-%02d-%02d".format(y, m, d)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -88,22 +150,11 @@ class KaizenWidgetProvider : AppWidgetProvider() {
         widgetId: Int,
         data: WidgetData
     ) {
-        // PendingIntent — тап открывает приложение
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        val pendingFlags = if (Build.VERSION.SDK_INT >= 23)
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        else
-            PendingIntent.FLAG_UPDATE_CURRENT
-
-        val openAppPending: PendingIntent? = launchIntent?.let {
-            PendingIntent.getActivity(context, 0, it, pendingFlags)
-        }
-
         if (Build.VERSION.SDK_INT >= 31) {
             // ── API 31+: Responsive RemoteViews (система выбирает по реальному размеру) ──
-            val smallViews = buildSmallViews(context, data, openAppPending)
-            val mediumViews = buildMediumViews(context, data, openAppPending)
-            val largeViews = buildLargeViews(context, data, openAppPending)
+            val smallViews = buildSmallViews(context, data)
+            val mediumViews = buildMediumViews(context, data)
+            val largeViews = buildLargeViews(context, data)
 
             // SizeF(width, height) в dp — система сопоставляет с реальным размером виджета
             val viewsMap = mapOf(
@@ -120,9 +171,9 @@ class KaizenWidgetProvider : AppWidgetProvider() {
             val minH = opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
 
             val views = when {
-                minH >= largeMinHeightDp -> buildLargeViews(context, data, openAppPending)
-                minW >= mediumMinWidthDp -> buildMediumViews(context, data, openAppPending)
-                else -> buildSmallViews(context, data, openAppPending)
+                minH >= largeMinHeightDp -> buildLargeViews(context, data)
+                minW >= mediumMinWidthDp -> buildMediumViews(context, data)
+                else -> buildSmallViews(context, data)
             }
             appWidgetManager.updateAppWidget(widgetId, views)
         }
@@ -135,12 +186,12 @@ class KaizenWidgetProvider : AppWidgetProvider() {
     private fun buildSmallViews(
         context: Context,
         data: WidgetData,
-        openApp: PendingIntent?
     ): RemoteViews {
         val v = RemoteViews(context.packageName, R.layout.kaizen_widget_small)
 
-        // Тап на весь виджет → открыть приложение
-        openApp?.let { v.setOnClickPendingIntent(R.id.widget_root_small, it) }
+        // Тап на корень/фон → Today (requestCode 100)
+        val openToday = makeActionPendingIntent(context, 100, "open_today")
+        v.setOnClickPendingIntent(R.id.widget_root_small, openToday)
 
         // Цвета
         applyBgColor(v, R.id.widget_root_small, data)
@@ -168,9 +219,9 @@ class KaizenWidgetProvider : AppWidgetProvider() {
         v.setTextViewText(R.id.small_streak, "🔥${data.streak}d")
         v.setTextColor(R.id.small_streak, mutedColor)
 
-        // Kai
+        // Kai → Today (requestCode 101)
         applyKai(context, v, R.id.kai_image_small, data)
-        openApp?.let { v.setOnClickPendingIntent(R.id.kai_image_small, it) }
+        v.setOnClickPendingIntent(R.id.kai_image_small, makeActionPendingIntent(context, 101, "open_today"))
 
         return v
     }
@@ -178,11 +229,12 @@ class KaizenWidgetProvider : AppWidgetProvider() {
     private fun buildMediumViews(
         context: Context,
         data: WidgetData,
-        openApp: PendingIntent?
     ): RemoteViews {
         val v = RemoteViews(context.packageName, R.layout.kaizen_widget_medium)
 
-        openApp?.let { v.setOnClickPendingIntent(R.id.widget_root_medium, it) }
+        // Фон/корень → Today (requestCode 200)
+        val openToday = makeActionPendingIntent(context, 200, "open_today")
+        v.setOnClickPendingIntent(R.id.widget_root_medium, openToday)
         applyBgColor(v, R.id.widget_root_medium, data)
 
         val textColor = safeColor(data.themeText, defaultText)
@@ -196,7 +248,9 @@ class KaizenWidgetProvider : AppWidgetProvider() {
         v.setTextViewText(R.id.medium_main_progress, "${data.mainDone}/${data.mainTotal} main")
         v.setTextColor(R.id.medium_main_progress, textColor)
 
-        // Пункт 1
+        val today = todayIso()
+
+        // Пункт 1 → open_day (requestCode 201)
         val first = data.nextItems.getOrNull(0)
         if (first != null) {
             v.setViewVisibility(R.id.medium_row1, View.VISIBLE)
@@ -206,7 +260,8 @@ class KaizenWidgetProvider : AppWidgetProvider() {
             v.setTextColor(R.id.medium_icon1, mutedColor)
             v.setTextViewText(R.id.medium_title1, first.title)
             v.setTextColor(R.id.medium_title1, textColor)
-            openApp?.let { v.setOnClickPendingIntent(R.id.medium_row1, it) }
+            v.setOnClickPendingIntent(R.id.medium_row1,
+                makeActionPendingIntent(context, 201, "open_day", today))
         } else {
             v.setViewVisibility(R.id.medium_row1, View.VISIBLE)
             v.setTextViewText(R.id.medium_time1, "")
@@ -215,7 +270,7 @@ class KaizenWidgetProvider : AppWidgetProvider() {
             v.setTextColor(R.id.medium_title1, mutedColor)
         }
 
-        // Пункт 2
+        // Пункт 2 → open_day (requestCode 202)
         val second = data.nextItems.getOrNull(1)
         if (second != null) {
             v.setViewVisibility(R.id.medium_row2, View.VISIBLE)
@@ -225,14 +280,16 @@ class KaizenWidgetProvider : AppWidgetProvider() {
             v.setTextColor(R.id.medium_icon2, mutedColor)
             v.setTextViewText(R.id.medium_title2, second.title)
             v.setTextColor(R.id.medium_title2, textColor)
-            openApp?.let { v.setOnClickPendingIntent(R.id.medium_row2, it) }
+            v.setOnClickPendingIntent(R.id.medium_row2,
+                makeActionPendingIntent(context, 202, "open_day", today))
         } else {
             v.setViewVisibility(R.id.medium_row2, View.GONE)
         }
 
-        // Kai
+        // Kai → Today (requestCode 203)
         applyKai(context, v, R.id.kai_image_medium, data)
-        openApp?.let { v.setOnClickPendingIntent(R.id.kai_image_medium, it) }
+        v.setOnClickPendingIntent(R.id.kai_image_medium,
+            makeActionPendingIntent(context, 203, "open_today"))
 
         return v
     }
@@ -240,11 +297,12 @@ class KaizenWidgetProvider : AppWidgetProvider() {
     private fun buildLargeViews(
         context: Context,
         data: WidgetData,
-        openApp: PendingIntent?
     ): RemoteViews {
         val v = RemoteViews(context.packageName, R.layout.kaizen_widget_large)
 
-        openApp?.let { v.setOnClickPendingIntent(R.id.widget_root_large, it) }
+        // Фон/корень → Today (requestCode 300)
+        val openToday = makeActionPendingIntent(context, 300, "open_today")
+        v.setOnClickPendingIntent(R.id.widget_root_large, openToday)
         applyBgColor(v, R.id.widget_root_large, data)
 
         val textColor = safeColor(data.themeText, defaultText)
@@ -258,7 +316,9 @@ class KaizenWidgetProvider : AppWidgetProvider() {
         v.setTextViewText(R.id.large_main_progress, "◓ ${data.mainDone}/${data.mainTotal} main")
         v.setTextColor(R.id.large_main_progress, textColor)
 
-        // Строки расписания (row1..row4)
+        val today = todayIso()
+
+        // Строки расписания (row1..row4) → open_day (requestCode 301..304)
         val rowData = listOf(
             Triple(R.id.large_row1, R.id.large_time1, R.id.large_icon1) to R.id.large_title1,
             Triple(R.id.large_row2, R.id.large_time2, R.id.large_icon2) to R.id.large_title2,
@@ -280,7 +340,9 @@ class KaizenWidgetProvider : AppWidgetProvider() {
                 v.setTextColor(iconId, mutedColor)
                 v.setTextViewText(titleId, item.title)
                 v.setTextColor(titleId, textColor)
-                openApp?.let { v.setOnClickPendingIntent(rowId, it) }
+                // Уникальный requestCode = 301..304 для каждой строки
+                v.setOnClickPendingIntent(rowId,
+                    makeActionPendingIntent(context, 301 + idx, "open_day", today))
             } else {
                 v.setViewVisibility(rowId, View.GONE)
             }
@@ -290,13 +352,15 @@ class KaizenWidgetProvider : AppWidgetProvider() {
         v.setViewVisibility(R.id.large_empty, if (anyVisible) View.GONE else View.VISIBLE)
         v.setTextColor(R.id.large_empty, mutedColor)
 
-        // Кнопка «+»
+        // Кнопка «+» → add_task (requestCode 305)
         v.setTextColor(R.id.large_add_btn, textColor)
-        openApp?.let { v.setOnClickPendingIntent(R.id.large_add_btn, it) }
+        v.setOnClickPendingIntent(R.id.large_add_btn,
+            makeActionPendingIntent(context, 305, "add_task"))
 
-        // Kai
+        // Kai → Today (requestCode 306)
         applyKai(context, v, R.id.kai_image_large, data)
-        openApp?.let { v.setOnClickPendingIntent(R.id.kai_image_large, it) }
+        v.setOnClickPendingIntent(R.id.kai_image_large,
+            makeActionPendingIntent(context, 306, "open_today"))
 
         return v
     }
