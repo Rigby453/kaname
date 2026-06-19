@@ -74,6 +74,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               onPressed: () => showAddTaskSheet(context, day: selectedDay),
               icon: const Icon(Icons.add),
               label: Text(context.s('today.fab_add')),
+              // Тень для визуальной отдельности FAB от контента (тема: elevation=0)
+              elevation: 4,
+              focusElevation: 6,
+              hoverElevation: 6,
             )
           : CollapsingFab(
               onPressed: () => showAddTaskSheet(context, day: selectedDay),

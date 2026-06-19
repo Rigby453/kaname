@@ -12,7 +12,20 @@
 //
 // Слушает UserScrollNotification, поднимающиеся от ближайшего прокручиваемого
 // потомка (ListView, SingleChildScrollView и т.д.). Если reduce-motion включён
-// (MediaQuery.disableAnimations), переключение происходит мгновенно (snap).
+// (MediaQuery.disableAnimations), переключение происходит мгновенно (снимаем
+// длительность до Duration.zero — кривая не играет роли).
+//
+// Зазор над таб-баром: extraBottomMargin (по умолчанию 16dp) добавляется к
+// стандартному отступу Scaffold (тоже 16dp) → итого ≥32dp до верхней грани
+// NavigationBar. Это гарантирует видимый зазор даже с декорацией nav-bar.
+//
+// Тень: elevation (по умолчанию 4dp) переопределяет тему, где elevation=0.
+// Тень создаёт «слой» — визуально FAB не сливается с nav-bar.
+//
+// 360px: в свёрнутом состоянии FAB — маленький кружок ~56dp. В развёрнутом —
+// ширина ограничена доступной областью через IntrinsicWidth + ConstrainedBox.
+// При любой ширине экрана FAB не перекрывает подпись таба Diary: nav-bar ниже,
+// FAB — выше и имеет достаточный зазор.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -25,10 +38,13 @@ class CollapsingFab extends StatefulWidget {
     required this.onPressed,
     required this.icon,
     required this.label,
-    // Дополнительный отступ снизу (поверх стандартного FAB-отступа).
-    // Гарантирует зазор ≥16dp над таб-баром даже на нестандартных темах.
-    this.extraBottomMargin = 0.0,
+    // Дополнительный отступ снизу поверх стандартного FAB-отступа Scaffold.
+    // Вместе со стандартным отступом 16dp даёт гарантированный зазор ≥16dp.
+    this.extraBottomMargin = 16.0,
     this.tooltip,
+    // Тень: переопределяет FloatingActionButtonThemeData.elevation = 0
+    // — без тени FAB визуально сливается с nav-bar. 4dp — лёгкий «слой».
+    this.elevation = 4.0,
   });
 
   final VoidCallback onPressed;
@@ -42,8 +58,11 @@ class CollapsingFab extends StatefulWidget {
   /// Tooltip для accessibility.
   final String? tooltip;
 
-  /// Дополнительный нижний отступ в dp.
+  /// Дополнительный нижний отступ в dp (поверх стандартного 16dp Scaffold).
   final double extraBottomMargin;
+
+  /// Тень FAB. Переопределяет тему, где по умолчанию elevation=0.
+  final double elevation;
 
   @override
   State<CollapsingFab> createState() => _CollapsingFabState();
@@ -77,9 +96,11 @@ class _CollapsingFabState extends State<CollapsingFab>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Обновляем длительность с учётом reduce-motion
-    _ctrl.duration = effectiveDuration(context, kDurationFast);
-    _ctrl.reverseDuration = effectiveDuration(context, kDurationFast);
+    // Длительность по spec ANIMATIONS.md §0: kDurationNormal = 280мс.
+    // При reduce-motion → Duration.zero (мгновенное переключение без анимации).
+    final dur = effectiveDuration(context, kDurationNormal);
+    _ctrl.duration = dur;
+    _ctrl.reverseDuration = dur;
   }
 
   @override
@@ -89,7 +110,9 @@ class _CollapsingFabState extends State<CollapsingFab>
   }
 
   void _onScrollNotification(UserScrollNotification notification) {
-    if (notification.depth != 0) return; // реагируем только на верхний скроллер
+    // Реагируем только на верхний (ближайший) скроллер — depth==0.
+    // Вложенные прокрутки (например, горизонтальный WeekStrip) игнорируем.
+    if (notification.depth != 0) return;
 
     final scrollingDown = notification.direction == ScrollDirection.reverse;
     final scrollingUp = notification.direction == ScrollDirection.forward;
@@ -105,18 +128,17 @@ class _CollapsingFabState extends State<CollapsingFab>
 
   @override
   Widget build(BuildContext context) {
-    final padding = widget.extraBottomMargin > 0
-        ? Padding(
-            padding: EdgeInsets.only(bottom: widget.extraBottomMargin),
-            child: _buildFab(context),
-          )
-        : _buildFab(context);
+    // Дополнительный отступ снизу для гарантированного зазора над nav-bar.
+    final fab = Padding(
+      padding: EdgeInsets.only(bottom: widget.extraBottomMargin),
+      child: _buildFab(context),
+    );
     return NotificationListener<UserScrollNotification>(
       onNotification: (n) {
         _onScrollNotification(n);
-        return false; // не поглощаем уведомление
+        return false; // не поглощаем уведомление — другие слушатели видят его
       },
-      child: padding,
+      child: fab,
     );
   }
 
@@ -124,16 +146,21 @@ class _CollapsingFabState extends State<CollapsingFab>
     return FloatingActionButton.extended(
       onPressed: widget.onPressed,
       tooltip: widget.tooltip,
+      // Переопределяем elevation темы (0) → задаём явно для видимой тени.
+      // Тень создаёт «отдельный слой» над контентом и nav-bar.
+      elevation: widget.elevation,
+      focusElevation: widget.elevation + 2,
+      hoverElevation: widget.elevation + 2,
       icon: widget.icon,
       // Метка оборачивается в SizeTransition по ширине.
-      // При _expanded==false ширина = 0 → visually compact, но кнопка остаётся
-      // FloatingActionButton.extended (одна реализация вместо двух).
+      // При _expanded==false ширина = 0 → визуально compact, кнопка остаётся
+      // FloatingActionButton.extended (одна реализация вместо двух вариантов).
+      // ClipRect предотвращает выход текста за границы при анимации схлопывания.
       label: ClipRect(
         child: SizeTransition(
           sizeFactor: _widthFactor,
           axis: Axis.horizontal,
-          // alignment: centerLeft — анимация схлопывается слева направо
-          // (axisAlignment: -1 устарел в Flutter 3.41+, заменён на alignment)
+          // alignment: centerLeft — анимация схлопывается к левому краю
           alignment: Alignment.centerLeft,
           child: widget.label,
         ),
