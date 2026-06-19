@@ -84,6 +84,46 @@ class FoodLogsDao extends DatabaseAccessor<AppDatabase>
     return into(foodLogsTable).insertOnConflictUpdate(snapshot);
   }
 
+  /// Одноразовое чтение записей за конкретный день (без потока).
+  /// Используется для «Повторить прошлую неделю»: берём логи за 7 дней назад.
+  Future<List<FoodLogsTableData>> logsForDay(DateTime date) {
+    final dayStart = DateTime.utc(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    return (select(foodLogsTable)
+          ..where(
+            (t) =>
+                t.date.isBiggerOrEqualValue(dayStart) &
+                t.date.isSmallerThanValue(dayEnd),
+          )
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .get();
+  }
+
+  /// Массовое добавление логов (для «Повторить прошлую неделю»).
+  /// Возвращает список id вставленных записей — для Undo.
+  Future<List<String>> addLogsAll(
+    List<FoodLogsTableCompanion> companions,
+  ) async {
+    final ids = <String>[];
+    await batch((b) {
+      for (final c in companions) {
+        b.insert(foodLogsTable, c);
+        // id уже задан в companion
+        final id = c.id.value;
+        ids.add(id);
+      }
+    });
+    return ids;
+  }
+
+  /// Удалить записи по списку id (для Undo «Повторить прошлую неделю»).
+  Future<void> deleteLogsById(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await (delete(foodLogsTable)
+          ..where((t) => t.id.isIn(ids)))
+        .go();
+  }
+
   /// Последние N уникальных (по имени) продуктов из истории.
   /// Используется для секции «Недавнее» в листе поиска.
   /// Дедупликация по [name]: берём последнюю запись для каждого имени,

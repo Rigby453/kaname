@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:convert' show base64Encode;
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +23,7 @@ import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/nutrition_targets.dart';
+import '../../core/utils/id.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
 import '../../core/widgets/undo_snack_bar.dart';
@@ -34,6 +36,95 @@ import 'food_icons.dart';
 import 'food_nutrition.dart';
 
 const List<String> _meals = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+// ---------------------------------------------------------------------------
+// Вспомогательные таблицы для локализованных названий дней недели.
+// DateTime.weekday: 1=Пн ... 7=Вс.
+// ---------------------------------------------------------------------------
+
+const _weekdayNamesEn = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const _weekdayNamesRu = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+const _weekdayNamesDe = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+/// Локализованное название дня недели (DateTime.weekday 1–7).
+String _weekdayName(BuildContext context, int weekday) {
+  final lang = Localizations.localeOf(context).languageCode;
+  final idx = (weekday - 1).clamp(0, 6);
+  return switch (lang) {
+    'ru' => _weekdayNamesRu[idx],
+    'de' => _weekdayNamesDe[idx],
+    _ => _weekdayNamesEn[idx],
+  };
+}
+
+/// «Повторить прошлую неделю»: копирует food_logs за тот же день недели 7 дней назад
+/// в текущий/выбранный [targetDate] (по умолчанию — сегодня).
+/// Каждая запись создаётся через addLog-совместимый путь (новый id, дата = today).
+/// После успеха показывает Undo-snackbar; по Undo удаляет только эту партию.
+Future<void> _repeatLastWeek(
+  BuildContext context,
+  WidgetRef ref, {
+  DateTime? targetDate,
+}) async {
+  final now = targetDate ?? DateTime.now();
+  // День-источник: тот же день недели 7 дней назад
+  final sourceDate = now.subtract(const Duration(days: 7));
+
+  final dao = ref.read(foodLogsDaoProvider);
+  final sourceLogs = await dao.logsForDay(sourceDate);
+
+  if (!context.mounted) return;
+
+  if (sourceLogs.isEmpty) {
+    // Мягкое сообщение — нет данных за тот день
+    final dayName = _weekdayName(context, sourceDate.weekday);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          context.s('food.repeat_week_empty').replaceFirst('{day}', dayName),
+        ),
+      ),
+    );
+    return;
+  }
+
+  // Строим companions с новыми id и датой = сегодня
+  final targetDayStart = DateTime.utc(now.year, now.month, now.day);
+  final companions = sourceLogs.map((src) {
+    final newId = uuidV4();
+    return FoodLogsTableCompanion(
+      id: Value(newId),
+      date: Value(targetDayStart),
+      meal: Value(src.meal),
+      name: Value(src.name),
+      grams: Value(src.grams),
+      calories: Value(src.calories),
+      protein: Value(src.protein),
+      fat: Value(src.fat),
+      carbs: Value(src.carbs),
+      sugar: Value(src.sugar),
+      fiber: Value(src.fiber),
+      createdAt: Value(DateTime.now()),
+    );
+  }).toList();
+
+  final insertedIds = await dao.addLogsAll(companions);
+
+  if (!context.mounted) return;
+
+  final dayName = _weekdayName(context, sourceDate.weekday);
+  final n = insertedIds.length;
+  // Показываем Undo-snackbar; по Undo — удаляем ровно эту партию
+  showUndoSnackBar(
+    context,
+    message: context
+        .s('food.repeat_week_done')
+        .replaceFirst('{n}', '$n')
+        .replaceFirst('{day}', dayName),
+    onUndo: () => dao.deleteLogsById(insertedIds),
+  );
+}
 
 /// Записи о еде за сегодня (реактивно).
 final _todayFoodProvider =
@@ -100,6 +191,19 @@ class FoodScreen extends ConsumerWidget {
               icon: const Icon(Icons.auto_awesome, size: 18),
               label: Text(context.s('food.ai_menu_btn')),
               onPressed: () => showAiMenuSheet(context, ref),
+            ),
+          ),
+          // «Повторить прошлую неделю»: копирует рацион того же дня недели -7 дней.
+          // Акцент не используется — вторичное действие (UX-LAYOUT §6.3).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Tooltip(
+              message: context.s('food.repeat_week_tooltip'),
+              child: TextButton.icon(
+                icon: const Icon(Icons.history, size: 18),
+                label: Text(context.s('food.repeat_week')),
+                onPressed: () => _repeatLastWeek(context, ref),
+              ),
             ),
           ),
           const SizedBox(height: 8),

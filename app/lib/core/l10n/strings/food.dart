@@ -339,6 +339,34 @@ const Map<String, Map<String, String>> foodStrings = {
     'de': 'Erneut hinzugefügt',
   },
 
+  // ---------------------------------------------------------------------------
+  // «Повторить меню прошлой недели»
+  // ---------------------------------------------------------------------------
+  // Кнопка на экране Food (рядом с AI-меню)
+  'food.repeat_week': {
+    'en': 'Repeat last week',
+    'ru': 'Повторить прошлую неделю',
+    'de': 'Letzte Woche wiederholen',
+  },
+  // Tooltip кнопки
+  'food.repeat_week_tooltip': {
+    'en': 'Copy meals from the same weekday last week',
+    'ru': 'Скопировать приёмы пищи из того же дня недели прошлой недели',
+    'de': 'Mahlzeiten vom gleichen Wochentag der letzten Woche kopieren',
+  },
+  // Snackbar после успешного копирования; {n} — число скопированных записей, {day} — день недели
+  'food.repeat_week_done': {
+    'en': '{n} meal(s) copied from last {day}',
+    'ru': '{n} приём(ов) скопировано из прошлой(ого) {day}',
+    'de': '{n} Mahlzeit(en) von letztem {day} kopiert',
+  },
+  // Snackbar когда за тот день 7 дней назад ничего нет; {day} — день недели
+  'food.repeat_week_empty': {
+    'en': 'Nothing logged last {day}',
+    'ru': 'В прошлую(ий) {day} ничего не записано',
+    'de': 'Letzten {day} nichts eingetragen',
+  },
+
   'food.scan_barcode_title': {
     'en': 'Scan barcode',
     'ru': 'Сканирование штрихкода',
