@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
@@ -171,8 +172,16 @@ class _AgendaRow extends StatelessWidget {
     final textMuted = ext?.textMuted ?? colorScheme.onSurface;
     final done = item.status == 'done';
 
+    // Иконка модуля — textMuted, ненавязчиво (только если есть ссылка)
+    final moduleIcon = _moduleLinkIcon(item.moduleLink, ext, colorScheme);
+
     return InkWell(
-      onTap: () => showAddTaskSheet(context, day: day, existing: item),
+      onTap: item.moduleLink != null
+          ? () => _openModule(context, item.moduleLink!)
+          : () => showAddTaskSheet(context, day: day, existing: item),
+      onLongPress: item.moduleLink != null
+          ? () => showAddTaskSheet(context, day: day, existing: item)
+          : null,
       child: Padding(
         // Комфортный вертикальный отступ строки
         padding: const EdgeInsets.symmetric(vertical: 7),
@@ -194,6 +203,12 @@ class _AgendaRow extends StatelessWidget {
                 child: Icon(Icons.shield_outlined,
                     size: 14, color: colorScheme.primary),
               ),
+            // Иконка модуля — показывается если задача привязана к модулю
+            if (moduleIcon != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: moduleIcon,
+              ),
             Expanded(
               child: Text(
                 item.title,
@@ -210,5 +225,34 @@ class _AgendaRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Иконка для значения moduleLink. null если ссылки нет.
+Widget? _moduleLinkIcon(
+  String? moduleLink,
+  FocusThemeExtension? ext,
+  ColorScheme colorScheme,
+) {
+  if (moduleLink == null) return null;
+  final color = ext?.textMuted ?? colorScheme.onSurface.withAlpha(160);
+  final icon = switch (moduleLink) {
+    'workout' => Icons.fitness_center,
+    'sleep'   => Icons.bedtime_outlined,
+    String s when s.startsWith('meal:') => Icons.restaurant_outlined,
+    _ => null,
+  };
+  if (icon == null) return null;
+  return Icon(icon, size: 14, color: color);
+}
+
+/// Навигирует в соответствующий модуль по значению moduleLink.
+void _openModule(BuildContext context, String moduleLink) {
+  if (moduleLink == 'workout') {
+    context.push('/workouts');
+  } else if (moduleLink == 'sleep') {
+    context.push('/sleep-report');
+  } else if (moduleLink.startsWith('meal:')) {
+    context.push('/food');
   }
 }

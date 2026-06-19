@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
@@ -99,12 +100,18 @@ class _ItemCard extends StatelessWidget {
     final cardBorderColor = isUrgent ? ember : borderColor;
     final cardBorderWidth = isUrgent ? 1.5 : 0.5; // hairline для обычных карточек
 
+    // Иконка модуля (аффорданс) — textMuted, ненавязчиво
+    final moduleIcon = _moduleLinkIcon(item.moduleLink, ext, colorScheme);
+
     return InkWell(
-      onTap: () => showAddTaskSheet(
-        context,
-        day: selectedDay,
-        existing: item,
-      ),
+      // Если задача привязана к модулю — тап открывает модуль.
+      // Долгий тап — открывает лист редактирования (как обычно).
+      onTap: item.moduleLink != null
+          ? () => _openModule(context, item.moduleLink!)
+          : () => showAddTaskSheet(context, day: selectedDay, existing: item),
+      onLongPress: item.moduleLink != null
+          ? () => showAddTaskSheet(context, day: selectedDay, existing: item)
+          : null,
       borderRadius: BorderRadius.circular(16), // radius.md
       child: Container(
         // 16dp внутренний отступ карточки (02-type-space §4.1)
@@ -163,6 +170,11 @@ class _ItemCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            // Иконка модуля (аффорданс) — показывается если задача привязана
+            if (moduleIcon != null) ...[
+              moduleIcon,
+              const SizedBox(width: 6),
+            ],
             // Значок типа
             _TypeBadge(type: item.type),
           ],
@@ -226,6 +238,35 @@ class _TypeBadge extends StatelessWidget {
             ),
       ),
     );
+  }
+}
+
+/// Иконка для значения moduleLink. null если ссылки нет.
+Widget? _moduleLinkIcon(
+  String? moduleLink,
+  FocusThemeExtension? ext,
+  ColorScheme colorScheme,
+) {
+  if (moduleLink == null) return null;
+  final color = ext?.textMuted ?? colorScheme.onSurface.withAlpha(160);
+  final icon = switch (moduleLink) {
+    'workout' => Icons.fitness_center,
+    'sleep'   => Icons.bedtime_outlined,
+    String s when s.startsWith('meal:') => Icons.restaurant_outlined,
+    _ => null,
+  };
+  if (icon == null) return null;
+  return Icon(icon, size: 16, color: color);
+}
+
+/// Навигирует в соответствующий модуль по значению moduleLink.
+void _openModule(BuildContext context, String moduleLink) {
+  if (moduleLink == 'workout') {
+    context.push('/workouts');
+  } else if (moduleLink == 'sleep') {
+    context.push('/sleep-report');
+  } else if (moduleLink.startsWith('meal:')) {
+    context.push('/food');
   }
 }
 

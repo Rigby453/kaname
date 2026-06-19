@@ -106,6 +106,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   late String _priority;
   late DateTime _scheduledAt;
   late int _durationMinutes;
+  // Ссылка на модуль: null = нет, или одно из значений moduleLink (локальное поле)
+  String? _moduleLink;
 
   bool get _isEditing => widget.existing != null;
 
@@ -126,6 +128,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _priority = existing?.priority ?? 'medium';
     _scheduledAt = existing?.scheduledAt ?? _defaultScheduledAt();
     _durationMinutes = existing?.durationMinutes ?? 30;
+    _moduleLink = existing?.moduleLink;
     // Инициализируем поле ручного ввода текущим значением, если оно не входит
     // в стандартный список пресетов — тогда пользователь сразу видит своё число.
     final isCustom = !_durations.contains(_durationMinutes);
@@ -434,6 +437,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           scheduledAt: Value(_scheduledAt),
           durationMinutes: Value(_durationMinutes),
           isProtected: Value(isProtected),
+          moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
           updatedAt: Value(now),
         ),
       );
@@ -449,6 +453,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           scheduledAt: Value(_scheduledAt),
           durationMinutes: Value(_durationMinutes),
           isProtected: Value(isProtected),
+          moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
           createdAt: Value(now),
           updatedAt: Value(now),
         ),
@@ -766,6 +771,13 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 16),
 
+            // Привязка к модулю — необязательный выбор (только для task/event)
+            _ModuleLinkPicker(
+              value: _moduleLink,
+              onChanged: (v) => setState(() => _moduleLink = v),
+            ),
+            const SizedBox(height: 16),
+
             // Вложения (фото / видео)
             Row(
               children: [
@@ -937,6 +949,70 @@ class _VideoDialogState extends State<_VideoDialog> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Выбор привязки к модулю — компактный DropdownButton (необязательный).
+// Значения: null, 'workout', 'meal:breakfast', 'meal:lunch', 'meal:dinner', 'sleep'.
+// ---------------------------------------------------------------------------
+
+class _ModuleLinkPicker extends StatelessWidget {
+  const _ModuleLinkPicker({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface.withAlpha(160);
+
+    // Пары: значение → локализованный ярлык
+    final options = <(String?, String)>[
+      (null, context.s('today.module_link_none')),
+      ('workout', context.s('today.module_link_workout')),
+      ('meal:breakfast', context.s('today.module_link_breakfast')),
+      ('meal:lunch', context.s('today.module_link_lunch')),
+      ('meal:dinner', context.s('today.module_link_dinner')),
+      ('sleep', context.s('today.module_link_sleep')),
+    ];
+
+    return Row(
+      children: [
+        Text(context.s('today.module_link_label'), style: textTheme.labelMedium),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: value,
+              isDense: true,
+              isExpanded: true,
+              style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface),
+              dropdownColor: colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              hint: Text(
+                context.s('today.module_link_none'),
+                style: textTheme.bodyMedium?.copyWith(color: textMuted),
+              ),
+              items: options.map((opt) {
+                final (val, label) = opt;
+                return DropdownMenuItem<String?>(
+                  value: val,
+                  child: Text(label),
+                );
+              }).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

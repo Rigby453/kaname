@@ -14,6 +14,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/animations/animated_check.dart';
@@ -350,16 +351,39 @@ class _TaskCardState extends State<_TaskCard> {
       color: isCompleted ? completedColor : colorScheme.onSurface,
     );
 
+    // Иконка модуля — отображается слева когда задача привязана к модулю
+    final moduleIcon = _moduleLinkIcon(widget.item.moduleLink, ext, colorScheme);
+
     return Pressable(
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 4),
         child: ListTile(
-          onTap: () => showAddTaskSheet(context, day: widget.day, existing: widget.item),
-          leading: Text(
-            DateFormat.Hm().format(widget.item.scheduledAt),
-            // labelSmall для временной метки — tertiary info
-            style: textTheme.labelSmall?.copyWith(color: ext?.textFaint),
-          ),
+          // Если задача привязана к модулю — тап открывает модуль;
+          // иначе — обычный лист редактирования.
+          onTap: widget.item.moduleLink != null
+              ? () => _openModule(context, widget.item.moduleLink!)
+              : () => showAddTaskSheet(context, day: widget.day, existing: widget.item),
+          // Долгое нажатие при наличии moduleLink → открыть лист редактирования
+          onLongPress: widget.item.moduleLink != null
+              ? () => showAddTaskSheet(context, day: widget.day, existing: widget.item)
+              : null,
+          leading: moduleIcon != null
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    moduleIcon,
+                    const SizedBox(height: 2),
+                    Text(
+                      DateFormat.Hm().format(widget.item.scheduledAt),
+                      style: textTheme.labelSmall?.copyWith(color: ext?.textFaint),
+                    ),
+                  ],
+                )
+              : Text(
+                  DateFormat.Hm().format(widget.item.scheduledAt),
+                  // labelSmall для временной метки — tertiary info
+                  style: textTheme.labelSmall?.copyWith(color: ext?.textFaint),
+                ),
           title: AnimatedDefaultTextStyle(
             style: titleStyle,
             duration: const Duration(milliseconds: 200),
@@ -374,6 +398,39 @@ class _TaskCardState extends State<_TaskCard> {
         ),
       ),
     );
+  }
+
+  /// Возвращает иконку модуля для данного значения moduleLink.
+  /// null — если ссылка отсутствует.
+  Widget? _moduleLinkIcon(
+    String? moduleLink,
+    FocusThemeExtension? ext,
+    ColorScheme colorScheme,
+  ) {
+    if (moduleLink == null) return null;
+    final color = ext?.textMuted ?? colorScheme.onSurface.withAlpha(160);
+    final icon = switch (moduleLink) {
+      'workout'       => Icons.fitness_center,
+      'sleep'         => Icons.bedtime_outlined,
+      // meal:* — иконка ресторана для всех приёмов
+      String s when s.startsWith('meal:') => Icons.restaurant_outlined,
+      _ => null,
+    };
+    if (icon == null) return null;
+    return Icon(icon, size: 18, color: color);
+  }
+
+  /// Навигирует в соответствующий модуль по значению moduleLink.
+  void _openModule(BuildContext context, String moduleLink) {
+    if (moduleLink == 'workout') {
+      context.push('/workouts');
+    } else if (moduleLink == 'sleep') {
+      context.push('/sleep-report');
+    } else if (moduleLink.startsWith('meal:')) {
+      // Food-экран не принимает параметр приёма пищи — открываем общий.
+      // TODO: расширить food_screen.dart scroll-to-meal (follow-up задача).
+      context.push('/food');
+    }
   }
 
   Widget? _trailing(

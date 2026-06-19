@@ -48,6 +48,10 @@ class ItemsTable extends Table {
   // iCal RRULE, null = не повторяется
   TextColumn get recurrenceRule => text().nullable()();
 
+  // Ссылка на модуль: null | 'workout' | 'meal:breakfast' | 'meal:lunch' |
+  // 'meal:dinner' | 'sleep'. Локальное поле — НЕ синхронизируется с сервером.
+  TextColumn get moduleLink => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -492,7 +496,7 @@ class AppDatabase extends _$AppDatabase {
   HabitsDao get habitsDao => HabitsDao(this);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -541,6 +545,10 @@ class AppDatabase extends _$AppDatabase {
           // v11: добавлена таблица item_attachments (фото/видео к задачам, локально).
           if (from < 11) {
             await m.createTable(itemAttachmentsTable);
+          }
+          // v12: добавлена колонка module_link в items (локальная ссылка на модуль).
+          if (from < 12) {
+            await m.addColumn(itemsTable, itemsTable.moduleLink);
           }
         },
       );
