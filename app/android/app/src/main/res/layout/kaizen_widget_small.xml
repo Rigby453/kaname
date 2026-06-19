@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Малый виджет 2×2: 1 ближайший пункт + X/Y главных мелко + стрик в углу + Kai-уголок.
+    Kai выглядывает из нижнего правого угла (peek), не перекрывает текст.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root_small"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- Основной контент: задача + счётчик -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <!-- Время ближайшего пункта -->
+        <TextView
+            android:id="@+id/small_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="--:--"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="#F6EFE1"
+            android:letterSpacing="-0.02"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <!-- Название ближайшего пункта -->
+        <TextView
+            android:id="@+id/small_title"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="2dp"
+            android:text="Nothing today"
+            android:textSize="14sp"
+            android:textColor="#F6EFE1"
+            android:maxLines="2"
+            android:ellipsize="end" />
+
+        <!-- Нижняя строка: X/Y главных + стрик -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- X/Y главных (accent для маркера) -->
+            <TextView
+                android:id="@+id/small_main_progress"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="0/0"
+                android:textSize="12sp"
+                android:textColor="#F6EFE1" />
+
+            <!-- Стрик нейтральным цветом (не accent) -->
+            <TextView
+                android:id="@+id/small_streak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="0d"
+                android:textSize="12sp"
+                android:textColor="#9E9070" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Kai выглядывает из нижнего правого угла (peek).
+         Сдвинут частично за край через отрицательный margin — clipChildren=false на FrameLayout. -->
+    <ImageView
+        android:id="@+id/kai_image_small"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="-10dp"
+        android:layout_marginEnd="-10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/kai_neutral"
+        android:contentDescription="Kai" />
+
+</FrameLayout>

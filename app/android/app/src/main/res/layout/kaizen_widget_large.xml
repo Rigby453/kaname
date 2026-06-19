@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Большой виджет 4×4: мини-расписание до 4 пунктов (row1..row4 фиксированные, GONE если пусто)
+    + X/Y главных + стрик + Kai выглядывает из угла + кнопка «+».
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root_large"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Шапка: «Today» + стрик -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Today"
+                android:textSize="12sp"
+                android:textColor="#9E9070"
+                android:textAllCaps="true"
+                android:letterSpacing="0.08" />
+
+            <!-- Стрик — нейтральным цветом -->
+            <TextView
+                android:id="@+id/large_streak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0d"
+                android:textSize="12sp"
+                android:textColor="#9E9070" />
+
+        </LinearLayout>
+
+        <!-- X/Y главных (маленький accent-маркер через текст) -->
+        <TextView
+            android:id="@+id/large_main_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="◓ 0/0 main"
+            android:textSize="13sp"
+            android:textColor="#F6EFE1" />
+
+        <!-- Разделитель -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#3A3020"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp" />
+
+        <!-- Строка 1 -->
+        <LinearLayout
+            android:id="@+id/large_row1"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/large_time1"
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:text="--:--"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#F6EFE1"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/large_icon1"
+                android:layout_width="20dp"
+                android:layout_height="wrap_content"
+                android:text="•"
+                android:textSize="13sp"
+                android:textColor="#9E9070"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/large_title1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="—"
+                android:textSize="14sp"
+                android:textColor="#F6EFE1"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Строка 2 -->
+        <LinearLayout
+            android:id="@+id/large_row2"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/large_time2"
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:text="--:--"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#F6EFE1"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/large_icon2"
+                android:layout_width="20dp"
+                android:layout_height="wrap_content"
+                android:text="•"
+                android:textSize="13sp"
+                android:textColor="#9E9070"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/large_title2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="—"
+                android:textSize="14sp"
+                android:textColor="#F6EFE1"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Строка 3 -->
+        <LinearLayout
+            android:id="@+id/large_row3"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/large_time3"
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:text="--:--"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#F6EFE1"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/large_icon3"
+                android:layout_width="20dp"
+                android:layout_height="wrap_content"
+                android:text="•"
+                android:textSize="13sp"
+                android:textColor="#9E9070"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/large_title3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="—"
+                android:textSize="14sp"
+                android:textColor="#F6EFE1"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Строка 4 -->
+        <LinearLayout
+            android:id="@+id/large_row4"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/large_time4"
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:text="--:--"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#F6EFE1"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/large_icon4"
+                android:layout_width="20dp"
+                android:layout_height="wrap_content"
+                android:text="•"
+                android:textSize="13sp"
+                android:textColor="#9E9070"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/large_title4"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="—"
+                android:textSize="14sp"
+                android:textColor="#F6EFE1"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- «Свободно» — показывается если нет пунктов -->
+        <TextView
+            android:id="@+id/large_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:text="Nothing scheduled"
+            android:textSize="14sp"
+            android:textColor="#9E9070"
+            android:gravity="center"
+            android:visibility="gone" />
+
+        <!-- Нижняя строка: отступ + кнопка «+» -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/large_add_btn"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:text="+"
+                android:textSize="20sp"
+                android:textColor="#F6EFE1"
+                android:gravity="center"
+                android:background="@drawable/widget_btn_bg"
+                android:padding="4dp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Kai выглядывает из верхнего правого угла -->
+    <ImageView
+        android:id="@+id/kai_image_large"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="-12dp"
+        android:layout_marginEnd="-12dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/kai_neutral"
+        android:contentDescription="Kai" />
+
+</FrameLayout>

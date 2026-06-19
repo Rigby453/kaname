@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Фон виджета: тёмная карточка темы Focus (surface) со скруглением и рамкой -->
+<!-- Фон виджета: скруглённая карточка с тонкой границей.
+     Цвет задаётся динамически через setInt(...setColorFilter) из KaizenWidgetProvider.
+     Дефолтные значения = тема Focus (surface #241D11, border #3A3020). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="#241D11" />

@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Конфиг виджета Kaizen.
+    updatePeriodMillis=1800000 (30 мин — системный минимум) для таймерного пересчёта away.
+    minWidth/minHeight = 2×2 (наименьший поддерживаемый размер).
+    targetCellWidth/Height = 4×2 (дефолтный размер при добавлении = средний).
+    resizeMode = horizontal|vertical — пользователь может изменить размер.
+    previewLayout = средний виджет (наиболее информативный для скриншота в пикере).
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="180dp"
+    android:minWidth="110dp"
     android:minHeight="110dp"
-    android:targetCellWidth="3"
+    android:targetCellWidth="4"
     android:targetCellHeight="2"
-    android:updatePeriodMillis="0"
-    android:initialLayout="@layout/kaizen_widget"
-    android:previewLayout="@layout/kaizen_widget"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/kaizen_widget_medium"
+    android:previewLayout="@layout/kaizen_widget_medium"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />
