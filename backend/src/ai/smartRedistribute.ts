@@ -40,13 +40,15 @@ const RawPlanSchema = z.array(
  * @param pendingItems - просроченные pending-задачи (движок их собирает)
  * @param occupiedTimes - занятые "HH:MM" слоты целевого дня
  * @param targetDate - 'YYYY-MM-DD'
+ * @param language - язык текстовых полей (label, reason), по умолчанию "English"
  */
 export async function generateSmartPlans(params: {
   pendingItems: PlanInputItem[];
   occupiedTimes: string[];
   targetDate: string;
+  language?: string;
 }): Promise<{ plans: SmartPlan[] }> {
-  const { pendingItems, occupiedTimes, targetDate } = params;
+  const { pendingItems, occupiedTimes, targetDate, language = "English" } = params;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
     throw new Error(`targetDate must be YYYY-MM-DD, got "${targetDate}"`);
@@ -63,7 +65,8 @@ export async function generateSmartPlans(params: {
     "Use ONLY the provided task ids. " +
     'Return STRICT JSON only (no prose, no markdown fences): a JSON array of ' +
     'objects {"label": string, "reason": string, "items": [{"id": string, ' +
-    '"time": "HH:MM"}]}.';
+    '"time": "HH:MM"}]}.' +
+    `\n\nIMPORTANT: Write all human-readable text (the label and reason fields) in ${language}. Keep JSON keys, task ids, and time values exactly as specified in English.`;
 
   const user = JSON.stringify({
     target_date: targetDate,

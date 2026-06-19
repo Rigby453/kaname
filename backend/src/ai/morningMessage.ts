@@ -13,13 +13,15 @@ export type Tone = "gentle" | "harsh";
  * @param pendingCount - сколько незавершённых задач перенесено на сегодня
  * @param tone - gentle (мягкий) / harsh (жёсткий)
  * @param userName - имя пользователя (опционально)
+ * @param language - язык сообщения (напр. "Russian"), по умолчанию "English"
  */
 export async function generateMorningMessage(params: {
   pendingCount: number;
   tone: Tone;
   userName?: string;
+  language?: string;
 }): Promise<{ message: string }> {
-  const { pendingCount, tone, userName } = params;
+  const { pendingCount, tone, userName, language = "English" } = params;
 
   const toneHint =
     tone === "harsh"
@@ -29,7 +31,8 @@ export async function generateMorningMessage(params: {
   const system =
     "You write the morning review line for a student planner called the app. " +
     "Output ONE or TWO short sentences, plain text, no emoji, no quotes. " +
-    toneHint;
+    toneHint +
+    `\n\nIMPORTANT: Write all human-readable text (the message) in ${language}. Keep JSON keys and structure exactly as specified in English.`;
 
   const who = userName ? `The user's name is ${userName}. ` : "";
   const user =

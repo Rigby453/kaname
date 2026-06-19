@@ -18,12 +18,14 @@ export interface DiaryLogInput {
  * Возвращает короткий инсайт по последним записям дневника.
  * @param logs - последние записи (дата, настроение, заметка)
  * @param tone - gentle / harsh
+ * @param language - язык инсайта (напр. "Russian"), по умолчанию "English"
  */
 export async function generateDiaryInsight(params: {
   logs: DiaryLogInput[];
   tone: Tone;
+  language?: string;
 }): Promise<{ insight: string }> {
-  const { logs, tone } = params;
+  const { logs, tone, language = "English" } = params;
 
   const toneHint =
     tone === "harsh"
@@ -34,7 +36,8 @@ export async function generateDiaryInsight(params: {
     "You analyse a student's recent diary entries (mood 1-5 and short notes) " +
     "and surface ONE useful pattern or suggestion in 2-3 short sentences. " +
     "Plain text, no emoji, no quotes. " +
-    toneHint;
+    toneHint +
+    `\n\nIMPORTANT: Write all human-readable text (the insight) in ${language}. Keep JSON keys and structure exactly as specified in English.`;
 
   const user =
     logs.length === 0

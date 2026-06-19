@@ -49,6 +49,10 @@
 
 <!-- Add new ADRs below this line -->
 
+## ADR-036: AI output language driven by Accept-Language request header
+**Date:** 2026-06-19
+**Decision:** All human-readable AI output (morning message, diary insight, wrapped summary, redistribute label/reason, menu note) is localised to the language indicated by the client's `Accept-Language` header. A `langName()` helper in `backend/src/routes/ai.ts` maps the two-character tag to a full language name (en→"English", ru→"Russian", de→"German", default "English") and passes it as a `language` parameter (defaulting to "English") to each generator in `backend/src/ai/`. Each generator appends the instruction to its system prompt: "Write all human-readable text in ${language}. Keep JSON keys and structure exactly as specified in English." Structured fields (ids, meal names, grams, time values, enum-like keys) remain in English so the client-side code matching them is not affected. Language travels via the existing HTTP header — the API request/response body schemas in `api-spec.yaml` are unchanged.
+
 ## ADR-035: Fix Gemini REST inline_data field names for multimodal (food-photo) requests
 **Date:** 2026-06-18
 **Decision:** Corrected the image part in `backend/src/ai/provider.ts` `geminiGenerate()`: the field was `inlineData: { mimeType, data }` (camelCase, JavaScript convention) but the Gemini REST API v1beta requires snake_case — `inline_data: { mime_type, data }`. Simultaneously moved the image part before the text part in the `parts` array (Gemini docs: image first, prompt after for vision tasks).

@@ -17,20 +17,24 @@ export interface WrappedStats {
   waterMl: number;
   topIssue: string | null;
   tone: "gentle" | "harsh";
+  /** язык сводки (напр. "Russian"), по умолчанию "English" */
+  language?: string;
 }
 
 export async function generateWrappedSummary(
   stats: WrappedStats
 ): Promise<{ summary: string }> {
   const periodLabel = stats.periodDays >= 28 ? "month" : "week";
+  const language = stats.language ?? "English";
 
   const system =
-    stats.tone === "harsh"
+    (stats.tone === "harsh"
       ? "You write blunt, funny (not mean) recaps for a student planner. " +
         "Never shame food, body or weight. Under 60 words, one paragraph, " +
         "plain text only."
       : "You write warm, upbeat recaps for a student planner. " +
-        "Under 60 words, one paragraph, plain text only.";
+        "Under 60 words, one paragraph, plain text only.") +
+    `\n\nIMPORTANT: Write all human-readable text (the summary paragraph) in ${language}. Keep JSON keys and structure exactly as specified in English.`;
 
   const user =
     `Summarize the student's ${periodLabel}: ` +

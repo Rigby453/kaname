@@ -12,6 +12,23 @@ import { buildMenu } from "../ai/menuBuild.js";
 import { searchProducts } from "../food/openFoodFacts.js";
 import type { FoodProduct } from "../food/openFoodFacts.js";
 
+/**
+ * Маппинг Accept-Language заголовка (двухбуквенный тег) в имя языка для промптов.
+ * Всё, что не совпадает — возвращает "English" (безопасный дефолт).
+ */
+function langName(header: string | string[] | undefined): string {
+  const tag = (Array.isArray(header) ? header[0] : header ?? "en")
+    .toString()
+    .slice(0, 2)
+    .toLowerCase();
+  const map: Record<string, string> = {
+    en: "English",
+    ru: "Russian",
+    de: "German",
+  };
+  return map[tag] ?? "English";
+}
+
 const dateOnly = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD");
@@ -241,6 +258,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           waterMl: parsed.data.water_ml,
           topIssue: parsed.data.top_issue ?? null,
           tone: parsed.data.tone,
+          language: langName(request.headers["accept-language"]),
         });
         return reply.status(200).send({ summary });
       } catch (err) {
@@ -273,6 +291,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           proteinGoalG: parsed.data.protein_goal_g,
           meals: parsed.data.meals,
           tone: parsed.data.tone,
+          language: langName(request.headers["accept-language"]),
         });
         return reply.status(200).send({
           meals: result.meals,
@@ -304,6 +323,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           ...(parsed.data.user_name !== undefined
             ? { userName: parsed.data.user_name }
             : {}),
+          language: langName(request.headers["accept-language"]),
         });
         return reply.status(200).send({ message: result.message });
       } catch (err) {
@@ -347,6 +367,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           pendingItems: pending,
           occupiedTimes,
           targetDate: parsed.data.target_date,
+          language: langName(request.headers["accept-language"]),
         });
         return reply.status(200).send({
           plans: plans.map((p) => ({
@@ -392,6 +413,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
             mood: l.mood,
             note: l.note,
           })),
+          language: langName(request.headers["accept-language"]),
         });
         return reply.status(200).send({ insight });
       } catch (err) {

@@ -48,6 +48,7 @@ const RawMenuSchema = z.object({
  * @param proteinGoalG - цель по белку, г
  * @param meals - приёмы пищи (напр. ["breakfast","lunch","dinner"])
  * @param tone - тон заметки (gentle/harsh), без шейминга в обоих
+ * @param language - язык заметки (напр. "Russian"), по умолчанию "English"
  */
 export async function buildMenu(params: {
   candidates: MenuCandidate[];
@@ -55,8 +56,9 @@ export async function buildMenu(params: {
   proteinGoalG: number;
   meals: string[];
   tone: "gentle" | "harsh";
+  language?: string;
 }): Promise<{ meals: MenuMeal[]; note: string }> {
-  const { candidates, calorieGoal, proteinGoalG, meals, tone } = params;
+  const { candidates, calorieGoal, proteinGoalG, meals, tone, language = "English" } = params;
 
   const validNames = new Set(candidates.map((c) => c.name));
 
@@ -72,7 +74,8 @@ export async function buildMenu(params: {
     "tone, no food shaming. " +
     'Return STRICT JSON only (no prose, no markdown fences): {"meals": ' +
     '[{"meal": string, "items": [{"name": string, "grams": number}]}], ' +
-    '"note": string}. The "meal" values must be exactly the requested meal names.';
+    '"note": string}. The "meal" values must be exactly the requested meal names.' +
+    `\n\nIMPORTANT: Write all human-readable text (the note field) in ${language}. Keep JSON keys, meal names, food item names, and grams values exactly as specified in English.`;
 
   const user = JSON.stringify({
     calorie_goal: calorieGoal,
