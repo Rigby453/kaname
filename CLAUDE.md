@@ -49,6 +49,7 @@ Full product spec: **/docs/SPEC.md**.
 | Animations (durations / curves / per-element spec) | `/docs/ANIMATIONS.md` |
 | Mascot «Kai» (form / expressions / tone behaviour / Rive) | `/docs/MASCOT.md` |
 | Navigation & layout (placement / accent / tap-reduction) | `/docs/UX-LAYOUT.md` |
+| Home widget (content / sizes / Kai / theming / platforms) | `/docs/WIDGET.md` |
 | Architecture decisions (ADR) | `/docs/decisions.md` |
 | Project status & backlog | `/docs/STATUS.md` |
 
