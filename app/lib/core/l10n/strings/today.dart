@@ -103,6 +103,23 @@ const Map<String, Map<String, String>> todayStrings = {
   'today.day_complete': {'en': 'Day complete', 'ru': 'День закрыт', 'de': 'Tag abgeschlossen'},
   'today.day_complete_sub': {'en': 'All the important stuff — done', 'ru': 'Всё главное — сделано', 'de': 'Das Wichtigste — erledigt'},
 
+  // NL datetime hint chip (add_task_sheet)
+  'today.nl_hint_tomorrow': {
+    'en': 'Tomorrow {time} — tap to change',
+    'ru': 'Завтра {time} — нажми чтобы изменить',
+    'de': 'Morgen {time} — tippen zum Ändern',
+  },
+  'today.nl_hint_today': {
+    'en': 'Today {time} — tap to change',
+    'ru': 'Сегодня {time} — нажми чтобы изменить',
+    'de': 'Heute {time} — tippen zum Ändern',
+  },
+  'today.nl_hint_date': {
+    'en': '{date} {time} — tap to change',
+    'ru': '{date} {time} — нажми чтобы изменить',
+    'de': '{date} {time} — tippen zum Ändern',
+  },
+
   // Привязка к модулю (add_task_sheet → module link picker)
   'today.module_link_label': {'en': 'Open in module', 'ru': 'Открыть в модуле', 'de': 'Im Modul öffnen'},
   'today.module_link_none': {'en': 'None', 'ru': 'Нет', 'de': 'Keine'},

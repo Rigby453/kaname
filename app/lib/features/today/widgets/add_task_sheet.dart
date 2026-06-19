@@ -1,5 +1,6 @@
 // FL-TODAY-05: Нижний лист добавления/редактирования задачи.
-// - Поле заголовка (autofocus), чипы типа и приоритета, выбор даты и времени.
+// - Поле заголовка (autofocus) с голосовым вводом (mic) и NL-парсером дат.
+// - Чипы типа и приоритета, выбор даты и времени.
 // - Лимит: максимум 3 main-задачи в день (enforced при выборе приоритета main).
 // - Сохранение пишет в Drift через ItemsDao (офлайн-первый подход).
 // - Секция вложений: фото/видео, хранятся локально (schemaVersion 11).
@@ -10,6 +11,7 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +19,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
 
 import '../../../core/animations/app_sheet.dart';
@@ -24,9 +27,11 @@ import '../../../core/animations/app_toast.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/l10n/locale_provider.dart';
 import '../../../core/settings/recent_subjects.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/id.dart';
+import '../../../core/utils/nl_datetime.dart';
 
 const List<String> _types = ['task', 'event', 'exam', 'deadline'];
 const List<String> _priorities = ['low', 'medium', 'high', 'main'];
@@ -119,6 +124,18 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
 
   final _imagePicker = ImagePicker();
 
+  // --- NL datetime ---
+  // Дата/время, определённая NL-парсером из заголовка. null = не распознано.
+  DateTime? _nlDetectedDateTime;
+  // Флаг: пользователь вручную изменил дату/время → не перезаписываем.
+  bool _userPickedDateTime = false;
+
+  // --- Voice input ---
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _listening = false;
+  // Микрофон показываем только на не-вебе.
+  static final bool _canShowMic = !kIsWeb;
+
   @override
   void initState() {
     super.initState();
@@ -139,6 +156,87 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _loadMainCount();
     // Загружаем вложения (только в режиме редактирования — у новой задачи нет id).
     if (_isEditing) _loadAttachments();
+    // Слушаем изменения заголовка для NL-парсинга.
+    _titleController.addListener(_onTitleChanged);
+  }
+
+  /// Запускается при каждом изменении заголовка.
+  /// Применяет NL-парсер; если есть распознанная дата и пользователь
+  /// не переопределил её вручную — подставляем автоматически.
+  void _onTitleChanged() {
+    if (_userPickedDateTime) return;
+    final text = _titleController.text;
+    final result = parseNaturalDateTime(text, DateTime.now());
+    if (result.when != null) {
+      setState(() {
+        _nlDetectedDateTime = result.when;
+        _scheduledAt = result.when!;
+      });
+    } else {
+      // Нет совпадений — убираем маркер NL-определённой даты.
+      if (_nlDetectedDateTime != null) {
+        setState(() => _nlDetectedDateTime = null);
+      }
+    }
+  }
+
+  /// Возвращает чистый заголовок (без временной фразы) для сохранения.
+  String get _cleanedTitle {
+    final text = _titleController.text;
+    final result = parseNaturalDateTime(text, DateTime.now());
+    // Если NL распознал фразу — сохраняем очищенный вариант.
+    if (result.when != null) return result.cleanedTitle.trim();
+    return text.trim();
+  }
+
+  // --- Голосовой ввод ---
+
+  /// Переключение диктовки: старт/стоп.
+  Future<void> _toggleListen() async {
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          if (mounted) setState(() => _listening = false);
+        }
+      },
+      onError: (_) {
+        if (mounted) setState(() => _listening = false);
+      },
+    );
+
+    if (!mounted) return;
+    if (!available) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.s('food.speech_unavailable'))),
+      );
+      return;
+    }
+
+    final appLocale = ref.read(localeNotifierProvider);
+    final localeId = switch (appLocale.languageCode) {
+      'ru' => 'ru-RU',
+      'de' => 'de-DE',
+      _ => 'en-US',
+    };
+
+    setState(() => _listening = true);
+    await _speech.listen(
+      listenOptions: stt.SpeechListenOptions(localeId: localeId),
+      onResult: (result) {
+        if (!mounted) return;
+        _titleController.text = result.recognizedWords;
+        // NL-парсинг запустится через listener (addListener выше).
+        if (result.finalResult) {
+          setState(() => _listening = false);
+        }
+      },
+    );
   }
 
   Future<void> _loadAttachments() async {
@@ -194,8 +292,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
 
   @override
   void dispose() {
+    _titleController.removeListener(_onTitleChanged);
     _titleController.dispose();
     _customMinutesController.dispose();
+    if (_listening) _speech.stop();
     super.dispose();
   }
 
@@ -231,6 +331,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       setState(() {
         _scheduledAt = DateTime(picked.year, picked.month, picked.day,
             _scheduledAt.hour, _scheduledAt.minute);
+        // Пользователь выбрал вручную → не перезаписываем от NL-парсера.
+        _userPickedDateTime = true;
+        _nlDetectedDateTime = null;
       });
     }
   }
@@ -244,6 +347,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       setState(() {
         _scheduledAt = DateTime(_scheduledAt.year, _scheduledAt.month,
             _scheduledAt.day, picked.hour, picked.minute);
+        // Пользователь выбрал вручную → не перезаписываем от NL-парсера.
+        _userPickedDateTime = true;
+        _nlDetectedDateTime = null;
       });
     }
   }
@@ -409,7 +515,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   }
 
   Future<void> _save() async {
-    final title = _titleController.text.trim();
+    // Используем очищенный заголовок (NL-фраза удалена).
+    final title = _cleanedTitle;
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.s('today.title_required'))),
@@ -552,14 +659,30 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 8),
 
-            // Заголовок
-            TextField(
+            // Заголовок + mic + NL-подсказка
+            _TitleField(
               controller: _titleController,
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(hintText: context.s('today.task_hint')),
-              onSubmitted: (_) => _save(),
+              hintText: context.s('today.task_hint'),
+              onSubmitted: _save,
+              listening: _listening,
+              canShowMic: _canShowMic,
+              onMicTap: _canShowMic ? _toggleListen : null,
+              ext: Theme.of(context).extension<FocusThemeExtension>(),
+              colorScheme: colorScheme,
             ),
+            // NL hint chip — показывается когда парсер определил дату.
+            if (_nlDetectedDateTime != null) ...[
+              const SizedBox(height: 8),
+              _NlHintChip(
+                detectedAt: _nlDetectedDateTime!,
+                now: DateTime.now(),
+                onTap: _pickTime,
+                onDismiss: () => setState(() {
+                  _nlDetectedDateTime = null;
+                  _userPickedDateTime = true;
+                }),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Тип
@@ -874,6 +997,154 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Поле заголовка с голосовым вводом (mic).
+// Однострочное, с autofocus и кнопкой диктовки (скрыта на вебе).
+// ---------------------------------------------------------------------------
+
+class _TitleField extends StatelessWidget {
+  const _TitleField({
+    required this.controller,
+    required this.hintText,
+    required this.onSubmitted,
+    required this.listening,
+    required this.canShowMic,
+    required this.onMicTap,
+    required this.ext,
+    required this.colorScheme,
+  });
+
+  final TextEditingController controller;
+  final String hintText;
+  final VoidCallback onSubmitted;
+  final bool listening;
+  final bool canShowMic;
+  final VoidCallback? onMicTap;
+  final FocusThemeExtension? ext;
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      autofocus: true,
+      textCapitalization: TextCapitalization.sentences,
+      decoration: InputDecoration(
+        hintText: hintText,
+        suffixIcon: canShowMic
+            ? IconButton(
+                tooltip: listening
+                    ? context.s('food.voice_stop')
+                    : context.s('food.voice_input'),
+                icon: Icon(
+                  listening ? Icons.mic : Icons.mic_none,
+                  // Активный mic → ember; неактивный → textMuted.
+                  color: listening
+                      ? (ext?.ember ?? colorScheme.error)
+                      : (ext?.textMuted ?? colorScheme.onSurface.withAlpha(140)),
+                ),
+                onPressed: onMicTap,
+              )
+            : null,
+      ),
+      onSubmitted: (_) => onSubmitted(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// NL-подсказка: чип с распознанной датой/временем.
+// Тап → переход к ручному выбору времени.
+// Dismiss-кнопка (×) → убирает подсказку и блокирует автоопределение.
+// ---------------------------------------------------------------------------
+
+class _NlHintChip extends StatelessWidget {
+  const _NlHintChip({
+    required this.detectedAt,
+    required this.now,
+    required this.onTap,
+    required this.onDismiss,
+  });
+
+  final DateTime detectedAt;
+  final DateTime now;
+  final VoidCallback onTap;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Формируем текст подсказки: "Tomorrow 17:00 — tap to change" и т.п.
+    final timeStr = DateFormat.Hm().format(detectedAt);
+    final today = DateTime(now.year, now.month, now.day);
+    final detectedDay = DateTime(detectedAt.year, detectedAt.month, detectedAt.day);
+    final diff = detectedDay.difference(today).inDays;
+
+    final String hintText;
+    if (diff == 0) {
+      hintText = context.s('today.nl_hint_today').replaceAll('{time}', timeStr);
+    } else if (diff == 1) {
+      hintText = context.s('today.nl_hint_tomorrow').replaceAll('{time}', timeStr);
+    } else {
+      final dateStr = DateFormat.MMMd().format(detectedAt);
+      hintText = context.s('today.nl_hint_date')
+          .replaceAll('{date}', dateStr)
+          .replaceAll('{time}', timeStr);
+    }
+
+    // Цвет фона: accentMuted если есть, иначе surface.
+    final chipColor = ext?.accentMuted ?? colorScheme.surface;
+    // accent живёт в colorScheme.primary (так сконфигурировано AppTheme).
+    final accentColor = colorScheme.primary;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: chipColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: accentColor,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.schedule,
+              size: 14,
+              color: accentColor,
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                hintText,
+                style: textTheme.bodySmall?.copyWith(
+                  color: accentColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onDismiss,
+              child: Icon(
+                Icons.close,
+                size: 14,
+                color: ext?.textMuted ?? colorScheme.onSurface.withAlpha(140),
+              ),
+            ),
           ],
         ),
       ),
