@@ -5,6 +5,39 @@
 
 ---
 
+## ADR-041: Серверный entitlement — единый источник правды о premium + заглушки вебхуков
+**Date:** 2026-06-19
+**Decision:** Premium-статус определяется **на сервере**, а не флагом в клиенте и не одним стором.
+`User` получает поля `premiumUntil` (DateTime?, nullable) и `premiumSource` (String?, nullable:
+`apple`/`google`/`rustore`/`stripe`/`yookassa`/`dev`). Хелпер `resolveEntitlement(user)` →
+`isPremium = subscriptionTier === "premium" (legacy/lifetime) ИЛИ (premiumUntil != null && premiumUntil > now)`.
+Все AI-гейты (`routes/ai.ts`) и фичи смотрят на этот хелпер, не на сырой `subscriptionTier`.
+Новый эндпоинт **GET `/api/v1/subscription/status`** (auth) → `{is_premium, premium_until, source}` —
+это «я premium?», который зовёт приложение, независимо от канала оплаты.
+**Заглушки вебхуков** (каркас, без проверки подписи — TODO при появлении ключей):
+POST `/api/v1/billing/webhook/{apple|google|rustore|stripe|yookassa}` — принимают stub-payload
+`{user_id, product_id, expires_at}` и выставляют `premiumUntil`/`premiumSource`. `dev-upgrade` ([[ADR-018]])
+сохраняется и продолжает работать (ставит `subscriptionTier=premium`).
+**Reason:** Гибридная оплата ([[ADR-040]]) означает 5 каналов оплаты; единственный масштабируемый
+способ — серверный entitlement, который любой канал выставляет своим вебхуком, а клиент только
+спрашивает «активно?». Поля nullable и аддитивны (безопасная миграция). Реальная проверка подписи
+вебхуков и связка с RevenueCat/RuStore/ЮKassa — когда будут аккаунты/ключи; каркас готов заранее.
+
+## ADR-040: Гибридная стратегия биллинга — РФ + зарубеж одновременно
+**Date:** 2026-06-19
+**Decision:** Целевая аудитория — **и Россия, и зарубеж**, поэтому подписка $10/мес идёт через
+**несколько каналов**, объединённых серверным entitlement ([[ADR-041]]):
+зарубеж iOS → **Apple IAP**; зарубеж Android → **Google Play Billing** (оба через **RevenueCat**, [[ADR-028]]);
+РФ Android → **RuStore Billing** (Google Play в РФ оплату не принимает); РФ iOS → только **веб** (ЮKassa),
+премиум по аккаунту; веб для обоих → **Stripe** (зарубеж) / **ЮKassa/CloudPayments** (РФ).
+Apple/Google запрещают упоминать сторонние способы оплаты внутри своих сборок (anti-steering) →
+вероятно понадобятся **раздельные build-flavor'ы** (Play / RuStore / App Store / Web). Рекомендованный
+порядок внедрения: сперва **веб-подписка** (покрывает все платформы, включая РФ-iOS), затем сторовый
+биллинг по платформам.
+**Reason:** Apple приостановила приём платежей в РФ (с 2022), Google Play Billing в РФ отключён —
+для российских пользователей сторовый IAP нерабочий. Один канал не покрывает оба рынка; entitlement
+на сервере делает источник оплаты деталью реализации. Связано с РФ-комплаенсом входа ([[ADR-031]]).
+
 ## ADR-039: Платежи — пейвол это UI поверх абстракции, реальный биллинг не подключён
 **Date:** 2026-06-19
 **Decision:** Экран `/paywall` (прозрачный, под Apple 3.1.2/5.6 + EU) и CTA зовут `PurchaseService` →
