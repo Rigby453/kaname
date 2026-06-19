@@ -4,7 +4,7 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
-## Сводка для пользователя (обновлено 2026-06-18)
+## Сводка для пользователя (обновлено 2026-06-19)
 
 ### ✅ Готово (работает, под тестами)
 - **MVP целиком** — аккаунты + синхронизация (офлайн-первый), Today/Plan/Diary, rule-разборы утро/вечер, импорт расписания (текст / клон недели / фото-AI), стрики + заморозка, онбординг (расчёт воды по весу/росту, кнопка «Назад»), 5 тем, Android-виджет, локальные уведомления, все MVP-анимации (≤300 мс).
@@ -22,7 +22,8 @@
 - **Умные часы [Ф4]** — Wear OS / watchOS; нужны часы + Apple Developer Account.
 - **Реклама на free-тарифе** — нужны рекламные аккаунты (осознанно отложено).
 - **Живые проверки на телефоне** — голос, сканер, уведомления, диагностика «connection refused»/премиум через `scripts/run-phone.ps1`.
-- **Дизайн-полиш (нужна проверка на устройстве)** — виджет Android (больше данных, оформление под темы, размеры), онбординг-UX, Calm-тема по всем экранам, тайминги конфетти/переходов вживую, прогон на 360px и планшете.
+- **Онбординг quiz-flow (2026-06-19)** — `setup_flow.dart` переписан: 16 экранов (Hello→Problem→Solution→Language→Goals→PlanTime→Horizon→Projection→Age→HeightWeight→Activity→FirstTask→RescheduleDemo→Timing→Summary→Paywall). Честные данные, Kai на каждом экране, первая задача вставляется в Drift, демо переноса — интерактивный sandbox, locale устанавливается live, все провайдеры reused, `flutter analyze` 0. Новые prefs keys: `onboarding_goals` (StringList), `onboarding_plan_minutes` (int), `onboarding_horizon` (String). Строки: `core/l10n/strings/onboarding_quiz.dart` (83 ключа en/ru/de).
+- **Дизайн-полиш (нужна проверка на устройстве)** — виджет Android (больше данных, оформление под темы, размеры), Calm-тема по всем экранам, тайминги конфетти/переходов вживую, прогон на 360px и планшете.
 
 ### 🐞 Баги / техдолг (мелочь, не блокирует)
 - ~~Лимит AI-фото (3/день) хранился в памяти процесса~~ → **закрыто 2026-06-18:** таблица `AiUsage` (устойчиво к рестарту/мультиинстансу), ADR-034, jest 111/111.
@@ -45,6 +46,8 @@
 ---
 
 ## Журнал работ (хронология сделанного по блокам)
+
+- [x] **Kai prominent + speech bubble + ToneCopy l10n (2026-06-19, ветка design-kai):** Kai в шапке Today увеличен до 104dp и стал центральным якорем экрана (был 56dp в углу). Добавлена `_KaiHeaderSection`: Kai сверху по центру, под ним `KaiSpeechBubble` с текущим сообщением (контекст-зависимое), ниже — приветствие + тумблер тона в строке. Новый виджет `app/lib/features/mascot/kai_speech_bubble.dart` — `KaiSpeechBubble` (surface-карточка + хвостик-треугольник, fade+rise 280ms, reduce-motion safe, `KaiBubbleTail.bottomCenter/rightCenter`). Анимация внимания в `_KaiHeader`: bounce −8px каждые 6–10 с (elasticOut 420ms, отменяется при reduce-motion). Emotion `away` теперь тригерится на пустой день (allItems.isEmpty + данные загрузились). `ToneCopy` сохранён для BC; добавлен `KaiCopy` с методами morningReview / allDone / eveningReview / emptyDay / idle (принимают BuildContext, резолвят через S.of). L10n: 18 новых ключей `kai.*` в `strings/today.dart` (en+ru+de). `celebration_overlay.dart`: Kai вырос до 96dp; harsh-тон — нейтральная эмоция без spring-scale (сдержанный кивок, MASCOT.md §6). `flutter analyze` 0 ошибок.
 
 - [x] **Health profile (2026-06-19, ветка design-kai):** Профиль здоровья пользователя — 3 вопроса (аллергии/заживление/дефициты) с голосовым вводом. Новые файлы: `core/settings/health_profile_provider.dart` (класс `HealthProfile`, `HealthProfileNotifier`, `healthProfileProvider`; prefs-ключи `health_allergies`, `health_healing`, `health_deficiencies`), `core/widgets/voice_text_field.dart` (`VoiceTextField` — ConsumerStatefulWidget, STT как в food_screen.dart, mic скрыт на вебе). Онбординг: новый шаг 7 «Health profile» (после нормы воды; `_pageCount` 6→7; сохраняется в `_finish`). Профиль: секция `_HealthProfileSection` (inline-редактор с 3 VoiceTextField + Save, просмотр уже заполненных значений). API: `aiMenuBuild` получил опциональный параметр `healthProfile: Map<String, String>?`; включается в тело POST как `health_profile: {allergies, healing, deficiencies}` только если непустой. `ai_menu_sheet.dart` читает `healthProfileProvider` и передаёт в `aiMenuBuild`. L10n: 10 ключей `health_profile.*` (en+ru+de) в `strings/health_a.dart`. `flutter analyze` 0.
 

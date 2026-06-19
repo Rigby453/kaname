@@ -8,6 +8,7 @@ import 'strings/profile_paywall.dart';
 import 'strings/misc.dart';
 import 'strings/health_a.dart';
 import 'strings/health_b.dart';
+import 'strings/onboarding_quiz.dart';
 
 /// Система переводов приложения.
 ///
@@ -30,6 +31,7 @@ class S {
     ...miscStrings,
     ...healthAStrings,
     ...healthBStrings,
+    ...onboardingQuizStrings,
   };
 
   static String of(BuildContext context, String key) {

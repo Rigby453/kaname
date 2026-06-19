@@ -1,57 +1,85 @@
-// Настройка после онбординга и входа (SPEC C1, единый поток):
-// интересы → импорт расписания → время разборов → тон → тема → нормы.
-// Каждый шаг можно пропустить; всё сохраняется в SharedPreferences/провайдеры.
-// Флаг 'setup_done' держит пользователя на /setup через redirect роутера.
+// Новый 16-экранный онбординг (quiz-style flow).
+// Заменяет прежний 7-шаговый SetupFlowScreen.
 //
-// Редизайн (design-kai): headlineSmall + bodyLarge на каждом шаге, 24dp поля,
-// одна FilledButton-кнопка Continue/Start внизу, Back — OutlinedButton.
-// Accent только в активных чипах, FilledButton и активных карточках-выборах.
+// Архитектура: единый PageView с 16 «страницами».
+// Каждая страница — изолированный _build*() метод.
+// Состояние хранится в полях виджета-state; сохранение — в _finish().
+//
+// Флаг 'setup_done' сохраняется в конце; роутер делает redirect.
+// Прогресс-индикатор: точки X/16, отсутствуют на экранах 13 и 16.
+//
+// Прим. по экранам:
+//   1–3: информационные (Hello/Problem/Solution)
+//   4:   язык (no skip)
+//   5–7: цели / время на планирование / горизонт (skip доступен)
+//   8:   проекция (derived, no skip)
+//   9:   возраст + пол
+//  10:   рост + вес
+//  11:   активность
+//  12:   первая задача (no skip, вставляется в Drift)
+//  13:   демо переноса (no progress bar)
+//  14:   время разборов
+//  15:   саммари (честный итог)
+//  16:   пейволл (переход на /paywall; setup_done уже установлен)
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/animations/constants.dart';
+import '../../core/database/database_providers.dart';
+import '../../core/database/database.dart';
 import '../../core/l10n/app_strings.dart';
-import '../../core/settings/health_profile_provider.dart';
-import '../../core/settings/tone_provider.dart';
+import '../../core/l10n/locale_provider.dart';
+import '../../core/settings/nutrition_targets.dart';
 import '../../core/settings/water_goal_provider.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider, themeProvider
+import '../../core/theme/theme_provider.dart';
+import '../../core/utils/id.dart';
 import '../../core/widgets/voice_text_field.dart';
 import '../../services/notifications/notification_service.dart';
-import '../import/import_sheet.dart';
+import '../mascot/kai_mascot.dart';
+import '../mascot/kai_speech_bubble.dart';
 
+// ---------------------------------------------------------------------------
+// Константы, прокинутые наружу для роутера
+// ---------------------------------------------------------------------------
+
+/// Ключ SharedPreferences — флаг завершения setup.
 const setupDoneKey = 'setup_done';
+
+/// Ключи времени разборов (reused в notifications).
 const reviewMorningHourKey = 'review_morning_hour';
 const reviewEveningHourKey = 'review_evening_hour';
+
+/// Ключ интересов (старый список — сохраняется для совместимости).
 const interestsKey = 'interests';
 
-// Ключи интересов (сохраняются как есть — идентификаторы).
-// Локализованные подписи берутся из S по ключу 'onboarding.interest_<value>'.
-const _interestValues = <String>[
-  'University',
-  'Exams',
-  'Side projects',
-  'Fitness',
-  'Nutrition',
-  'Sleep',
-  'Focus',
-  'Reading',
-];
+// Новые ключи, вводимые этим файлом.
+const _kGoalsKey = 'onboarding_goals';
+const _kPlanMinutesKey = 'onboarding_plan_minutes';
+const _kHorizonKey = 'onboarding_horizon';
 
-// Локализационные ключи для интересов (один к одному с _interestValues).
-const _interestL10nKeys = <String>[
-  'onboarding.interest_university',
-  'onboarding.interest_exams',
-  'onboarding.interest_side_projects',
-  'onboarding.interest_fitness',
-  'onboarding.interest_nutrition',
-  'onboarding.interest_sleep',
-  'onboarding.interest_focus',
-  'onboarding.interest_reading',
-];
+// ---------------------------------------------------------------------------
+// Вспомогательные типы
+// ---------------------------------------------------------------------------
+
+/// Вариант времени разборов (экран 14).
+enum _TimingOption { morning, afternoon, evening, both }
+
+// Числовые минуты за вариант планирования (экран 6).
+const _planMinutesMap = {
+  'none': 0,
+  '10': 10,
+  '30': 30,
+  'more': 45,
+};
+
+// ---------------------------------------------------------------------------
+// Корневой виджет
+// ---------------------------------------------------------------------------
 
 class SetupFlowScreen extends ConsumerStatefulWidget {
   const SetupFlowScreen({super.key});
@@ -63,31 +91,52 @@ class SetupFlowScreen extends ConsumerStatefulWidget {
 class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   final _pageController = PageController();
   int _page = 0;
-  static const _pageCount = 7;
 
-  // Локальное состояние шагов (сохраняется при Finish)
-  final Set<String> _selectedInterests = {};
-  int _morningHour = kMorningHour; // 8
-  int _eveningHour = kEveningHour; // 20
+  // Общее число экранов.
+  static const _pageCount = 16;
+
+  // --- Экран 5: цели ---
+  final Set<String> _selectedGoals = {};
+
+  // --- Экран 6: время на планирование ---
+  String _planOption = 'none'; // 'none'|'10'|'30'|'more'
+
+  // --- Экран 7: горизонт ---
+  String _horizon = 'day'; // 'day'|'week'|'months'|'years'
+
+  // --- Экраны 9–11: антропометрия ---
+  final _ageController = TextEditingController();
+  String _sex = 'other'; // 'male'|'female'|'other'
+  final _heightController = TextEditingController();
+  final _weightController = TextEditingController();
+  String _activity = 'medium'; // 'low'|'medium'|'high'
   int _waterGoal = kDefaultWaterGoalMl;
 
-  // Антропометрия — шаг «нормы»
-  final _weightController = TextEditingController();
-  final _heightController = TextEditingController();
-  final _ageController = TextEditingController();
-  String _activity = 'medium'; // 'low' | 'medium' | 'high'
-  String _sex = 'other'; // 'male' | 'female' | 'other'
+  // --- Экран 12: первая задача ---
+  final _firstTaskController = TextEditingController();
+  bool _taskError = false;
+  bool _taskAdded = false; // true после успешной вставки
+  String _addedTaskTitle = '';
 
-  // Профиль здоровья — шаг 7 (опциональный)
-  final _allergiesController = TextEditingController();
-  final _healingController = TextEditingController();
-  final _deficienciesController = TextEditingController();
+  // --- Экран 13: демо переноса ---
+  bool _taskMoved = false;
+
+  // --- Экран 14: время разборов ---
+  _TimingOption _timing = _TimingOption.both;
+  int _morningHour = kMorningHour; // 8
+  int _eveningHour = kEveningHour; // 20
+
+  // --- Экран 15: саммари (KaiLoader stub) ---
+  bool _summaryReady = false;
+
+  // ---------------------------------------------------------------------------
+  // Жизненный цикл
+  // ---------------------------------------------------------------------------
 
   @override
   void initState() {
     super.initState();
     _waterGoal = ref.read(waterGoalProvider);
-    // Слушаем изменения полей — пересчитываем рекомендацию на лету.
     _weightController.addListener(_recalcWater);
     _heightController.addListener(_recalcWater);
     _ageController.addListener(_recalcWater);
@@ -101,18 +150,17 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     _weightController.dispose();
     _heightController.dispose();
     _ageController.dispose();
-    _allergiesController.dispose();
-    _healingController.dispose();
-    _deficienciesController.dispose();
+    _firstTaskController.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
-  /// Пересчитывает рекомендацию воды при изменении веса, роста, возраста или активности.
-  /// Если поле веса пустое или невалидное — ничего не делаем.
+  // ---------------------------------------------------------------------------
+  // Пересчёт нормы воды
+  // ---------------------------------------------------------------------------
+
   void _recalcWater() {
-    final weightText = _weightController.text.trim();
-    final weight = double.tryParse(weightText);
+    final weight = double.tryParse(_weightController.text.trim());
     if (weight == null || weight <= 0) return;
     final height = double.tryParse(_heightController.text.trim());
     final age = int.tryParse(_ageController.text.trim());
@@ -125,14 +173,53 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     setState(() => _waterGoal = recommended);
   }
 
+  // ---------------------------------------------------------------------------
+  // Навигация между страницами
+  // ---------------------------------------------------------------------------
+
+  void _next() {
+    if (_page < _pageCount - 1) {
+      _pageController.nextPage(
+        duration: effectiveDuration(context, kDurationFast),
+        curve: kCurveSnap,
+      );
+    } else {
+      _finish();
+    }
+  }
+
+  void _back() {
+    if (_page > 0) {
+      _pageController.previousPage(
+        duration: effectiveDuration(context, kDurationFast),
+        curve: kCurveSnap,
+      );
+    }
+  }
+
+  // Переход вперёд без блокировки (skip).
+  void _skip() => _next();
+
+  // ---------------------------------------------------------------------------
+  // Финализация
+  // ---------------------------------------------------------------------------
+
   Future<void> _finish() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setStringList(interestsKey, _selectedInterests.toList());
-    await prefs.setInt(reviewMorningHourKey, _morningHour);
-    await prefs.setInt(reviewEveningHourKey, _eveningHour);
-    await ref.read(waterGoalProvider.notifier).set(_waterGoal);
 
-    // Сохраняем антропометрию для расчёта норм питания и аналитики.
+    // Язык — уже установлен live на экране 4.
+
+    // Цели
+    await prefs.setStringList(_kGoalsKey, _selectedGoals.toList());
+
+    // Время на планирование
+    final planMinutes = _planMinutesMap[_planOption] ?? 0;
+    await prefs.setInt(_kPlanMinutesKey, planMinutes);
+
+    // Горизонт
+    await prefs.setString(_kHorizonKey, _horizon);
+
+    // Антропометрия
     final weight = double.tryParse(_weightController.text.trim());
     final height = int.tryParse(_heightController.text.trim());
     final age = int.tryParse(_ageController.text.trim());
@@ -148,17 +235,16 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     await prefs.setString(kUserActivityKey, _activity);
     await prefs.setString(kUserSexKey, _sex);
 
-    // Сохраняем профиль здоровья (только если хоть одно поле непустое).
-    final hp = HealthProfile(
-      allergies: _allergiesController.text,
-      healing: _healingController.text,
-      deficiencies: _deficienciesController.text,
-    );
-    if (!hp.isEmpty) {
-      await ref.read(healthProfileProvider.notifier).save(hp);
-    }
+    // Норма воды
+    await ref.read(waterGoalProvider.notifier).set(_waterGoal);
 
-    // Если напоминания уже включены — перепланируем под выбранные часы.
+    // Профиль здоровья — не собираем в этом флоу; провайдер остаётся.
+
+    // Время разборов
+    await prefs.setInt(reviewMorningHourKey, _morningHour);
+    await prefs.setInt(reviewEveningHourKey, _eveningHour);
+
+    // Перепланируем уведомления если включены
     if (ref.read(notificationsEnabledProvider)) {
       try {
         await ref.read(notificationServiceProvider).scheduleDailyReviews(
@@ -166,166 +252,168 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
               eveningHour: _eveningHour,
             );
       } catch (_) {
-        // Уведомления не должны блокировать завершение настройки.
+        // Уведомления не должны блокировать завершение.
       }
     }
 
     await prefs.setBool(setupDoneKey, true);
-    if (mounted) context.go('/today');
-  }
 
-  void _next() {
-    if (_page < _pageCount - 1) {
-      _pageController.nextPage(
-        duration: effectiveDuration(context, kDurationFast),
-        curve: kCurveSnap,
-      );
-    } else {
-      _finish();
+    if (mounted) {
+      // Показываем пейволл один раз; после него роутер пустит на /today.
+      context.go('/paywall');
     }
   }
 
-  /// Возвращается на предыдущий шаг (вызывается с кнопки Back).
-  /// На первом шаге кнопка не показывается.
-  void _back() {
-    if (_page > 0) {
-      _pageController.previousPage(
-        duration: effectiveDuration(context, kDurationFast),
-        curve: kCurveSnap,
-      );
-    }
+  // ---------------------------------------------------------------------------
+  // Вставка первой задачи в Drift
+  // ---------------------------------------------------------------------------
+
+  Future<bool> _insertFirstTask(String title) async {
+    if (title.trim().isEmpty) return false;
+    final now = DateTime.now();
+    final dayStart = DateTime.utc(now.year, now.month, now.day);
+    final companion = ItemsTableCompanion(
+      id: Value(uuidV4()),
+      userId: const Value('local'),
+      title: Value(title.trim()),
+      type: const Value('task'),
+      priority: const Value('main'),
+      status: const Value('pending'),
+      scheduledAt: Value(dayStart),
+      durationMinutes: const Value(30),
+      isProtected: const Value(false),
+      createdAt: Value(now),
+      updatedAt: Value(now),
+    );
+    await ref.read(itemsDaoProvider).insertItem(companion);
+    return true;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+  // ---------------------------------------------------------------------------
+  // UI-helpers
+  // ---------------------------------------------------------------------------
+
+  /// Показывать ли skip-кнопку «Заполнить позже» (только на экранах 5–11 и 14).
+  bool get _showSkip =>
+      _page >= 4 && _page <= 10 || _page == 13;
+
+  /// Показывать ли прогресс-индикатор (не на экранах 12 и 15 → индексы 12, 15).
+  bool get _showProgress => _page != 12 && _page != 15;
+
+  /// Карточка-выбор (single select) с accent-границей у выбранной.
+  Widget _choiceTile({
+    required bool selected,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+    double topPad = 5,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    final isLast = _page == _pageCount - 1;
-    final isFirst = _page == 0;
-
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Верхняя строка: прогресс + «Skip all»
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
-              child: Row(
-                children: [
-                  // Линейный прогресс (accent цвет, нейтральный трек)
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: (_page + 1) / _pageCount,
-                        backgroundColor: ext.border,
-                        color: colorScheme.primary,
-                        minHeight: 4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '${_page + 1}/$_pageCount',
-                    style: textTheme.labelMedium,
-                  ),
-                  const SizedBox(width: 4),
-                  // Skip all — TextButton, минимальный вес
-                  TextButton(
-                    onPressed: _finish,
-                    child: Text(
-                      context.s('onboarding.skip_all'),
-                      style: textTheme.labelLarge?.copyWith(
-                        color: ext.textMuted,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ),
-                ],
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: topPad),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: kDurationSnap,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? colorScheme.primary : ext.border,
+                width: selected ? 1.5 : 1.0,
               ),
+              color: selected
+                  ? colorScheme.primary.withAlpha(18)
+                  : Colors.transparent,
             ),
-
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (i) => setState(() => _page = i),
-                children: [
-                  _interestsStep(textTheme, ext),
-                  _importStep(textTheme, ext),
-                  _reviewTimeStep(textTheme, ext),
-                  _toneStep(textTheme),
-                  _themeStep(textTheme, colorScheme),
-                  _normsStep(textTheme, colorScheme, ext),
-                  _healthProfileStep(textTheme, ext),
-                ],
-              ),
-            ),
-
-            // Нижние кнопки: Back (OutlinedButton icon) + Continue/Start (FilledButton)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-              child: Row(
-                children: [
-                  if (!isFirst) ...[
-                    // Back — outlined icon-only, не перетягивает фокус
-                    SizedBox(
-                      width: 52,
-                      height: 52,
-                      child: OutlinedButton(
-                        onPressed: _back,
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: textTheme.titleSmall),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: textTheme.bodySmall
+                              ?.copyWith(color: ext.textMuted),
                         ),
-                        child: const Icon(Icons.arrow_back_rounded, size: 20),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  // Continue / Start — единственный FilledButton на экране
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _next,
-                      child: Text(
-                        isLast
-                            ? context.s('onboarding.btn_start')
-                            : context.s('onboarding.btn_continue'),
-                      ),
-                    ),
+                      ],
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                AnimatedSwitcher(
+                  duration: kDurationSnap,
+                  child: selected
+                      ? Icon(
+                          Icons.check_circle_rounded,
+                          key: const ValueKey('chk'),
+                          color: colorScheme.primary,
+                          size: 20,
+                        )
+                      : Icon(
+                          Icons.circle_outlined,
+                          key: const ValueKey('unk'),
+                          color: ext.border,
+                          size: 20,
+                        ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// Обёртка каждого шага: заголовок headlineSmall + bodyMedium + контент.
-  Widget _step({
+  /// Фрейм шага с прокруткой: Kai вверху → заголовок → контент.
+  Widget _stepFrame({
+    required KaiEmotion kaiEmotion,
     required String title,
-    required String subtitle,
+    String? subtitle,
     required Widget child,
+    String? kaiBubbleText,
   }) {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Заголовок шага: headlineSmall (display-font через тему)
-          Text(title, style: textTheme.headlineSmall),
-          const SizedBox(height: 10),
-          // Описание шага: bodyLarge, textMuted для вторичности
-          Text(
-            subtitle,
-            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+          // Kai + речевой пузырь (если есть)
+          Center(
+            child: Column(
+              children: [
+                KaiMascot(size: 72, emotion: kaiEmotion),
+                if (kaiBubbleText != null) ...[
+                  const SizedBox(height: 10),
+                  KaiSpeechBubble(
+                    message: kaiBubbleText,
+                    animate: true,
+                    maxWidth: 260,
+                  ),
+                ],
+              ],
+            ),
           ),
+          const SizedBox(height: 24),
+          Text(title, style: textTheme.headlineSmall),
+          if (subtitle != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              subtitle,
+              style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+            ),
+          ],
           const SizedBox(height: 28),
           child,
         ],
@@ -333,243 +421,562 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     );
   }
 
-  // --- Шаг 1: интересы ---
-  Widget _interestsStep(TextTheme textTheme, FocusThemeExtension ext) {
-    return _step(
-      title: context.s('onboarding.interests_title'),
-      subtitle: context.s('onboarding.interests_subtitle'),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 10,
-        children: List.generate(_interestValues.length, (i) {
-          final value = _interestValues[i];
-          final l10nKey = _interestL10nKeys[i];
-          final selected = _selectedInterests.contains(value);
-          return FilterChip(
-            label: Text(context.s(l10nKey)),
-            selected: selected,
-            onSelected: (v) => setState(() {
-              if (v) {
-                _selectedInterests.add(value);
-              } else {
-                _selectedInterests.remove(value);
-              }
-            }),
-          );
-        }),
+  // ---------------------------------------------------------------------------
+  // build()
+  // ---------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Лейбл CTA на последнем экране (экран 16 — пейволл, кнопка не нужна).
+    final isLastPage = _page == _pageCount - 1;
+    // Экран 16 (пейволл) управляет собой сам — кнопок нет.
+    final showBottomButtons = _page != 15;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // --- Верхняя панель: прогресс-индикатор + skip (если нужен) ---
+            if (_showProgress)
+              _buildProgressRow(textTheme, colorScheme, ext),
+
+            // --- Страницы ---
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                onPageChanged: (i) => setState(() {
+                  _page = i;
+                  // Сбрасываем демо при возврате на экран 13
+                  if (i == 12) _taskMoved = false;
+                  // Запускаем «расчёт» на экране 15
+                  if (i == 14) _triggerSummaryReady();
+                }),
+                children: [
+                  _buildScreen1(),  // 0
+                  _buildScreen2(),  // 1
+                  _buildScreen3(),  // 2
+                  _buildScreen4(),  // 3
+                  _buildScreen5(),  // 4
+                  _buildScreen6(),  // 5
+                  _buildScreen7(),  // 6
+                  _buildScreen8(),  // 7
+                  _buildScreen9(),  // 8
+                  _buildScreen10(), // 9
+                  _buildScreen11(), // 10
+                  _buildScreen12(), // 11
+                  _buildScreen13(), // 12
+                  _buildScreen14(), // 13
+                  _buildScreen15(), // 14
+                  _buildScreen16(), // 15
+                ],
+              ),
+            ),
+
+            // --- Нижние кнопки ---
+            if (showBottomButtons)
+              _buildBottomButtons(isLastPage, ext),
+          ],
+        ),
       ),
     );
   }
 
-  // --- Шаг 2: импорт расписания ---
-  Widget _importStep(TextTheme textTheme, FocusThemeExtension ext) {
-    return _step(
-      title: context.s('onboarding.import_title'),
-      subtitle: context.s('onboarding.import_subtitle'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  // ---------------------------------------------------------------------------
+  // Прогресс-индикатор (X/16, не показывается на экране 13 и 16)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildProgressRow(
+    TextTheme textTheme,
+    ColorScheme colorScheme,
+    FocusThemeExtension ext,
+  ) {
+    // Общее число экранов с прогрессом (без 13 и 16)
+    // Для простоты: нумеруем 1-based, показываем из 14 (1-12, 14-15)
+    final displayPage = _page < 12 ? _page + 1 : _page; // пропускаем 13
+    final total = 14;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
+      child: Row(
         children: [
-          OutlinedButton.icon(
-            icon: const Icon(Icons.content_paste_go, size: 18),
-            label: Text(context.s('onboarding.import_now')),
-            onPressed: () => showImportSheet(context, day: DateTime.now()),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            context.s('onboarding.import_premium_hint'),
-            style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- Шаг 3: время разборов ---
-  Widget _reviewTimeStep(TextTheme textTheme, FocusThemeExtension ext) {
-    Future<void> pick(bool morning) async {
-      final initial = TimeOfDay(
-        hour: morning ? _morningHour : _eveningHour,
-        minute: 0,
-      );
-      final picked = await showTimePicker(context: context, initialTime: initial);
-      if (picked != null) {
-        setState(() {
-          if (morning) {
-            _morningHour = picked.hour;
-          } else {
-            _eveningHour = picked.hour;
-          }
-        });
-      }
-    }
-
-    // ListTile с OutlinedButton для выбора времени
-    Widget tile(String label, int hour, bool morning) => ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(label, style: textTheme.bodyLarge),
-          trailing: OutlinedButton(
-            onPressed: () => pick(morning),
-            child: Text(
-              '${hour.toString().padLeft(2, '0')}:00',
-              style: textTheme.labelLarge,
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: displayPage / total,
+                backgroundColor: ext.border,
+                color: colorScheme.primary,
+                minHeight: 4,
+              ),
             ),
           ),
-        );
-
-    return _step(
-      title: context.s('onboarding.review_title'),
-      subtitle: context.s('onboarding.review_subtitle'),
-      child: Column(
-        children: [
-          tile(context.s('onboarding.review_morning'), _morningHour, true),
-          const SizedBox(height: 8),
-          tile(context.s('onboarding.review_evening'), _eveningHour, false),
+          const SizedBox(width: 12),
+          Text(
+            '$displayPage / $total',
+            style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+          ),
+          const SizedBox(width: 8),
+          // skip «Заполнить позже»
+          if (_showSkip)
+            TextButton(
+              onPressed: _skip,
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+              child: Text(
+                context.s('onboarding_quiz.s5_skip'),
+                style: textTheme.labelSmall?.copyWith(
+                  color: ext.textMuted,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  /// Карточка-выбор: accent-граница и иконка проверки только для активного.
-  Widget _choiceTile({
-    required bool selected,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
+  // ---------------------------------------------------------------------------
+  // Нижние кнопки
+  // ---------------------------------------------------------------------------
+
+  Widget _buildBottomButtons(bool isLast, FocusThemeExtension ext) {
+    final isFirst = _page == 0;
+    // Кастомный лейбл CTA по странице
+    final ctaKey = _ctaKey(_page);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+      child: Row(
+        children: [
+          if (!isFirst) ...[
+            SizedBox(
+              width: 52,
+              height: 52,
+              child: OutlinedButton(
+                onPressed: _back,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, size: 20),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: FilledButton(
+                onPressed: _page == 11 ? _handleAddTask : _next,
+                child: Text(context.s(ctaKey)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ключ строки для CTA по индексу страницы.
+  String _ctaKey(int page) => switch (page) {
+        0 => 'onboarding_quiz.s1_cta',
+        1 => 'onboarding_quiz.s2_cta',
+        2 => 'onboarding_quiz.s3_cta',
+        3 => 'onboarding_quiz.s4_cta',
+        4 => 'onboarding_quiz.s5_cta',
+        5 => 'onboarding_quiz.s6_cta',
+        6 => 'onboarding_quiz.s7_cta',
+        7 => 'onboarding_quiz.s8_cta',
+        8 => 'onboarding_quiz.s9_cta',
+        9 => 'onboarding_quiz.s10_cta',
+        10 => 'onboarding_quiz.s11_cta',
+        11 => 'onboarding_quiz.s12_cta', // Добавить задачу
+        12 => 'onboarding_quiz.s13_cta',
+        13 => 'onboarding_quiz.s14_cta',
+        14 => 'onboarding_quiz.s15_cta',
+        _ => 'onboarding_quiz.s4_cta',
+      };
+
+  // ---------------------------------------------------------------------------
+  // Добавление первой задачи (экран 12)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _handleAddTask() async {
+    final title = _firstTaskController.text.trim();
+    if (title.isEmpty) {
+      setState(() => _taskError = true);
+      return;
+    }
+    setState(() => _taskError = false);
+    // Захватываем длительность до async-gap
+    final animDelay = effectiveDuration(context, kDurationNormal);
+    final ok = await _insertFirstTask(title);
+    if (ok) {
+      setState(() {
+        _taskAdded = true;
+        _addedTaskTitle = title;
+      });
+      // Небольшая задержка для микро-анимации, затем переход
+      await Future<void>.delayed(animDelay);
+      if (mounted) _next();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Фейковый «расчёт» для экрана 15 (KaiLoader не нужен — саммари мгновенный)
+  // ---------------------------------------------------------------------------
+
+  void _triggerSummaryReady() {
+    setState(() => _summaryReady = false);
+    Future<void>.delayed(const Duration(milliseconds: 400))
+        .then((_) {
+      if (mounted) setState(() => _summaryReady = true);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 1: Hello / Promise
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen1() {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        // Accent только у выбранной карточки — дисциплина акцента
-        side: BorderSide(
-          color: selected ? colorScheme.primary : ext.border,
-          width: selected ? 1.5 : 1.0,
-        ),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        title: Text(title, style: textTheme.titleSmall),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
-              )
-            : null,
-        trailing: AnimatedSwitcher(
-          duration: kDurationSnap,
-          child: selected
-              ? Icon(
-                  Icons.check_circle_rounded,
-                  key: const ValueKey('checked'),
-                  color: colorScheme.primary,
-                  size: 20,
-                )
-              : Icon(
-                  Icons.circle_outlined,
-                  key: const ValueKey('unchecked'),
-                  color: ext.border,
-                  size: 20,
-                ),
-        ),
-      ),
-    );
-  }
-
-  // --- Шаг 4: тон ---
-  Widget _toneStep(TextTheme textTheme) {
-    final tone = ref.watch(toneProvider);
-    return _step(
-      title: context.s('onboarding.tone_title'),
-      subtitle: context.s('onboarding.tone_subtitle'),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 16),
       child: Column(
         children: [
-          _choiceTile(
-            selected: tone == AppTone.gentle,
-            title: context.s('settings.gentle'),
-            subtitle: context.s('onboarding.tone_gentle_subtitle'),
-            onTap: () => ref.read(toneProvider.notifier).set(AppTone.gentle),
+          const SizedBox(height: 24),
+          KaiMascot(size: 96, emotion: KaiEmotion.success),
+          const SizedBox(height: 32),
+          Text(
+            context.s('onboarding_quiz.s1_title'),
+            style: textTheme.displaySmall,
+            textAlign: TextAlign.center,
           ),
-          _choiceTile(
-            selected: tone == AppTone.harsh,
-            title: context.s('settings.harsh'),
-            subtitle: context.s('onboarding.tone_harsh_subtitle'),
-            onTap: () => ref.read(toneProvider.notifier).set(AppTone.harsh),
+          const SizedBox(height: 16),
+          Text(
+            context.s('onboarding_quiz.s1_subtitle'),
+            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+            textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 40),
         ],
       ),
     );
   }
 
-  // --- Шаг 5: тема ---
-  Widget _themeStep(TextTheme textTheme, ColorScheme colorScheme) {
-    final current = ref.watch(themeNotifierProvider);
-    return _step(
-      title: context.s('onboarding.theme_title'),
-      subtitle: context.s('onboarding.theme_subtitle'),
+  // ---------------------------------------------------------------------------
+  // Экран 2: Проблема
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen2() {
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.thinking,
+      title: context.s('onboarding_quiz.s2_title'),
+      subtitle: context.s('onboarding_quiz.s2_body'),
+      child: const SizedBox.shrink(),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 3: Решение
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen3() {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bullets = [
+      context.s('onboarding_quiz.s3_bullet1'),
+      context.s('onboarding_quiz.s3_bullet2'),
+      context.s('onboarding_quiz.s3_bullet3'),
+    ];
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s3_title'),
       child: Column(
-        children: AppThemeKey.values.map((key) {
-          return _choiceTile(
-            selected: current == key,
-            title: key.label,
-            onTap: () =>
-                ref.read(themeNotifierProvider.notifier).setTheme(key),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: bullets.map((b) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.check_rounded,
+                    color: colorScheme.primary, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(b, style: textTheme.bodyLarge),
+                ),
+              ],
+            ),
           );
         }).toList(),
       ),
     );
   }
 
-  // --- Шаг 7: профиль здоровья (опциональный) ---
-  // Три текстовых поля с диктовкой. Данные сохраняются в _finish.
-  Widget _healthProfileStep(TextTheme textTheme, FocusThemeExtension ext) {
-    return _step(
-      title: context.s('health_profile.onboarding_title'),
-      subtitle: context.s('health_profile.onboarding_subtitle'),
+  // ---------------------------------------------------------------------------
+  // Экран 4: Язык (NO skip)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen4() {
+    final locale = ref.watch(localeNotifierProvider);
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s4_title'),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          VoiceTextField(
-            controller: _allergiesController,
-            labelText: context.s('health_profile.q_allergies'),
-            maxLines: 3,
+          _choiceTile(
+            selected: locale.languageCode == 'ru',
+            title: 'Русский',
+            onTap: () =>
+                ref.read(localeNotifierProvider.notifier).setLocale(
+                      const Locale('ru'),
+                    ),
           ),
-          const SizedBox(height: 16),
-          VoiceTextField(
-            controller: _healingController,
-            labelText: context.s('health_profile.q_healing'),
-            maxLines: 2,
+          _choiceTile(
+            selected: locale.languageCode == 'en',
+            title: 'English',
+            onTap: () =>
+                ref.read(localeNotifierProvider.notifier).setLocale(
+                      const Locale('en'),
+                    ),
           ),
-          const SizedBox(height: 16),
-          VoiceTextField(
-            controller: _deficienciesController,
-            labelText: context.s('health_profile.q_deficiencies'),
-            maxLines: 3,
-          ),
-          const SizedBox(height: 16),
-          // Дисклеймер: не медицинская рекомендация
-          Text(
-            context.s('health_profile.disclaimer'),
-            style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
+          _choiceTile(
+            selected: locale.languageCode == 'de',
+            title: 'Deutsch',
+            onTap: () =>
+                ref.read(localeNotifierProvider.notifier).setLocale(
+                      const Locale('de'),
+                    ),
           ),
         ],
       ),
     );
   }
 
-  // --- Шаг 6: нормы ---
-  // Поля вес и рост → расчёт нормы воды + слайдер для ручной корректировки.
-  // Рост собирается для будущей аналитики, в формуле воды НЕ участвует.
-  Widget _normsStep(
-      TextTheme textTheme, ColorScheme colorScheme, FocusThemeExtension ext) {
-    // Показываем рекомендацию, только если вес заполнен корректно
-    final weightText = _weightController.text.trim();
-    final weightVal = double.tryParse(weightText);
-    final hasValidWeight = weightVal != null && weightVal > 0;
+  // ---------------------------------------------------------------------------
+  // Экран 5: Цели (multiselect)
+  // ---------------------------------------------------------------------------
 
+  Widget _buildScreen5() {
+    final goals = [
+      ('study', context.s('onboarding_quiz.goal_study')),
+      ('procrastination', context.s('onboarding_quiz.goal_procrastination')),
+      ('routine', context.s('onboarding_quiz.goal_routine')),
+      ('free_time', context.s('onboarding_quiz.goal_free_time')),
+      ('exams', context.s('onboarding_quiz.goal_exams')),
+    ];
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.thinking,
+      title: context.s('onboarding_quiz.s5_title'),
+      subtitle: context.s('onboarding_quiz.s5_subtitle'),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 10,
+        children: goals.map((pair) {
+          final id = pair.$1;
+          final label = pair.$2;
+          final selected = _selectedGoals.contains(id);
+          return FilterChip(
+            label: Text(label),
+            selected: selected,
+            onSelected: (v) => setState(() {
+              if (v) {
+                _selectedGoals.add(id);
+              } else {
+                _selectedGoals.remove(id);
+              }
+            }),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 6: Время на планирование (single select)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen6() {
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.thinking,
+      title: context.s('onboarding_quiz.s6_title'),
+      subtitle: context.s('onboarding_quiz.s6_subtitle'),
+      child: Column(
+        children: [
+          _choiceTile(
+            selected: _planOption == 'none',
+            title: context.s('onboarding_quiz.plan_none'),
+            onTap: () => setState(() => _planOption = 'none'),
+          ),
+          _choiceTile(
+            selected: _planOption == '10',
+            title: context.s('onboarding_quiz.plan_10'),
+            onTap: () => setState(() => _planOption = '10'),
+          ),
+          _choiceTile(
+            selected: _planOption == '30',
+            title: context.s('onboarding_quiz.plan_30'),
+            onTap: () => setState(() => _planOption = '30'),
+          ),
+          _choiceTile(
+            selected: _planOption == 'more',
+            title: context.s('onboarding_quiz.plan_more'),
+            onTap: () => setState(() => _planOption = 'more'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 7: Горизонт планирования
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen7() {
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s7_title'),
+      child: Column(
+        children: [
+          _choiceTile(
+            selected: _horizon == 'day',
+            title: context.s('onboarding_quiz.horizon_day'),
+            onTap: () => setState(() => _horizon = 'day'),
+          ),
+          _choiceTile(
+            selected: _horizon == 'week',
+            title: context.s('onboarding_quiz.horizon_week'),
+            onTap: () => setState(() => _horizon = 'week'),
+          ),
+          _choiceTile(
+            selected: _horizon == 'months',
+            title: context.s('onboarding_quiz.horizon_months'),
+            onTap: () => setState(() => _horizon = 'months'),
+          ),
+          _choiceTile(
+            selected: _horizon == 'years',
+            title: context.s('onboarding_quiz.horizon_years'),
+            onTap: () => setState(() => _horizon = 'years'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 8: Проекция (derived)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen8() {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final minutes = _planMinutesMap[_planOption] ?? 0;
+    // Честный расчёт: мин/день × 365 / 60
+    final hoursPerYear = (minutes * 365 / 60).round();
+
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.success,
+      title: '',
+      child: Column(
+        children: [
+          // Большой акцентный номер
+          Text(
+            '~$hoursPerYear',
+            style: textTheme.displayLarge?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${context.s('onboarding_quiz.s8_title_prefix')} — '
+            '${context.s('onboarding_quiz.s8_title_suffix')}',
+            style: textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            context.s('onboarding_quiz.s8_body'),
+            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 9: Возраст + пол
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen9() {
+    final textTheme = Theme.of(context).textTheme;
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s9_title'),
+      subtitle: context.s('onboarding_quiz.s9_subtitle'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Возраст
+          TextField(
+            controller: _ageController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              labelText: context.s('onboarding.norms_age'),
+            ),
+            textInputAction: TextInputAction.done,
+          ),
+          const SizedBox(height: 20),
+          // Пол
+          Text(context.s('onboarding.norms_sex'),
+              style: textTheme.labelMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              (context.s('onboarding.sex_male'), 'male'),
+              (context.s('onboarding.sex_female'), 'female'),
+              (context.s('onboarding.sex_other'), 'other'),
+            ].map((pair) {
+              final label = pair.$1;
+              final value = pair.$2;
+              return ChoiceChip(
+                label: Text(label),
+                selected: _sex == value,
+                onSelected: (_) => setState(() => _sex = value),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 10: Рост + вес
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen10() {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final textTheme = Theme.of(context).textTheme;
+
+    // Проверяем вес для показа рекомендации
+    final weightVal = double.tryParse(_weightController.text.trim());
+    final hasValidWeight = weightVal != null && weightVal > 0;
     final recommended = hasValidWeight
         ? recommendedWaterMl(
             weightKg: weightVal,
@@ -579,13 +986,13 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
           )
         : null;
 
-    return _step(
-      title: context.s('onboarding.norms_title'),
-      subtitle: context.s('onboarding.norms_subtitle'),
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s10_title'),
+      subtitle: context.s('onboarding_quiz.s10_subtitle'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- Поля антропометрии: вес + рост ---
           Row(
             children: [
               Expanded(
@@ -614,99 +1021,18 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
                     labelText: context.s('onboarding.norms_height'),
                     helperText: context.s('onboarding.norms_height_helper'),
                   ),
-                  textInputAction: TextInputAction.next,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // --- Возраст + пол ---
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ageController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  decoration: InputDecoration(
-                    labelText: context.s('onboarding.norms_age'),
-                  ),
                   textInputAction: TextInputAction.done,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      context.s('onboarding.norms_sex'),
-                      style: textTheme.labelMedium,
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      children: [
-                        (context.s('onboarding.sex_male'), 'male'),
-                        (context.s('onboarding.sex_female'), 'female'),
-                        (context.s('onboarding.sex_other'), 'other'),
-                      ].map((pair) {
-                        final label = pair.$1;
-                        final value = pair.$2;
-                        return ChoiceChip(
-                          label: Text(label),
-                          selected: _sex == value,
-                          onSelected: (_) => setState(() => _sex = value),
-                          visualDensity: VisualDensity.compact,
-                        );
-                      }).toList(),
-                    ),
-                  ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-
-          // --- Уровень активности ---
-          Text(
-            context.s('onboarding.norms_activity'),
-            style: textTheme.labelMedium,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            children: [
-              (context.s('onboarding.activity_low'), 'low'),
-              (context.s('onboarding.activity_medium'), 'medium'),
-              (context.s('onboarding.activity_high'), 'high'),
-            ].map((pair) {
-              final label = pair.$1;
-              final value = pair.$2;
-              return ChoiceChip(
-                label: Text(label),
-                selected: _activity == value,
-                onSelected: (_) {
-                  setState(() => _activity = value);
-                  _recalcWater();
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
-
-          // --- Рекомендация (живая): success-цвет, не accent ---
+          // Рекомендация воды (живая)
           if (recommended != null) ...[
             Row(
               children: [
-                Icon(
-                  Icons.water_drop_outlined,
-                  size: 16,
-                  color: ext.success,
-                ),
+                Icon(Icons.water_drop_outlined,
+                    size: 16, color: ext.success),
                 const SizedBox(width: 6),
                 Text(
                   '${context.s('onboarding.norms_recommended')}: $recommended ml',
@@ -719,10 +1045,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             ),
             const SizedBox(height: 6),
           ],
-
-          // --- Текущее значение + слайдер ---
+          // Слайдер воды
           Text('$_waterGoal ml', style: textTheme.headlineSmall),
-          const SizedBox(height: 4),
           Slider(
             value: _waterGoal.toDouble(),
             min: 1000,
@@ -736,6 +1060,504 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
           ),
         ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 11: Активность (4 карточки)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen11() {
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s11_title'),
+      subtitle: context.s('onboarding_quiz.s11_subtitle'),
+      child: Column(
+        children: [
+          _choiceTile(
+            selected: _activity == 'low',
+            title: context.s('onboarding_quiz.activity_low_label'),
+            subtitle: context.s('onboarding_quiz.activity_low_sub'),
+            onTap: () {
+              setState(() => _activity = 'low');
+              _recalcWater();
+            },
+          ),
+          _choiceTile(
+            selected: _activity == 'medium',
+            title: context.s('onboarding_quiz.activity_medium_label'),
+            subtitle: context.s('onboarding_quiz.activity_medium_sub'),
+            onTap: () {
+              setState(() => _activity = 'medium');
+              _recalcWater();
+            },
+          ),
+          _choiceTile(
+            selected: _activity == 'high',
+            title: context.s('onboarding_quiz.activity_high_label'),
+            subtitle: context.s('onboarding_quiz.activity_high_sub'),
+            onTap: () {
+              setState(() => _activity = 'high');
+              _recalcWater();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 12: Первая задача (NO skip)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen12() {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Column(
+              children: [
+                KaiMascot(
+                  size: 72,
+                  emotion: _taskAdded
+                      ? KaiEmotion.success
+                      : KaiEmotion.neutral,
+                ),
+                const SizedBox(height: 10),
+                KaiSpeechBubble(
+                  message: context.s('onboarding_quiz.s12_kai_line'),
+                  animate: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(context.s('onboarding_quiz.s12_title'),
+              style: textTheme.headlineSmall),
+          const SizedBox(height: 10),
+          Text(
+            context.s('onboarding_quiz.s12_subtitle'),
+            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+          ),
+          const SizedBox(height: 28),
+
+          // Поле ввода задачи
+          VoiceTextField(
+            controller: _firstTaskController,
+            labelText: context.s('onboarding_quiz.s12_hint'),
+            maxLines: 2,
+          ),
+
+          // Ошибка
+          if (_taskError) ...[
+            const SizedBox(height: 8),
+            Text(
+              context.s('onboarding_quiz.s12_err_empty'),
+              style: textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.error),
+            ),
+          ],
+
+          // Микро-праздник после добавления
+          if (_taskAdded) ...[
+            const SizedBox(height: 16),
+            AnimatedContainer(
+              duration: kDurationNormal,
+              curve: kCurveSpring,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withAlpha(18),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: colorScheme.primary.withAlpha(60)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_rounded,
+                      color: colorScheme.primary, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '"$_addedTaskTitle"',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 13: Демо переноса (NO progress bar)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen13() {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+      child: Column(
+        children: [
+          Center(
+            child: Column(
+              children: [
+                KaiMascot(
+                  size: 80,
+                  emotion: _taskMoved
+                      ? KaiEmotion.success
+                      : KaiEmotion.neutral,
+                ),
+                const SizedBox(height: 10),
+                if (_taskMoved)
+                  KaiSpeechBubble(
+                    message: context.s('onboarding_quiz.s13_kai_line'),
+                    animate: true,
+                    maxWidth: 280,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          Text(context.s('onboarding_quiz.s13_title'),
+              style: textTheme.headlineSmall),
+          const SizedBox(height: 24),
+
+          // Карточка задачи — «живая» sandbox
+          AnimatedContainer(
+            duration: kDurationNormal,
+            curve: kCurveLift,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: ext.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.star_rounded,
+                        color: colorScheme.primary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _addedTaskTitle.isNotEmpty
+                            ? _addedTaskTitle
+                            : context.s('onboarding_quiz.s13_title'),
+                        style: textTheme.titleSmall,
+                      ),
+                    ),
+                  ],
+                ),
+                if (_taskMoved) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    context.s('onboarding_quiz.s13_task_moved'),
+                    style: textTheme.bodySmall
+                        ?.copyWith(color: ext.success),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          if (!_taskMoved) ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                context.s('onboarding_quiz.s13_question'),
+                style:
+                    textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.schedule_rounded, size: 18),
+              label: Text(context.s('onboarding_quiz.s13_move_btn')),
+              onPressed: () => setState(() => _taskMoved = true),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 14: Время разборов
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen14() {
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.neutral,
+      title: context.s('onboarding_quiz.s14_title'),
+      subtitle: context.s('onboarding_quiz.s14_subtitle'),
+      child: Column(
+        children: [
+          _choiceTile(
+            selected: _timing == _TimingOption.morning,
+            title: context.s('onboarding_quiz.timing_morning'),
+            onTap: () {
+              setState(() {
+                _timing = _TimingOption.morning;
+                _morningHour = kMorningHour;
+              });
+            },
+          ),
+          _choiceTile(
+            selected: _timing == _TimingOption.afternoon,
+            title: context.s('onboarding_quiz.timing_afternoon'),
+            onTap: () {
+              setState(() {
+                _timing = _TimingOption.afternoon;
+                _morningHour = 13;
+                _eveningHour = kEveningHour;
+              });
+            },
+          ),
+          _choiceTile(
+            selected: _timing == _TimingOption.evening,
+            title: context.s('onboarding_quiz.timing_evening'),
+            onTap: () {
+              setState(() {
+                _timing = _TimingOption.evening;
+                _eveningHour = kEveningHour;
+              });
+            },
+          ),
+          _choiceTile(
+            selected: _timing == _TimingOption.both,
+            title: context.s('onboarding_quiz.timing_both'),
+            onTap: () {
+              setState(() {
+                _timing = _TimingOption.both;
+                _morningHour = kMorningHour;
+                _eveningHour = kEveningHour;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 15: Саммари
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen15() {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Персональные нормы
+    final waterGoal = ref.watch(waterGoalProvider);
+    final nutrition = ref.watch(nutritionTargetsProvider);
+
+    // Язык
+    final locale = ref.watch(localeNotifierProvider);
+    final langName = localeNames[locale.languageCode] ?? locale.languageCode;
+
+    // Первая цель (если есть)
+    final firstGoalId = _selectedGoals.isNotEmpty
+        ? _selectedGoals.first
+        : null;
+    final goalLabel = firstGoalId != null
+        ? context.s('onboarding_quiz.goal_$firstGoalId')
+        : context.s('onboarding_quiz.s15_no_goal');
+
+    // Время разборов
+    final timingLabel = switch (_timing) {
+      _TimingOption.morning => context.s('onboarding_quiz.timing_morning'),
+      _TimingOption.afternoon =>
+        context.s('onboarding_quiz.timing_afternoon'),
+      _TimingOption.evening => context.s('onboarding_quiz.timing_evening'),
+      _TimingOption.both => context.s('onboarding_quiz.timing_both'),
+    };
+
+    // Вода
+    final waterStr = context
+        .s('onboarding_quiz.s15_water_value')
+        .replaceAll('{n}', '$waterGoal');
+
+    // Калории
+    final calStr = context
+        .s('onboarding_quiz.s15_cal_value')
+        .replaceAll('{n}', '${nutrition.kcal}');
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+      child: Column(
+        children: [
+          Center(
+            child: KaiMascot(size: 80, emotion: KaiEmotion.success),
+          ),
+          const SizedBox(height: 24),
+          Text(context.s('onboarding_quiz.s15_title'),
+              style: textTheme.headlineSmall),
+          const SizedBox(height: 24),
+
+          // Карточка саммари
+          AnimatedOpacity(
+            opacity: _summaryReady ? 1.0 : 0.0,
+            duration: kDurationNormal,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: ext.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _summaryRow(
+                    icon: Icons.language_rounded,
+                    label: context.s('onboarding_quiz.s15_lang_label'),
+                    value: langName,
+                    textTheme: textTheme,
+                    ext: ext,
+                  ),
+                  _summaryDivider(ext),
+                  _summaryRow(
+                    icon: Icons.flag_rounded,
+                    label: context.s('onboarding_quiz.s15_goal_label'),
+                    value: goalLabel,
+                    textTheme: textTheme,
+                    ext: ext,
+                  ),
+                  _summaryDivider(ext),
+                  _summaryRow(
+                    icon: Icons.water_drop_outlined,
+                    label: context.s('onboarding_quiz.s15_water_label'),
+                    value: waterStr,
+                    textTheme: textTheme,
+                    ext: ext,
+                  ),
+                  _summaryDivider(ext),
+                  _summaryRow(
+                    icon: Icons.local_fire_department_outlined,
+                    label: context.s('onboarding_quiz.s15_cal_label'),
+                    value: calStr,
+                    textTheme: textTheme,
+                    ext: ext,
+                  ),
+                  _summaryDivider(ext),
+                  _summaryRow(
+                    icon: Icons.notifications_none_rounded,
+                    label:
+                        context.s('onboarding_quiz.s15_timing_label'),
+                    value: timingLabel,
+                    textTheme: textTheme,
+                    ext: ext,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryDivider(FocusThemeExtension ext) => Divider(
+        color: ext.border,
+        height: 24,
+        thickness: 0.5,
+      );
+
+  Widget _summaryRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required TextTheme textTheme,
+    required FocusThemeExtension ext,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: colorScheme.primary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style:
+                      textTheme.labelSmall?.copyWith(color: ext.textMuted)),
+              const SizedBox(height: 2),
+              Text(value, style: textTheme.bodyMedium),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Экран 16: Переход на пейволл
+  // ---------------------------------------------------------------------------
+
+  Widget _buildScreen16() {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            KaiMascot(size: 80, emotion: KaiEmotion.success),
+            const SizedBox(height: 24),
+            Text(
+              context.s('onboarding_quiz.s15_title'),
+              style: textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: _finish,
+                child: Text(context.s('onboarding_quiz.s15_cta')),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () async {
+                // Бесплатный пропуск: сохраняем всё и идём на /today
+                final prefs = ref.read(sharedPreferencesProvider);
+                await prefs.setBool(setupDoneKey, true);
+                if (mounted) context.go('/today');
+              },
+              child: Text(
+                context.s('onboarding_quiz.s16_skip'),
+                style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
