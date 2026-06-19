@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
 
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
@@ -11,7 +12,7 @@ class TermsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     return Scaffold(
       appBar: AppBar(
@@ -22,7 +23,8 @@ class TermsScreen extends StatelessWidget {
         title: Text(context.s('profile.terms_privacy')),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        // 24dp screen margin (02-type-space.md §4.1)
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 48),
         children: [
           Text(context.s('profile.terms_title'), style: textTheme.headlineSmall),
           const SizedBox(height: 16),
@@ -31,7 +33,8 @@ class TermsScreen extends StatelessWidget {
             style: textTheme.bodyMedium,
           ),
           const SizedBox(height: 32),
-          Divider(color: colorScheme.outline.withValues(alpha: 0.3)),
+          // Разделитель с правильным цветом border (03-components §18)
+          Divider(color: ext.border),
           const SizedBox(height: 32),
           Text(context.s('profile.privacy_title'), style: textTheme.headlineSmall),
           const SizedBox(height: 16),
@@ -40,9 +43,10 @@ class TermsScreen extends StatelessWidget {
             style: textTheme.bodyMedium,
           ),
           const SizedBox(height: 48),
+          // Tagline — textFaint (третичный, самый тихий)
           Text(
             context.s('profile.tagline'),
-            style: textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+            style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
             textAlign: TextAlign.center,
           ),
         ],

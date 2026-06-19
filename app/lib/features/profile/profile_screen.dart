@@ -25,6 +25,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/custom_theme_provider.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/api/api_client.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../auth/auth_controller.dart';
 
 /// Streak пользователя (локально; наполняется через синхронизацию).
@@ -51,6 +52,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final userAsync = ref.watch(currentUserProvider);
     final streak = ref.watch(_streakProvider).valueOrNull;
     final isAuthenticated =
@@ -59,26 +61,41 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(context.s('profile.title'))),
       body: Padding(
-        padding: const EdgeInsets.all(24),
+        // Отступы экрана: 24dp по бокам (02-type-space.md §4.1 lg = 24dp)
+        padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
               child: ListView(
+                padding: const EdgeInsets.only(top: 16, bottom: 24),
                 children: [
-                  _buildHeader(context, ref, userAsync, textTheme, streak),
+                  _buildHeader(context, ref, userAsync, textTheme, streak, ext),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () async {
-                await ref.read(authControllerProvider.notifier).logout();
-              },
-              child: Text(isAuthenticated ? context.s('btn.sign_out') : context.s('btn.sign_in')),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            // Выход / вход — деструктивный/акцентный: ember для Sign Out, filled для Sign In
+            isAuthenticated
+                ? OutlinedButton(
+                    onPressed: () async {
+                      await ref.read(authControllerProvider.notifier).logout();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: ext.ember,
+                      side: BorderSide(color: ext.ember),
+                    ),
+                    child: Text(context.s('btn.sign_out')),
+                  )
+                : FilledButton(
+                    onPressed: () async {
+                      await ref.read(authControllerProvider.notifier).logout();
+                    },
+                    child: Text(context.s('btn.sign_in')),
+                  ),
+            const SizedBox(height: 12),
             const _AppVersionLabel(),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -91,209 +108,235 @@ class ProfileScreen extends ConsumerWidget {
     AsyncValue<Map<String, dynamic>?> userAsync,
     TextTheme textTheme,
     StreakTableData? streak,
+    FocusThemeExtension ext,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Заголовок аккаунта
         userAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const SizedBox.shrink(),
-              data: (user) {
-                if (user == null) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(context.s('profile.offline_mode'), style: textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        context.s('profile.offline_subtitle'),
-                        style: textTheme.bodyMedium,
-                      ),
-                    ],
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: KaiLoader(label: 'Loading…'),
+            ),
+          ),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (user) {
+            if (user == null) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(context.s('profile.offline_mode'), style: textTheme.headlineSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    context.s('profile.offline_subtitle'),
+                    style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  (user['name'] as String?) ?? context.s('profile.you'),
+                  style: textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  (user['email'] as String?) ?? '',
+                  style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                ),
+              ],
+            );
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // Карточка streak
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Text(
-                      (user['name'] as String?) ?? context.s('profile.you'),
-                      style: textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      (user['email'] as String?) ?? '',
-                      style: textTheme.bodyMedium,
+                    _StreakStat(label: context.s('profile.streak'), value: '${streak?.current ?? 0}'),
+                    _StreakStat(label: context.s('profile.streak_best'), value: '${streak?.longest ?? 0}'),
+                    Tooltip(
+                      message: context.s('streak.freeze'),
+                      child: _StreakStat(
+                        label: context.s('profile.streak_freezes'),
+                        value: '${streak?.freezeCount ?? 0}',
+                      ),
                     ),
                   ],
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _StreakStat(label: context.s('profile.streak'), value: '${streak?.current ?? 0}'),
-                        _StreakStat(label: context.s('profile.streak_best'), value: '${streak?.longest ?? 0}'),
-                        Tooltip(
-                          message: context.s('streak.freeze'),
-                          child: _StreakStat(
-                            label: context.s('profile.streak_freezes'),
-                            value: '${streak?.freezeCount ?? 0}',
-                          ),
+                ),
+                if ((streak?.freezeCount ?? 0) > 0) ...[
+                  const SizedBox(height: 12),
+                  Divider(color: ext.border, height: 1),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text('😌', style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          context.s('profile.freeze_hint'),
+                          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
                         ),
-                      ],
-                    ),
-                    if ((streak?.freezeCount ?? 0) > 0) ...[
-                      const SizedBox(height: 12),
-                      const Divider(height: 1),
-                      const SizedBox(height: 12),
-                      Row(
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+        const _PremiumCard(),
+        const SizedBox(height: 8),
+        const _ShareWeekCard(),
+        const SizedBox(height: 8),
+        const _SharedWithMeCard(),
+
+        // Секция «Внешний вид»
+        const SizedBox(height: 28),
+        Text(context.s('profile.section_appearance'), style: textTheme.titleMedium),
+        const SizedBox(height: 12),
+        const _ThemePicker(),
+
+        // Секция «Настройки»
+        const SizedBox(height: 28),
+        Text(context.s('profile.section_preferences'), style: textTheme.titleMedium),
+        const SizedBox(height: 8),
+
+        // Язык
+        Consumer(
+          builder: (context, ref, _) {
+            final locale = ref.watch(localeNotifierProvider);
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              // Иконки настроек нейтральные (textMuted) — не accent (03-components §19)
+              leading: Icon(Icons.language, color: ext.textMuted),
+              title: Text(context.s('profile.language')),
+              trailing: DropdownButton<String>(
+                value: locale.languageCode,
+                underline: const SizedBox.shrink(),
+                items: localeNames.entries
+                    .map((e) => DropdownMenuItem(
+                          value: e.key,
+                          child: Text(e.value),
+                        ))
+                    .toList(),
+                onChanged: (code) {
+                  if (code != null) {
+                    ref
+                        .read(localeNotifierProvider.notifier)
+                        .setLocale(Locale(code));
+                  }
+                },
+              ),
+            );
+          },
+        ),
+
+        const _ToneSetting(),
+        const SizedBox(height: 16),
+        const _TextSizeSetting(),
+        const SizedBox(height: 8),
+        const _NotificationsSetting(),
+        const _ShowKaiSetting(),
+
+        // Секция «Поддержка»
+        const SizedBox(height: 28),
+        Text(context.s('profile.section_support'), style: textTheme.titleMedium),
+        const SizedBox(height: 8),
+
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.star_border, color: ext.textMuted),
+          title: Text(context.s('profile.rate_app')),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.s('profile.rate_coming_soon'))),
+            );
+          },
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.feedback_outlined, color: ext.textMuted),
+          title: Text(context.s('profile.send_feedback')),
+          subtitle: Text(context.s('profile.feedback_subtitle')),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.s('profile.feedback_email'))),
+            );
+          },
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.description_outlined, color: ext.textMuted),
+          title: Text(context.s('profile.terms_privacy')),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+          onTap: () => context.push('/terms'),
+        ),
+
+        // Реферальная карточка
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('🎁', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('😌', style: TextStyle(fontSize: 20)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              context.s('profile.freeze_hint'),
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+                          Text(
+                            context.s('profile.invite_title'),
+                            style: textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            context.s('profile.invite_subtitle'),
+                            style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
                           ),
                         ],
                       ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const _PremiumCard(),
-            const SizedBox(height: 16),
-            const _ShareWeekCard(),
-            const SizedBox(height: 8),
-            const _SharedWithMeCard(),
-            const SizedBox(height: 24),
-            Text(context.s('profile.section_appearance'), style: textTheme.titleMedium),
-            const SizedBox(height: 8),
-            const _ThemePicker(),
-            const SizedBox(height: 24),
-            Text(context.s('profile.section_preferences'), style: textTheme.titleMedium),
-            const SizedBox(height: 8),
-            // --- Язык ---
-            Consumer(
-              builder: (context, ref, _) {
-                final locale = ref.watch(localeNotifierProvider);
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.language),
-                  title: Text(context.s('profile.language')),
-                  trailing: DropdownButton<String>(
-                    value: locale.languageCode,
-                    underline: const SizedBox.shrink(),
-                    items: localeNames.entries
-                        .map((e) => DropdownMenuItem(
-                              value: e.key,
-                              child: Text(e.value),
-                            ))
-                        .toList(),
-                    onChanged: (code) {
-                      if (code != null) {
-                        ref
-                            .read(localeNotifierProvider.notifier)
-                            .setLocale(Locale(code));
-                      }
-                    },
-                  ),
-                );
-              },
-            ),
-            const _ToneSetting(),
-            const SizedBox(height: 16),
-            const _TextSizeSetting(),
-            const SizedBox(height: 8),
-            const _NotificationsSetting(),
-            const _ShowKaiSetting(),
-            const SizedBox(height: 16),
-            Text(context.s('profile.section_support'), style: textTheme.titleMedium),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.star_border),
-              title: Text(context.s('profile.rate_app')),
-              onTap: () {
-                // TODO: открыть Store страницу — подставить реальный URL при публикации
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(context.s('profile.rate_coming_soon'))),
-                );
-              },
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.feedback_outlined),
-              title: Text(context.s('profile.send_feedback')),
-              subtitle: Text(context.s('profile.feedback_subtitle')),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(context.s('profile.feedback_email'))),
-                );
-              },
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.description_outlined),
-              title: Text(context.s('profile.terms_privacy')),
-              onTap: () => context.push('/terms'),
-            ),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('🎁', style: TextStyle(fontSize: 24)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                context.s('profile.invite_title'),
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                              Text(
-                                context.s('profile.invite_subtitle'),
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.share, size: 16),
-                      label: Text(context.s('profile.share_kaizen')),
-                      onPressed: () {
-                        // TODO: реальная реферальная ссылка после публикации в стор
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(context.s('profile.referral_coming_soon')),
-                          ),
-                        );
-                      },
                     ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 14),
+                // Вторичная кнопка поделиться (не единственная CTA) — Outlined
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.share, size: 16),
+                  label: Text(context.s('profile.share_kaizen')),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(context.s('profile.referral_coming_soon')),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-        );
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -313,7 +356,6 @@ class _NotificationsSetting extends ConsumerWidget {
         final result = await ref
             .read(notificationsEnabledProvider.notifier)
             .setEnabled(want);
-        // Если включали, но разрешение не выдали — подсказываем.
         if (want && !result && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -365,7 +407,7 @@ class _ThemePicker extends ConsumerWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        // Предустановленные темы
+        // Предустановленные темы — selected = accent, unselected = neutral (03-components §11)
         ..._available.map((entry) {
           final (key, labelKey) = entry;
           return ChoiceChip(
@@ -385,12 +427,10 @@ class _ThemePicker extends ConsumerWidget {
               selected: current == AppThemeKey.custom,
               onSelected: (_) {
                 if (hasCustom) {
-                  // Уже есть сохранённый стиль → просто активируем
                   ref
                       .read(themeNotifierProvider.notifier)
                       .setTheme(AppThemeKey.custom);
                 } else {
-                  // Ещё нет → открываем редактор
                   context.push('/profile/custom-theme');
                 }
               },
@@ -435,7 +475,6 @@ class _ShareWeekCardState extends ConsumerState<_ShareWeekCard> {
 
     setState(() => _working = true);
     try {
-      // Текущая неделя: с сегодняшнего дня на 7 дней вперёд.
       final now = DateTime.now();
       final from = DateTime(now.year, now.month, now.day);
       final url = await api.createShareLink(
@@ -462,19 +501,23 @@ class _ShareWeekCardState extends ConsumerState<_ShareWeekCard> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return Card(
       child: ListTile(
+        // Иконка нейтральная (textMuted); primary — только одна CTA на экране
         leading: _working
-            ? const SizedBox(
+            ? SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               )
-            : Icon(Icons.ios_share, color: colorScheme.primary),
+            : Icon(Icons.ios_share, color: ext.textMuted),
         title: Text(context.s('profile.share_week')),
         subtitle: Text(context.s('profile.share_week_subtitle')),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Icon(Icons.chevron_right, color: ext.textMuted),
         onTap: _working ? null : _share,
       ),
     );
@@ -488,26 +531,34 @@ class _PremiumCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final isPremium = ref.watch(isPremiumProvider).valueOrNull ?? false;
 
     return Card(
-      color: colorScheme.primary.withValues(alpha: 0.10),
+      // Акцентный фон только для премиум (как отличительный маркер активного статуса)
+      // Для free — стандартный surface
+      color: isPremium
+          ? ext.accentMuted
+          : null,
       child: ListTile(
         leading: Icon(
           isPremium ? Icons.workspace_premium : Icons.workspace_premium_outlined,
-          color: colorScheme.primary,
+          // Иконка акцентная только для Premium (сигнал успеха), для free — нейтральная
+          color: isPremium
+              ? Theme.of(context).colorScheme.primary
+              : ext.textMuted,
         ),
         title: Text(
-            isPremium ? context.s('profile.premium_badge') : context.s('profile.free_plan'),
-            style: textTheme.titleSmall),
+          isPremium ? context.s('profile.premium_badge') : context.s('profile.free_plan'),
+          style: textTheme.titleSmall,
+        ),
         subtitle: Text(
           isPremium ? context.s('profile.premium_unlocked') : context.s('profile.premium_unlock_cta'),
-          style: textTheme.bodySmall,
+          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
         ),
         trailing: isPremium
             ? null
-            : const Icon(Icons.chevron_right),
+            : Icon(Icons.chevron_right, color: ext.textMuted),
         onTap: isPremium ? null : () => context.push('/paywall'),
       ),
     );
@@ -525,7 +576,10 @@ class _ToneSetting extends ConsumerWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(context.s('profile.default_tone'), style: textTheme.bodyLarge),
+        Expanded(
+          child: Text(context.s('profile.default_tone'), style: textTheme.bodyLarge),
+        ),
+        const SizedBox(width: 12),
         SegmentedButton<AppTone>(
           segments: [
             ButtonSegment(value: AppTone.gentle, label: Text(context.s('settings.gentle'))),
@@ -569,14 +623,14 @@ class _TextSizeSetting extends ConsumerWidget {
   }
 }
 
-/// Версия приложения внизу профиля (просьба с ревью MVP: видеть, какая
-/// сборка стоит на устройстве). В debug-сборке помечается «debug».
+/// Версия приложения внизу профиля.
 class _AppVersionLabel extends StatelessWidget {
   const _AppVersionLabel();
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return FutureBuilder<PackageInfo>(
       future: PackageInfo.fromPlatform(),
       builder: (context, snapshot) {
@@ -586,7 +640,7 @@ class _AppVersionLabel extends StatelessWidget {
         return Text(
           'Version ${info.version} (${info.buildNumber})$debugSuffix',
           textAlign: TextAlign.center,
-          style: textTheme.bodySmall,
+          style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
         );
       },
     );
@@ -607,13 +661,9 @@ class _SharedWithMeCard extends ConsumerStatefulWidget {
 }
 
 class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
-  // Форматтер для заголовков дней
   static final _dayFmt = DateFormat('EEE, d MMM');
-  // Форматтер для времени событий
   static final _timeFmt = DateFormat('HH:mm');
 
-  // Контроллер живёт вместе со State, чтобы не утечь при анимации закрытия
-  // диалога: утилизируем в dispose(), а не сразу после await showDialog.
   late final TextEditingController _linkController;
 
   @override
@@ -628,9 +678,7 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
     super.dispose();
   }
 
-  /// Диалог ввода ссылки/токена, затем загрузка и показ шита.
   Future<void> _openDialog() async {
-    // Сбрасываем поле перед показом диалога
     _linkController.clear();
 
     final submitted = await showDialog<String>(
@@ -658,9 +706,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
       ),
     );
 
-    // Контроллер НЕ утилизируем здесь — диалог может ещё анимироваться.
-    // dispose() вызовется из State.dispose() когда виджет уйдёт из дерева.
-
     if (submitted == null || submitted.trim().isEmpty) return;
     if (!mounted) return;
 
@@ -675,7 +720,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
     await _loadAndShow(token);
   }
 
-  /// Загружает план по токену и открывает шит просмотра.
   Future<void> _loadAndShow(String token) async {
     final api = ref.read(apiClientProvider);
     Map<String, dynamic> plan;
@@ -701,13 +745,11 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
     await _showPlanSheet(plan);
   }
 
-  /// Шит с read-only списком событий и кнопкой «Copy to my plan».
   Future<void> _showPlanSheet(Map<String, dynamic> plan) async {
     final ownerName = (plan['owner_name'] as String?) ?? 'Friend';
     final fromRaw = plan['from'] as String?;
     final toRaw = plan['to'] as String?;
 
-    // Диапазон для заголовка шита
     String rangeLabel = '';
     if (fromRaw != null && toRaw != null) {
       try {
@@ -719,7 +761,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
 
     final rawItems = (plan['items'] as List<dynamic>?) ?? <dynamic>[];
 
-    // Группируем события по дням
     final Map<String, List<Map<String, dynamic>>> byDay = {};
     for (final raw in rawItems) {
       final item = raw as Map<String, dynamic>;
@@ -735,7 +776,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
       byDay.putIfAbsent(dayKey, () => []).add({...item, '_dt': dt});
     }
 
-    // Упорядоченные ключи дней
     final sortedDays = byDay.keys.toList()..sort();
 
     if (!mounted) return;
@@ -757,7 +797,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
     );
   }
 
-  /// Вставляет каждый элемент как локальную задачу через ItemsDao.
   Future<void> _copyToMyPlan(
     BuildContext sheetCtx,
     List<dynamic> rawItems,
@@ -801,7 +840,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
       copied++;
     }
 
-    // Закрываем шит и показываем снэкбар
     if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -812,13 +850,13 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return Card(
       child: ListTile(
-        leading: Icon(Icons.group_outlined, color: colorScheme.primary),
+        leading: Icon(Icons.group_outlined, color: ext.textMuted),
         title: Text(context.s('profile.shared_with_me')),
         subtitle: Text(context.s('profile.shared_with_me_subtitle')),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Icon(Icons.chevron_right, color: ext.textMuted),
         onTap: _openDialog,
       ),
     );
@@ -826,8 +864,6 @@ class _SharedWithMeCardState extends ConsumerState<_SharedWithMeCard> {
 }
 
 /// Содержимое шита просмотра чужого плана.
-/// Вынесен в отдельный StatelessWidget, чтобы не тянуть BuildContext шита
-/// в _SharedWithMeCardState и избежать mounted-проблем.
 class _PlanSheetContent extends StatelessWidget {
   const _PlanSheetContent({
     required this.ownerName,
@@ -852,7 +888,7 @@ class _PlanSheetContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -861,21 +897,21 @@ class _PlanSheetContent extends StatelessWidget {
       minChildSize: 0.4,
       builder: (_, scrollController) => Column(
         children: [
-          // Ручка шита
+          // Ручка шита (drag handle через BottomSheetTheme)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Container(
-              width: 40,
+              width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: colorScheme.outlineVariant,
+                color: ext.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           // Заголовок
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Row(
               children: [
                 Expanded(
@@ -884,10 +920,13 @@ class _PlanSheetContent extends StatelessWidget {
                     children: [
                       Text(
                         "$ownerName's plan",
-                        style: textTheme.titleLarge,
+                        style: textTheme.headlineSmall,
                       ),
                       if (rangeLabel.isNotEmpty)
-                        Text(rangeLabel, style: textTheme.bodySmall),
+                        Text(
+                          rangeLabel,
+                          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                        ),
                     ],
                   ),
                 ),
@@ -895,35 +934,35 @@ class _PlanSheetContent extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Divider(height: 1),
+          Divider(color: ext.border, height: 1),
           // Список событий
           Expanded(
             child: rawItems.isEmpty
                 ? Center(
                     child: Text(
                       context.s('profile.no_events'),
-                      style: textTheme.bodyMedium,
+                      style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
                     ),
                   )
                 : ListView.builder(
                     controller: scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: _itemCount(),
-                    itemBuilder: (_, index) => _buildRow(context, index),
+                    itemBuilder: (_, index) => _buildRow(context, index, ext),
                   ),
           ),
-          // Кнопка копирования
+          // Единственная CTA на шите — FilledButton (03-components §2)
           Padding(
             padding: EdgeInsets.fromLTRB(
-              20,
+              24,
               8,
-              20,
+              24,
               MediaQuery.of(context).padding.bottom + 16,
             ),
             child: FilledButton(
               onPressed: rawItems.isEmpty ? null : () => onCopy(rawItems),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: const Size.fromHeight(52),
               ),
               child: Text('Copy to my plan (${rawItems.length} event${rawItems.length == 1 ? '' : 's'})'),
             ),
@@ -933,7 +972,6 @@ class _PlanSheetContent extends StatelessWidget {
     );
   }
 
-  /// Общее количество строк: заголовок дня + строки событий.
   int _itemCount() {
     int count = 0;
     for (final day in sortedDays) {
@@ -942,23 +980,23 @@ class _PlanSheetContent extends StatelessWidget {
     return count;
   }
 
-  /// Строит строку списка: либо заголовок дня, либо строку события.
-  Widget _buildRow(BuildContext context, int flatIndex) {
+  Widget _buildRow(BuildContext context, int flatIndex, FocusThemeExtension ext) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
 
     int cursor = 0;
     for (final day in sortedDays) {
       if (flatIndex == cursor) {
-        // Заголовок дня
         DateTime? dt;
         try {
           dt = DateTime.parse(day);
         } catch (_) {}
         final label = dt != null ? dayFmt.format(dt) : day;
         return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-          child: Text(label, style: textTheme.labelLarge),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+          child: Text(
+            label,
+            style: textTheme.labelLarge?.copyWith(color: ext.textMuted),
+          ),
         );
       }
       cursor++;
@@ -972,18 +1010,16 @@ class _PlanSheetContent extends StatelessWidget {
 
         return ListTile(
           dense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24),
           leading: Icon(
             _typeIcon(type),
             size: 18,
-            color: colorScheme.onSurfaceVariant,
+            color: ext.textMuted,
           ),
           title: Text(title, style: textTheme.bodyMedium),
           trailing: Text(
             '$timeLabel · $type',
-            style: textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
           ),
         );
       }
@@ -1016,11 +1052,13 @@ class _StreakStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return Column(
       children: [
+        // Крупное число — headlineSmall (display font)
         Text(value, style: textTheme.headlineSmall),
         const SizedBox(height: 2),
-        Text(label, style: textTheme.bodySmall),
+        Text(label, style: textTheme.bodySmall?.copyWith(color: ext.textMuted)),
       ],
     );
   }

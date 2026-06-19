@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/kai_loader.dart';
 
 /// Запись дневника за конкретный день
 final dayLogProvider = FutureProvider.family
@@ -47,27 +49,36 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final dayLog = ref.watch(dayLogProvider(_selectedDate));
 
     return Scaffold(
+      // elevation=0, bg из темы — AppBar без тени (02-type-space.md §4.3)
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
-        title: Text(context.s('diary.history_screen_title'), style: textTheme.headlineSmall),
+        // headlineSmall — display font, заголовок экрана-модалки
+        title: Text(
+          context.s('diary.history_screen_title'),
+          style: textTheme.headlineSmall,
+        ),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          // Календарь
+          // Выбор даты — используем surface с hairline border (не surfaceContainer)
           Container(
-            padding: const EdgeInsets.all(16),
-            color: colorScheme.surfaceContainer,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            color: colorScheme.surface,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.s('diary.history_select_date'), style: textTheme.titleMedium),
+                Text(
+                  context.s('diary.history_select_date'),
+                  style: textTheme.titleSmall?.copyWith(color: ext.textMuted),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -90,9 +101,13 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
+                            // surface fill + border outline (02-type-space.md §4.3)
                             color: colorScheme.surface,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: colorScheme.outline),
+                            border: Border.all(
+                              color: ext.border,
+                              width: 1,
+                            ),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -102,6 +117,7 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
                                 child: Text(
                                   _formatDateFull(_selectedDate),
                                   textAlign: TextAlign.center,
+                                  // bodyMedium w600 — дата читается как важная, но не heading
                                   style: textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -111,7 +127,8 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
                               Icon(
                                 Icons.calendar_today,
                                 size: 14,
-                                color: colorScheme.outline,
+                                // textFaint — tertiary icon, не CTA
+                                color: ext.textFaint,
                               ),
                             ],
                           ),
@@ -135,13 +152,22 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
               ],
             ),
           ),
+          // Тонкий разделитель вместо тяжёлого divider
+          Divider(height: 1, thickness: 0.5, color: ext.border),
           // Содержимое записи
           Expanded(
             child: dayLog.when(
-              data: (log) =>
-                  _buildDayContent(context, log, textTheme, colorScheme),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, st) => Center(child: Text('Error: $err')),
+              data: (log) => _buildDayContent(context, log, textTheme, ext),
+              // KaiLoader вместо стандартного спиннера (spec §6)
+              loading: () => const Center(
+                child: KaiLoader(label: 'Loading…'),
+              ),
+              error: (err, st) => Center(
+                child: Text(
+                  'Error: $err',
+                  style: textTheme.bodyMedium?.copyWith(color: ext.ember),
+                ),
+              ),
             ),
           ),
         ],
@@ -153,13 +179,14 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
     BuildContext context,
     DayLogsTableData? log,
     TextTheme textTheme,
-    ColorScheme colorScheme,
+    FocusThemeExtension ext,
   ) {
     if (log == null) {
       return Center(
         child: Text(
           context.s('diary.history_no_entry'),
-          style: textTheme.bodyMedium?.copyWith(color: colorScheme.outline),
+          // textFaint — tertiary, пустое состояние (01-color.md §New Tokens)
+          style: textTheme.bodyMedium?.copyWith(color: ext.textFaint),
         ),
       );
     }
@@ -174,14 +201,16 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      // 24dp горизонтальные поля (02-type-space.md §4.1)
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Настроение
           if (log.mood != null) ...[
-            Text(context.s('diary.mood'), style: textTheme.titleMedium),
+            Text(context.s('diary.mood'), style: textTheme.titleSmall?.copyWith(color: ext.textMuted)),
             const SizedBox(height: 12),
+            // Эмодзи большой — фиксированный размер (не текстовая роль)
             Text(
               _moodEmojis[log.mood! - 1],
               style: const TextStyle(fontSize: 48),
@@ -190,45 +219,61 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
           ],
           // Заметка
           if (noteText.isNotEmpty) ...[
-            Text(context.s('diary.note'), style: textTheme.titleMedium),
+            Text(context.s('diary.note'), style: textTheme.titleSmall?.copyWith(color: ext.textMuted)),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(8),
+                // surface fill + hairline border (02-type-space.md §4.3 «Content card at rest»)
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: ext.border, width: 0.5),
               ),
-              child: Text(noteText, style: textTheme.bodyMedium),
+              child: Text(noteText, style: textTheme.bodyLarge),
             ),
             const SizedBox(height: 24),
           ],
-          // Issues
+          // Теги "что пошло не так"
           if (issues.isNotEmpty) ...[
-            Text(context.s('diary.history_what_went_wrong'), style: textTheme.titleMedium),
+            Text(
+              context.s('diary.history_what_went_wrong'),
+              style: textTheme.titleSmall?.copyWith(color: ext.textMuted),
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: issues
                   .map(
-                    (issue) => Chip(label: Text(
-                      _issueL10nKeys.containsKey(issue)
-                          ? context.s(_issueL10nKeys[issue]!)
-                          : issue,
-                    )),
+                    (issue) => Chip(
+                      label: Text(
+                        _issueL10nKeys.containsKey(issue)
+                            ? context.s(_issueL10nKeys[issue]!)
+                            : issue,
+                      ),
+                    ),
                   )
                   .toList(),
             ),
             const SizedBox(height: 24),
           ],
-          // AI-инсайт
+          // AI-инсайт: accentMuted фон (low-emphasis accent fill, 01-color.md §New Tokens)
           if (log.insight != null && log.insight!.isNotEmpty) ...[
-            Text(context.s('diary.history_ai_insight'), style: textTheme.titleMedium),
+            Text(
+              context.s('diary.history_ai_insight'),
+              style: textTheme.titleSmall?.copyWith(color: ext.textMuted),
+            ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
+                // accentMuted: low-emphasis accent fill для AI-контента
+                color: ext.accentMuted,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                  width: 0.5,
+                ),
               ),
               child: Text(log.insight!, style: textTheme.bodyMedium),
             ),

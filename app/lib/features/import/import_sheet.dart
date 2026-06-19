@@ -3,6 +3,14 @@
 // выбирает день — задачи создаются локально в Drift.
 // Фото/голос-импорт требуют AI и относятся к Phase 1.
 // ICS + Todoist CSV — файловый импорт без AI (2026-06-17).
+//
+// Дизайн-система (03-components.md, 02-type-space.md):
+// — 24dp горизонтальный отступ (02-type-space.md §4.1 bottom sheet padding)
+// — FilledButton = единственный primary action (Import)
+// — OutlinedButton = вторичные действия (Photo, ICS, Todoist)
+// — KaiLoader(label:…) вместо встроенного CircularProgressIndicator
+// — typography roles: headlineSmall (заголовок), bodySmall (hint), labelLarge (кнопки)
+// — цвета через ext (FocusThemeExtension)
 
 import 'dart:convert';
 
@@ -17,7 +25,9 @@ import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/id.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
 import 'ics_parser.dart';
@@ -383,21 +393,32 @@ class _ImportSheetState extends ConsumerState<ImportSheet> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Флаг: идёт ли хоть какая-то загрузка (для блокировки кнопки Import)
+    final anyLoading = _recognizing || _importingIcs || _importingTodoist;
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        // 24dp H, 20dp V — bottom sheet inner padding (02-type-space.md §4.1)
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(context.s('import.title'), style: textTheme.headlineSmall),
-            const SizedBox(height: 4),
+            // Заголовок: headlineSmall (display font, 22sp, w600)
+            Text(
+              context.s('import.title'),
+              style: textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 6),
+            // Подсказка: bodySmall (textMuted)
             Text(
               context.s('import.paste_hint_body'),
-              style: textTheme.bodySmall,
+              style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
             ),
             const SizedBox(height: 16),
+            // Текстовое поле расписания
             TextField(
               controller: _controller,
               maxLines: 8,
@@ -407,6 +428,7 @@ class _ImportSheetState extends ConsumerState<ImportSheet> {
               ),
             ),
             const SizedBox(height: 8),
+            // Строка: «Вставить пример» слева, «Выбрать день» справа
             Row(
               children: [
                 TextButton.icon(
@@ -422,16 +444,25 @@ class _ImportSheetState extends ConsumerState<ImportSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            // Кнопка импорта из фото (AI, Premium)
+            const SizedBox(height: 12),
+
+            // --- Вторичные источники импорта: OutlinedButton (03-components.md §5) ---
+            // Каждая кнопка — полная ширина, состояние загрузки = KaiLoader вместо
+            // встроенного CircularProgressIndicator (SPEC: KaiLoader = drop-in замена)
+
+            // Импорт из фото (AI, Premium)
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
+                // KaiLoader показывается внутри иконки при загрузке
                 icon: _recognizing
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: KaiLoader(
+                          size: 20,
+                          label: null,
+                        ),
                       )
                     : const Icon(Icons.photo_camera_outlined, size: 18),
                 label: Text(context.s('import.btn_from_photo')),
@@ -439,15 +470,19 @@ class _ImportSheetState extends ConsumerState<ImportSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            // Кнопка импорта из ICS-файла (Google / Apple / Outlook)
+
+            // Импорт из ICS-файла (Google / Apple / Outlook)
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 icon: _importingIcs
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: KaiLoader(
+                          size: 20,
+                          label: null,
+                        ),
                       )
                     : const Icon(Icons.calendar_month_outlined, size: 18),
                 label: Text(context.s('import.btn_from_ics')),
@@ -455,29 +490,37 @@ class _ImportSheetState extends ConsumerState<ImportSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            // Кнопка импорта из Todoist CSV
+
+            // Импорт из Todoist CSV
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 icon: _importingTodoist
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: KaiLoader(
+                          size: 20,
+                          label: null,
+                        ),
                       )
                     : const Icon(Icons.check_circle_outline, size: 18),
                 label: Text(context.s('import.btn_from_todoist')),
                 onPressed: _importingTodoist ? null : _importFromTodoist,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
+
+            // --- Primary CTA: FilledButton (единственная accent-кнопка) ---
+            // (03-components.md §2: FilledButton = единственный primary action)
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _import,
+                onPressed: anyLoading ? null : _import,
                 child: Text(context.s('import.btn_import')),
               ),
             ),
+            const SizedBox(height: 4),
           ],
         ),
       ),

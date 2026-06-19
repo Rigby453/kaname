@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 import '../../services/purchases/purchase_service.dart';
 import '../auth/auth_controller.dart';
@@ -48,7 +50,6 @@ const List<({IconData icon, String titleKey, String subtitleKey})> _benefits = [
 void showPremiumUpsell(BuildContext context, String feature) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      // Интерполяция с $feature — строка остаётся на EN; переведены только константы.
       content: Text('Premium feature — upgrade for $feature'),
       action: SnackBarAction(
         label: context.s('paywall.upgrade'),
@@ -76,7 +77,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       switch (outcome) {
         case PurchaseOutcome.success:
-          // Обновляем premium-статус и данные пользователя в UI.
           ref.invalidate(isPremiumProvider);
           ref.invalidate(currentUserProvider);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -103,7 +103,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           );
 
         case PurchaseOutcome.cancelled:
-          // Пользователь закрыл диалог — ничего не делаем.
           break;
       }
     } finally {
@@ -118,7 +117,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       ref.invalidate(isPremiumProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Premium activated!')),
+        const SnackBar(content: Text('Premium activated!')),
       );
       context.pop();
     } catch (e) {
@@ -193,107 +192,163 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final isAuthed = ref.read(authControllerProvider.notifier).isAuthenticated;
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('paywall.title'))),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-          children: [
-            Text(context.s('paywall.headline'), style: textTheme.headlineSmall),
-            const SizedBox(height: 4),
-            Text(
-              context.s('paywall.subheadline'),
-              style: textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 24),
-            ..._benefits.map(
-              (b) => Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(b.icon, color: colorScheme.primary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
+        child: _working
+            ? const Center(child: KaiLoader(label: 'Processing…'))
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+                children: [
+                  // Заголовок экрана — display font через headlineSmall
+                  Text(
+                    context.s('paywall.headline'),
+                    style: textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    context.s('paywall.subheadline'),
+                    style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Список фич — иконки success (checkmark-feel), не accent
+                  ..._benefits.map(
+                    (b) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(context.s(b.titleKey), style: textTheme.titleSmall),
-                          const SizedBox(height: 2),
-                          Text(context.s(b.subtitleKey), style: textTheme.bodySmall),
+                          // success color для позитивных фич (03-components §1: success = completion)
+                          Icon(b.icon, color: ext.success, size: 22),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  context.s(b.titleKey),
+                                  style: textTheme.titleSmall,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  context.s(b.subtitleKey),
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: ext.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Карточка цены — «best value» highlight: accentMuted fill (03-components §1)
+                  Card(
+                    color: ext.accentMuted,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: colorScheme.primary, width: 1.5),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '\$10',
+                            // displayMedium для героической цены
+                            style: textTheme.displayMedium,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            context.s('paywall.per_month'),
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: ext.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Подсказка для незалогиненных — caption, нейтральная
+                  if (!isAuthed)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        context.s('paywall.sign_in_hint'),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: ext.textMuted,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+
+                  // Единственная primary CTA — FilledButton (03-components §2)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _working ? null : _subscribe,
+                      child: Text(context.s('paywall.subscribe')),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Восстановление покупок — TextButton (третичный, не акцентный)
+                  Center(
+                    child: TextButton(
+                      onPressed: _working ? null : _restorePurchases,
+                      child: Text(context.s('paywall.restore')),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Отмена-подсказка — bodySmall/textFaint
+                  Text(
+                    context.s('paywall.cancel_hint'),
+                    style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  // Dev tools — только в debug, с нейтральным разделителем
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 24),
+                    Divider(color: ext.border),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Dev tools',
+                      style: textTheme.labelSmall?.copyWith(color: ext.textFaint),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: _working ? null : _devActivate,
+                      child: const Text('Activate Premium (dev only)'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: _working ? null : _devDeactivate,
+                      child: const Text('Downgrade to Free (dev only)'),
+                    ),
                   ],
-                ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Card(
-              color: colorScheme.primary.withValues(alpha: 0.12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text('\$10', style: textTheme.headlineMedium),
-                    Text(context.s('paywall.per_month'), style: textTheme.bodyMedium),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (!isAuthed)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  context.s('paywall.sign_in_hint'),
-                  style: textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _working ? null : _subscribe,
-                child: Text(context.s('paywall.subscribe')),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Восстановление покупок — понадобится после интеграции RevenueCat.
-            TextButton(
-              onPressed: _working ? null : _restorePurchases,
-              child: Text(context.s('paywall.restore')),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              context.s('paywall.cancel_hint'),
-              style: textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            // Кнопка только в debug-сборке — активирует premium без оплаты
-            if (kDebugMode) ...[
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text('Dev tools', style: textTheme.labelSmall),
-              const SizedBox(height: 4),
-              OutlinedButton(
-                onPressed: _working ? null : _devActivate,
-                child: const Text('🛠 Activate Premium (dev only)'),
-              ),
-              const SizedBox(height: 4),
-              OutlinedButton(
-                onPressed: _working ? null : _devDeactivate,
-                child: const Text('🛠 Downgrade to Free (dev only)'),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

@@ -1,6 +1,14 @@
 // Фокус-сессии (SPEC C8): пресеты 25/5, 50/10, 52/17, 90/20 и фирменный 67/15.
 // Таймер с фазами работа/перерыв, Пауза/Стоп. Локальное эфемерное состояние
 // (тикающий таймер) → StatefulWidget с Timer; бизнес-данных тут нет.
+//
+// Дизайн-система (03-components.md, 02-type-space.md, UX-LAYOUT.md):
+// — 24dp экранные поля (02-type-space.md §4.1)
+// — цифры таймера: displayLarge (display font, tight tracking)
+// — фаза: titleLarge (body font)
+// — акцент ТОЛЬКО на: кнопка Start/Stop (FilledButton), активная фаза work
+// — Kai ambient в нижнем углу при активной сессии (MASCOT.md §6)
+// — reduce-motion уважается (constants.dart)
 
 import 'dart:async';
 
@@ -11,6 +19,7 @@ import '../../core/animations/constants.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/tone_provider.dart';
+import '../../core/theme/app_theme.dart';
 import '../mascot/kai_mascot.dart';
 
 class _Preset {
@@ -105,25 +114,43 @@ class _FocusScreenState extends State<FocusScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final idle = _phase == _Phase.idle;
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('focus.title'))),
       body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: idle ? _buildIdle(textTheme) : _buildRunning(textTheme, colorScheme),
+        // 24dp экранные поля (02-type-space.md §4.1 screen edge margin)
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: idle
+            ? _buildIdle(textTheme, colorScheme, ext)
+            : _buildRunning(textTheme, colorScheme, ext),
       ),
     );
   }
 
-  Widget _buildIdle(TextTheme textTheme) {
+  Widget _buildIdle(
+    TextTheme textTheme,
+    ColorScheme colorScheme,
+    FocusThemeExtension ext,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(context.s('focus.pick_session'), style: textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text(context.s('focus.session_hint'), style: textTheme.bodySmall),
-        const SizedBox(height: 16),
+        // Заголовок секции — headlineSmall (display font, 22sp)
+        Text(
+          context.s('focus.pick_session'),
+          style: textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 6),
+        // Подсказка — bodySmall (textMuted per design)
+        Text(
+          context.s('focus.session_hint'),
+          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+        ),
+        const SizedBox(height: 20),
+        // Пресеты — ChoiceChip (03-components.md §11)
+        // Выбранный пресет = accent fill; chip компонент из ThemeData автоматически
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -136,51 +163,86 @@ class _FocusScreenState extends State<FocusScreen> {
           }),
         ),
         const Spacer(),
+        // Счётчик завершённых блоков — bodyMedium (textMuted)
         if (_completedFocusBlocks > 0)
           Center(
-            child: Text(
-              context
-                  .s('focus.blocks_today')
-                  .replaceAll('{n}', '$_completedFocusBlocks'),
-              style: textTheme.bodyMedium,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                context
+                    .s('focus.blocks_today')
+                    .replaceAll('{n}', '$_completedFocusBlocks'),
+                style:
+                    textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+              ),
             ),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
+        // Единственная кнопка: FilledButton — акцент, primary CTA
+        // (03-components.md §2 и §3: FilledButton = единственный primary action)
         FilledButton.icon(
           icon: const Icon(Icons.play_arrow),
           label: Text(context.s('focus.btn_start')),
           onPressed: _start,
         ),
+        const SizedBox(height: 8),
       ],
     );
   }
 
-  Widget _buildRunning(TextTheme textTheme, ColorScheme colorScheme) {
+  Widget _buildRunning(
+    TextTheme textTheme,
+    ColorScheme colorScheme,
+    FocusThemeExtension ext,
+  ) {
     final isWork = _phase == _Phase.work;
+
     // Kai в углу при активной сессии — ambient, не добавляет тапов (MASCOT.md §6).
-    // Используем Consumer точечно, чтобы не менять тип виджета на ConsumerStatefulWidget.
     return Stack(
       children: [
         // Основной контент по центру
         Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              isWork ? context.s('focus.phase_work') : context.s('focus.phase_break'),
-              style: textTheme.titleLarge?.copyWith(
-                color: isWork ? colorScheme.primary : colorScheme.secondary,
+            // Фаза: titleLarge, акцент = accent (work) / textMuted (rest)
+            // Per accent discipline: активная фаза work = единственный цветной элемент здесь
+            Center(
+              child: Text(
+                isWork
+                    ? context.s('focus.phase_work')
+                    : context.s('focus.phase_break'),
+                style: textTheme.titleLarge?.copyWith(
+                  // Work → accent; rest → textMuted (не ember/secondary)
+                  color: isWork ? colorScheme.primary : ext.textMuted,
+                ),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              _mmss,
-              style: textTheme.displayLarge?.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()],
+            const SizedBox(height: 20),
+            // Цифры таймера: displayLarge — display font, tabular figures
+            // (02-type-space.md §1: 56sp, w700, letterSpacing -0.8, height 1.00)
+            Center(
+              child: Text(
+                _mmss,
+                style: textTheme.displayLarge?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  // Цвет таймера = text (нейтральный) — акцент не здесь
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
             const SizedBox(height: 8),
-            Text(_preset.label, style: textTheme.bodyMedium),
-            const SizedBox(height: 40),
+            // Метка пресета — bodyMedium (textMuted, вторичная информация)
+            Center(
+              child: Text(
+                _preset.label,
+                style: textTheme.bodyMedium?.copyWith(color: ext.textFaint),
+              ),
+            ),
+            const SizedBox(height: 48),
+            // Управление: Pause/Resume = OutlinedButton, Stop = OutlinedButton
+            // Оба вторичные (не primary CTA) — FilledButton только у Start
+            // (03-components.md §2 accent discipline)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -217,13 +279,14 @@ class _FocusScreenState extends State<FocusScreen> {
                 final isHarsh = ref.watch(toneProvider) == AppTone.harsh;
                 final reduce = reduceMotionOf(context);
                 return AnimatedOpacity(
-                  opacity: showKai ? 1.0 : 0.0,
+                  opacity: 1.0,
                   duration: reduce ? Duration.zero : kDurationNormal,
                   child: KaiMascot(
                     size: 40,
                     // Во время работы — thinking (сосредоточен вместе с пользователем);
                     // во время перерыва — neutral (спокойно отдыхает).
-                    emotion: isWork ? KaiEmotion.thinking : KaiEmotion.neutral,
+                    emotion:
+                        isWork ? KaiEmotion.thinking : KaiEmotion.neutral,
                     isHarsh: isHarsh,
                   ),
                 );

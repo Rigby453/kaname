@@ -2,6 +2,10 @@
 // интересы → импорт расписания → время разборов → тон → тема → нормы.
 // Каждый шаг можно пропустить; всё сохраняется в SharedPreferences/провайдеры.
 // Флаг 'setup_done' держит пользователя на /setup через redirect роутера.
+//
+// Редизайн (design-kai): headlineSmall + bodyLarge на каждом шаге, 24dp поля,
+// одна FilledButton-кнопка Continue/Start внизу, Back — OutlinedButton.
+// Accent только в активных чипах, FilledButton и активных карточках-выборах.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -139,7 +143,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   void _next() {
     if (_page < _pageCount - 1) {
       _pageController.nextPage(
-        duration: kDurationFast,
+        duration: effectiveDuration(context, kDurationFast),
         curve: kCurveSnap,
       );
     } else {
@@ -152,7 +156,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   void _back() {
     if (_page > 0) {
       _pageController.previousPage(
-        duration: kDurationFast,
+        duration: effectiveDuration(context, kDurationFast),
         curve: kCurveSnap,
       );
     }
@@ -162,6 +166,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final isLast = _page == _pageCount - 1;
     final isFirst = _page == 0;
 
@@ -171,51 +176,81 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
           children: [
             // Верхняя строка: прогресс + «Skip all»
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
               child: Row(
                 children: [
+                  // Линейный прогресс (accent цвет, нейтральный трек)
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: (_page + 1) / _pageCount,
+                        backgroundColor: ext.border,
+                        color: colorScheme.primary,
+                        minHeight: 4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Text(
-                    '${context.s('onboarding.setup_progress')} · ${_page + 1}/$_pageCount',
+                    '${_page + 1}/$_pageCount',
                     style: textTheme.labelMedium,
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 4),
+                  // Skip all — TextButton, минимальный вес
                   TextButton(
                     onPressed: _finish,
-                    child: Text(context.s('onboarding.skip_all')),
+                    child: Text(
+                      context.s('onboarding.skip_all'),
+                      style: textTheme.labelLarge?.copyWith(
+                        color: ext.textMuted,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
+
             Expanded(
               child: PageView(
                 controller: _pageController,
                 onPageChanged: (i) => setState(() => _page = i),
                 children: [
-                  _interestsStep(textTheme),
-                  _importStep(textTheme),
-                  _reviewTimeStep(textTheme),
+                  _interestsStep(textTheme, ext),
+                  _importStep(textTheme, ext),
+                  _reviewTimeStep(textTheme, ext),
                   _toneStep(textTheme),
                   _themeStep(textTheme, colorScheme),
-                  _normsStep(textTheme),
+                  _normsStep(textTheme, colorScheme, ext),
                 ],
               ),
             ),
-            // Нижняя строка с Back (шаги 2..N) и Next/Start
+
+            // Нижние кнопки: Back (OutlinedButton icon) + Continue/Start (FilledButton)
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
               child: Row(
                 children: [
-                  // Кнопка «Back» — только не на первом шаге
-                  if (!isFirst)
-                    IconButton(
-                      tooltip: context.s('btn.back'),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: _back,
-                    )
-                  else
-                    // Заполнитель, чтобы Next не прыгал по ширине
-                    const SizedBox(width: 48),
-                  const SizedBox(width: 8),
+                  if (!isFirst) ...[
+                    // Back — outlined icon-only, не перетягивает фокус
+                    SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: _back,
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Icon(Icons.arrow_back_rounded, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  // Continue / Start — единственный FilledButton на экране
                   Expanded(
                     child: FilledButton(
                       onPressed: _next,
@@ -235,21 +270,28 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     );
   }
 
+  /// Обёртка каждого шага: заголовок headlineSmall + bodyMedium + контент.
   Widget _step({
     required String title,
     required String subtitle,
     required Widget child,
   }) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Заголовок шага: headlineSmall (display-font через тему)
           Text(title, style: textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(subtitle, style: textTheme.bodyMedium),
-          const SizedBox(height: 24),
+          const SizedBox(height: 10),
+          // Описание шага: bodyLarge, textMuted для вторичности
+          Text(
+            subtitle,
+            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+          ),
+          const SizedBox(height: 28),
           child,
         ],
       ),
@@ -257,13 +299,13 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   }
 
   // --- Шаг 1: интересы ---
-  Widget _interestsStep(TextTheme textTheme) {
+  Widget _interestsStep(TextTheme textTheme, FocusThemeExtension ext) {
     return _step(
       title: context.s('onboarding.interests_title'),
       subtitle: context.s('onboarding.interests_subtitle'),
       child: Wrap(
         spacing: 8,
-        runSpacing: 8,
+        runSpacing: 10,
         children: List.generate(_interestValues.length, (i) {
           final value = _interestValues[i];
           final l10nKey = _interestL10nKeys[i];
@@ -285,7 +327,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   }
 
   // --- Шаг 2: импорт расписания ---
-  Widget _importStep(TextTheme textTheme) {
+  Widget _importStep(TextTheme textTheme, FocusThemeExtension ext) {
     return _step(
       title: context.s('onboarding.import_title'),
       subtitle: context.s('onboarding.import_subtitle'),
@@ -293,14 +335,14 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           OutlinedButton.icon(
-            icon: const Icon(Icons.content_paste_go),
+            icon: const Icon(Icons.content_paste_go, size: 18),
             label: Text(context.s('onboarding.import_now')),
             onPressed: () => showImportSheet(context, day: DateTime.now()),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             context.s('onboarding.import_premium_hint'),
-            style: textTheme.bodySmall,
+            style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
           ),
         ],
       ),
@@ -308,7 +350,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   }
 
   // --- Шаг 3: время разборов ---
-  Widget _reviewTimeStep(TextTheme textTheme) {
+  Widget _reviewTimeStep(TextTheme textTheme, FocusThemeExtension ext) {
     Future<void> pick(bool morning) async {
       final initial = TimeOfDay(
         hour: morning ? _morningHour : _eveningHour,
@@ -317,7 +359,6 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
       final picked = await showTimePicker(context: context, initialTime: initial);
       if (picked != null) {
         setState(() {
-          // Напоминания планируются по часам (inexact) — минуты отбрасываем.
           if (morning) {
             _morningHour = picked.hour;
           } else {
@@ -327,12 +368,16 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
       }
     }
 
+    // ListTile с OutlinedButton для выбора времени
     Widget tile(String label, int hour, bool morning) => ListTile(
           contentPadding: EdgeInsets.zero,
-          title: Text(label),
+          title: Text(label, style: textTheme.bodyLarge),
           trailing: OutlinedButton(
             onPressed: () => pick(morning),
-            child: Text('${hour.toString().padLeft(2, '0')}:00'),
+            child: Text(
+              '${hour.toString().padLeft(2, '0')}:00',
+              style: textTheme.labelLarge,
+            ),
           ),
         );
 
@@ -342,13 +387,14 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
       child: Column(
         children: [
           tile(context.s('onboarding.review_morning'), _morningHour, true),
+          const SizedBox(height: 8),
           tile(context.s('onboarding.review_evening'), _eveningHour, false),
         ],
       ),
     );
   }
 
-  /// Селектор-плитка (вместо deprecated RadioListTile).
+  /// Карточка-выбор: accent-граница и иконка проверки только для активного.
   Widget _choiceTile({
     required bool selected,
     required String title,
@@ -356,23 +402,44 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     required VoidCallback onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(vertical: 5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
+        // Accent только у выбранной карточки — дисциплина акцента
         side: BorderSide(
-          color: selected
-              ? colorScheme.primary
-              : colorScheme.onSurface.withValues(alpha: 0.15),
+          color: selected ? colorScheme.primary : ext.border,
+          width: selected ? 1.5 : 1.0,
         ),
       ),
       child: ListTile(
         onTap: onTap,
-        title: Text(title),
-        subtitle: subtitle != null ? Text(subtitle) : null,
-        trailing: selected
-            ? Icon(Icons.check_circle, color: colorScheme.primary)
-            : const Icon(Icons.circle_outlined),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        title: Text(title, style: textTheme.titleSmall),
+        subtitle: subtitle != null
+            ? Text(
+                subtitle,
+                style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+              )
+            : null,
+        trailing: AnimatedSwitcher(
+          duration: kDurationSnap,
+          child: selected
+              ? Icon(
+                  Icons.check_circle_rounded,
+                  key: const ValueKey('checked'),
+                  color: colorScheme.primary,
+                  size: 20,
+                )
+              : Icon(
+                  Icons.circle_outlined,
+                  key: const ValueKey('unchecked'),
+                  color: ext.border,
+                  size: 20,
+                ),
+        ),
       ),
     );
   }
@@ -424,9 +491,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   // --- Шаг 6: нормы ---
   // Поля вес и рост → расчёт нормы воды + слайдер для ручной корректировки.
   // Рост собирается для будущей аналитики, в формуле воды НЕ участвует.
-  Widget _normsStep(TextTheme textTheme) {
-    final colorScheme = Theme.of(context).colorScheme;
-
+  Widget _normsStep(
+      TextTheme textTheme, ColorScheme colorScheme, FocusThemeExtension ext) {
     // Показываем рекомендацию, только если вес заполнен корректно
     final weightText = _weightController.text.trim();
     final weightVal = double.tryParse(weightText);
@@ -451,14 +517,10 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    // Разрешаем цифры и одну точку/запятую
                     FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
                   ],
                   decoration: InputDecoration(
                     labelText: context.s('onboarding.norms_weight'),
-                    border: const OutlineInputBorder(),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
                   textInputAction: TextInputAction.next,
                 ),
@@ -473,9 +535,6 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
                   ],
                   decoration: InputDecoration(
                     labelText: context.s('onboarding.norms_height'),
-                    border: const OutlineInputBorder(),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     helperText: context.s('onboarding.norms_height_helper'),
                   ),
                   textInputAction: TextInputAction.done,
@@ -483,11 +542,14 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           // --- Уровень активности ---
-          Text(context.s('onboarding.norms_activity'), style: textTheme.labelMedium),
-          const SizedBox(height: 8),
+          Text(
+            context.s('onboarding.norms_activity'),
+            style: textTheme.labelMedium,
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             children: [
@@ -507,43 +569,44 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
               );
             }).toList(),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
-          // --- Рекомендация (живая) ---
+          // --- Рекомендация (живая): success-цвет, не accent ---
           if (recommended != null) ...[
             Row(
               children: [
                 Icon(
                   Icons.water_drop_outlined,
-                  size: 18,
-                  color: colorScheme.primary,
+                  size: 16,
+                  color: ext.success,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   '${context.s('onboarding.norms_recommended')}: $recommended ml',
                   style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.primary,
+                    color: ext.success,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
           ],
 
-          // --- Текущее значение + слайдер (можно поправить вручную) ---
+          // --- Текущее значение + слайдер ---
           Text('$_waterGoal ml', style: textTheme.headlineSmall),
+          const SizedBox(height: 4),
           Slider(
             value: _waterGoal.toDouble(),
             min: 1000,
             max: 4000,
-            divisions: 30, // шаг 100 мл
+            divisions: 30,
             label: '$_waterGoal ml',
             onChanged: (v) => setState(() => _waterGoal = v.round()),
           ),
           Text(
             context.s('onboarding.norms_adjust_hint'),
-            style: textTheme.bodySmall,
+            style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
           ),
         ],
       ),

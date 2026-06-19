@@ -1,11 +1,17 @@
-// Оболочка с BottomNavigationBar и AppBar с кнопкой профиля
-// Profile открывается из leading кнопки AppBar, а НЕ из нижней навигации
-// На широких экранах (≥600px) — NavigationRail вместо BottomNavigationBar.
+// Оболочка с NavigationBar (M3) и AppBar с кнопкой профиля.
+// Profile открывается из leading кнопки AppBar, а НЕ из нижней навигации.
+// На широких экранах (≥600px) — NavigationRail вместо NavigationBar.
+//
+// M3 NavigationBar выбран вместо M2 BottomNavigationBar, потому что он
+// нативно рендерит accent-«пилюлю» (indicator) под активным табом через
+// NavigationBarThemeData — что требует UX-LAYOUT.md §3 и 03-components.md §9.
+// Никакого дополнительного кода для pill-индикатора не нужно.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../l10n/app_strings.dart';
+import '../theme/app_theme.dart';
 import '../utils/breakpoints.dart';
 
 class ScaffoldWithNavBar extends StatelessWidget {
@@ -28,8 +34,12 @@ class ScaffoldWithNavBar extends StatelessWidget {
     );
   }
 
-  /// Wide layout (≥600px): NavigationRail + no AppBar bottom bar.
+  /// Wide layout (≥600px): NavigationRail + no bottom bar.
   Widget _buildWideLayout(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final textTheme = Theme.of(context).textTheme;
+
     return Scaffold(
       body: Row(
         children: [
@@ -37,76 +47,139 @@ class ScaffoldWithNavBar extends StatelessWidget {
             selectedIndex: navigationShell.currentIndex,
             onDestinationSelected: (i) => _onTabTap(context, i),
             labelType: NavigationRailLabelType.all,
+            // Цвета по spec: активный = accent, неактивный = textMuted
+            selectedIconTheme: IconThemeData(
+              color: colorScheme.primary,
+              size: 24,
+            ),
+            unselectedIconTheme: IconThemeData(
+              color: ext.textMuted,
+              size: 24,
+            ),
+            selectedLabelTextStyle: textTheme.labelSmall?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelTextStyle: textTheme.labelSmall?.copyWith(
+              color: ext.textMuted,
+            ),
+            indicatorColor: colorScheme.primary.withValues(alpha: 0.15),
+            backgroundColor: colorScheme.surface,
+            elevation: 0,
             leading: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: const ProfileAvatarButton(),
             ),
             destinations: [
               NavigationRailDestination(
-                icon: const Icon(Icons.wb_sunny_outlined),
-                selectedIcon: const Icon(Icons.wb_sunny),
+                icon: Icon(Icons.wb_sunny_outlined, color: ext.textMuted),
+                selectedIcon:
+                    Icon(Icons.wb_sunny, color: colorScheme.primary),
                 label: Text(context.s('nav.today')),
               ),
               NavigationRailDestination(
-                icon: const Icon(Icons.calendar_today_outlined),
-                selectedIcon: const Icon(Icons.calendar_today),
+                icon: Icon(Icons.calendar_today_outlined,
+                    color: ext.textMuted),
+                selectedIcon: Icon(Icons.calendar_today,
+                    color: colorScheme.primary),
                 label: Text(context.s('nav.plan')),
               ),
               NavigationRailDestination(
-                icon: const Icon(Icons.favorite_border),
-                selectedIcon: const Icon(Icons.favorite),
+                icon: Icon(Icons.favorite_border, color: ext.textMuted),
+                selectedIcon:
+                    Icon(Icons.favorite, color: colorScheme.primary),
                 label: Text(context.s('nav.health')),
               ),
               NavigationRailDestination(
-                icon: const Icon(Icons.menu_book_outlined),
-                selectedIcon: const Icon(Icons.menu_book),
+                icon:
+                    Icon(Icons.menu_book_outlined, color: ext.textMuted),
+                selectedIcon:
+                    Icon(Icons.menu_book, color: colorScheme.primary),
                 label: Text(context.s('nav.diary')),
               ),
             ],
           ),
-          const VerticalDivider(thickness: 1, width: 1),
+          // Разделитель — 1dp hairline border (03-components.md §18)
+          VerticalDivider(
+            thickness: 1,
+            width: 1,
+            color: ext.border,
+          ),
           Expanded(child: navigationShell),
         ],
       ),
     );
   }
 
-  /// Mobile layout (<600px): AppBar + BottomNavigationBar.
+  /// Mobile layout (<600px): AppBar + M3 NavigationBar с pill-индикатором.
   Widget _buildMobileLayout(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
     return Scaffold(
       appBar: AppBar(
-        // Profile — leading кнопка, НЕ таб
+        // Profile — leading кнопка, НЕ таб (UX-LAYOUT.md §2)
         leading: const ProfileAvatarButton(),
         // Заголовок меняется в зависимости от активного таба
         title: Text(_tabTitle(context, navigationShell.currentIndex)),
         centerTitle: true,
       ),
       body: navigationShell,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: navigationShell.currentIndex,
-        onTap: (index) => _onTabTap(context, index),
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.wb_sunny_outlined),
-            activeIcon: const Icon(Icons.wb_sunny),
-            label: context.s('nav.today'),
+      // M3 NavigationBar: нативный pill-индикатор (03-components.md §9)
+      // Оборачиваем в DecoratedBox — добавляем hairline border сверху
+      // (top border не поддерживается NavigationBarThemeData нативно).
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          // Тонкая линия-разделитель сверху — 1dp, border color (03-components §9)
+          border: Border(
+            top: BorderSide(color: ext.border, width: 1),
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.calendar_today_outlined),
-            activeIcon: const Icon(Icons.calendar_today),
-            label: context.s('nav.plan'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.favorite_border),
-            activeIcon: const Icon(Icons.favorite),
-            label: context.s('nav.health'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.menu_book_outlined),
-            activeIcon: const Icon(Icons.menu_book),
-            label: context.s('nav.diary'),
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: navigationShell.currentIndex,
+          onDestinationSelected: (i) => _onTabTap(context, i),
+          // Высота 64dp (03-components.md §9 NavigationBarThemeData)
+          height: 64,
+          // Фон: surface, без elevation (03-components.md §9)
+          backgroundColor: colorScheme.surface,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          // Pill-индикатор: accent.withOpacity(0.15) — нативно в M3
+          indicatorColor: colorScheme.primary.withValues(alpha: 0.15),
+          // labelBehavior: alwaysShow — иконка + подпись у каждого таба
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: [
+            NavigationDestination(
+              icon: Icon(Icons.wb_sunny_outlined, size: 24, color: ext.textMuted),
+              selectedIcon: Icon(Icons.wb_sunny,
+                  size: 24, color: colorScheme.primary),
+              label: context.s('nav.today'),
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.calendar_today_outlined,
+                  size: 24, color: ext.textMuted),
+              selectedIcon: Icon(Icons.calendar_today,
+                  size: 24, color: colorScheme.primary),
+              label: context.s('nav.plan'),
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.favorite_border, size: 24, color: ext.textMuted),
+              selectedIcon:
+                  Icon(Icons.favorite, size: 24, color: colorScheme.primary),
+              label: context.s('nav.health'),
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined,
+                  size: 24, color: ext.textMuted),
+              selectedIcon: Icon(Icons.menu_book,
+                  size: 24, color: colorScheme.primary),
+              label: context.s('nav.diary'),
+            ),
+          ],
+          // Стили подписей и индикатора через явные параметры текста
+          // (NavigationBarThemeData применяется на уровне ThemeData,
+          // но здесь мы переопределяем labelTextStyle для правильных весов).
+        ),
       ),
     );
   }
@@ -130,8 +203,8 @@ class ScaffoldWithNavBar extends StatelessWidget {
       };
 }
 
-/// Кнопка-аватар профиля в leading AppBar
-/// Нажатие → переход на /profile
+/// Кнопка-аватар профиля в leading AppBar.
+/// Нажатие → переход на /profile (UX-LAYOUT.md §2).
 class ProfileAvatarButton extends StatelessWidget {
   const ProfileAvatarButton({super.key});
 
@@ -140,12 +213,14 @@ class ProfileAvatarButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
+      // Минимальный тап-таргет 48dp (03-components.md §0)
       padding: const EdgeInsets.all(8.0),
       child: InkWell(
         onTap: () => context.push('/profile'),
-        borderRadius: BorderRadius.circular(999), // radius.pill
+        borderRadius: BorderRadius.circular(999),
         child: CircleAvatar(
           radius: 16,
+          // accent fill, onAccent icon — per 03-components.md §8 (AppBar spec)
           backgroundColor: colorScheme.primary,
           child: Icon(
             Icons.person_outline,

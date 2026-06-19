@@ -185,6 +185,11 @@ const Map<String, Map<String, String>> miscStrings = {
     'ru': 'Пароль обновлён! Войди снова.',
     'de': 'Passwort aktualisiert! Bitte anmelden.',
   },
+  'auth.reset_change_email': {
+    'en': 'Change email address',
+    'ru': 'Изменить адрес почты',
+    'de': 'E-Mail-Adresse ändern',
+  },
 
   // ---------------------------------------------------------------------------
   // Onboarding (onboarding_screen.dart)
