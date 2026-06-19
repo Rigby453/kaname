@@ -123,6 +123,12 @@ const Map<String, Map<String, String>> onboardingQuizStrings = {
     'ru': 'Заполнить позже',
     'de': 'Später ausfüllen',
   },
+  // Постоянный аварийный выход в приложение (на каждом экране онбординга).
+  'onboarding_quiz.skip_all': {
+    'en': 'Skip',
+    'ru': 'Пропустить',
+    'de': 'Überspringen',
+  },
   'onboarding_quiz.s5_cta': {
     'en': 'Continue',
     'ru': 'Продолжить',

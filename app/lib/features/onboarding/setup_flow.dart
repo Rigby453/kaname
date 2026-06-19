@@ -197,9 +197,6 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     }
   }
 
-  // Переход вперёд без блокировки (skip).
-  void _skip() => _next();
-
   // ---------------------------------------------------------------------------
   // Финализация
   // ---------------------------------------------------------------------------
@@ -292,10 +289,6 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   // ---------------------------------------------------------------------------
   // UI-helpers
   // ---------------------------------------------------------------------------
-
-  /// Показывать ли skip-кнопку «Заполнить позже» (только на экранах 5–11 и 14).
-  bool get _showSkip =>
-      _page >= 4 && _page <= 10 || _page == 13;
 
   /// Показывать ли прогресс-индикатор (не на экранах 12 и 15 → индексы 12, 15).
   bool get _showProgress => _page != 12 && _page != 15;
@@ -440,9 +433,9 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // --- Верхняя панель: прогресс-индикатор + skip (если нужен) ---
-            if (_showProgress)
-              _buildProgressRow(textTheme, colorScheme, ext),
+            // --- Верхняя панель: прогресс + ПОСТОЯННЫЙ «Пропустить» (выход в
+            //     приложение на любом экране — страховка от «застрял») ---
+            _buildProgressRow(textTheme, colorScheme, ext),
 
             // --- Страницы ---
             Expanded(
@@ -501,44 +494,53 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     final total = 14;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(24, 12, 12, 0),
       child: Row(
         children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: displayPage / total,
-                backgroundColor: ext.border,
-                color: colorScheme.primary,
-                minHeight: 4,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '$displayPage / $total',
-            style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
-          ),
-          const SizedBox(width: 8),
-          // skip «Заполнить позже»
-          if (_showSkip)
-            TextButton(
-              onPressed: _skip,
-              style: TextButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              ),
-              child: Text(
-                context.s('onboarding_quiz.s5_skip'),
-                style: textTheme.labelSmall?.copyWith(
-                  color: ext.textMuted,
+          // Прогресс-бар — только на экранах с прогрессом; иначе пустое место,
+          // чтобы «Пропустить» всегда оставался на месте справа.
+          if (_showProgress) ...[
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: displayPage / total,
+                  backgroundColor: ext.border,
+                  color: colorScheme.primary,
+                  minHeight: 4,
                 ),
               ),
             ),
+            const SizedBox(width: 12),
+            Text(
+              '$displayPage / $total',
+              style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+            ),
+          ] else
+            const Spacer(),
+          const SizedBox(width: 8),
+          // ПОСТОЯННЫЙ выход в приложение — на КАЖДОМ экране (страховка).
+          TextButton(
+            onPressed: _skipAllToApp,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            ),
+            child: Text(
+              context.s('onboarding_quiz.skip_all'),
+              style: textTheme.labelSmall?.copyWith(color: ext.textMuted),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// Аварийный выход из онбординга прямо в приложение (на любом экране).
+  /// Сохраняет setup_done, чтобы онбординг больше не показывался.
+  Future<void> _skipAllToApp() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(setupDoneKey, true);
+    if (mounted) context.go('/today');
   }
 
   // ---------------------------------------------------------------------------
