@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_theme.dart';
 import 'plan_providers.dart';
 import 'week_strip.dart' show selectedDayProvider;
 
@@ -46,6 +47,9 @@ class MonthView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textFaint = ext?.textFaint ?? colorScheme.onSurface;
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
 
     final sel = ref.watch(selectedDayProvider);
     final year = sel.year;
@@ -88,47 +92,56 @@ class MonthView extends ConsumerWidget {
       children: [
         // Заголовок месяца со стрелками
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          // 24dp горизонтальный отступ (02-type-space §4.1)
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Нейтральные иконки навигации (accent discipline)
               IconButton(
-                icon: const Icon(Icons.chevron_left),
+                icon: Icon(Icons.chevron_left, color: textMuted),
                 onPressed: () => _changeMonth(ref, -1),
               ),
+              // headlineSmall для заголовка месяца (display font, big headline serif)
+              // Spec: month header = big headline serif (02-type-space §1 headlineSmall)
               Text(
                 DateFormat('MMMM yyyy').format(firstOfMonth),
-                style: textTheme.titleMedium,
+                style: textTheme.headlineSmall,
               ),
               IconButton(
-                icon: const Icon(Icons.chevron_right),
+                icon: Icon(Icons.chevron_right, color: textMuted),
                 onPressed: () => _changeMonth(ref, 1),
               ),
             ],
           ),
         ),
-        // Подписи дней недели
-        Row(
-          children: [
-            for (final key in _weekdayKeys)
-              Expanded(
-                child: Center(
-                  child: Text(
-                    context.s(key),
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+        // Подписи дней недели — labelSmall, textFaint (минимальный вес)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              for (final key in _weekdayKeys)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      context.s(key),
+                      style: textTheme.labelSmall?.copyWith(
+                        // textFaint для неинтерактивных вспомогательных меток
+                        color: textFaint,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 4),
         // Сетка дней
         Expanded(
           child: GridView.count(
             crossAxisCount: 7,
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
+            // 24dp горизонтальный отступ экрана (02-type-space §4.1)
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
             children: cells,
           ),
         ),
@@ -156,12 +169,20 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textFaint = ext?.textFaint ?? colorScheme.onSurface;
 
+    // Accent discipline: только selected и today получают accent
     final Color textColor = isSelected
-        ? colorScheme.onPrimary
+        ? colorScheme.onPrimary    // белый/тёмный поверх accent fill
         : isToday
-            ? colorScheme.primary
+            ? colorScheme.primary  // accent для маркера «сегодня»
             : colorScheme.onSurface;
+
+    // Точка задач: onPrimary если выделен, иначе нейтральная textFaint
+    final Color dotColor = hasItems
+        ? (isSelected ? colorScheme.onPrimary : textFaint)
+        : Colors.transparent;
 
     return GestureDetector(
       onTap: onTap,
@@ -169,10 +190,12 @@ class _DayCell extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
+          // Accent fill только для выбранного дня (accent discipline)
           color: isSelected ? colorScheme.primary : Colors.transparent,
           shape: BoxShape.circle,
+          // Тонкая рамка accent для today-маркера (не fill)
           border: isToday && !isSelected
-              ? Border.all(color: colorScheme.primary)
+              ? Border.all(color: colorScheme.primary, width: 1.0)
               : null,
         ),
         child: Column(
@@ -187,15 +210,13 @@ class _DayCell extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
-            // Точка-индикатор наличия задач
+            // Точка-индикатор наличия задач — нейтральная (не accent)
             Container(
-              width: 5,
-              height: 5,
+              width: 4,
+              height: 4,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: hasItems
-                    ? (isSelected ? colorScheme.onPrimary : colorScheme.primary)
-                    : Colors.transparent,
+                color: dotColor,
               ),
             ),
           ],

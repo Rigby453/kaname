@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
 import 'recipe_nutrition.dart';
 
 // ---------------------------------------------------------------------------
@@ -55,14 +56,22 @@ class RecipesScreen extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete "${recipe.name}"?'),
+        title: Text(
+          'Delete "${recipe.name}"?',
+          style: ctx.textTheme.titleMedium,
+        ),
         content: Text(ctx.s('food.delete_recipe_body')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(ctx.s('btn.cancel')),
           ),
+          // Деструктивное действие — FilledButton с ember стилем (03-components §2)
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.secondary,
+              foregroundColor: Theme.of(ctx).colorScheme.onSecondary,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(ctx.s('btn.delete')),
           ),
@@ -88,14 +97,18 @@ class RecipesScreen extends ConsumerWidget {
       body: recipes.isEmpty
           ? const _EmptyState()
           : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 88),
+              // 24dp экранный отступ + 88dp снизу для FAB
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 88),
               itemCount: recipes.length,
               itemBuilder: (context, i) {
                 final r = recipes[i];
-                return _RecipeTile(
-                  key: ValueKey(r.id),
-                  recipe: r,
-                  onDelete: () => _deleteRecipe(context, ref, r),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _RecipeTile(
+                    key: ValueKey(r.id),
+                    recipe: r,
+                    onDelete: () => _deleteRecipe(context, ref, r),
+                  ),
                 );
               },
             ),
@@ -111,6 +124,10 @@ class _RecipeTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
     final ingredients =
         ref.watch(recipeIngredientsProvider(recipe.id)).valueOrNull ??
             const <RecipeIngredientsTableData>[];
@@ -123,16 +140,29 @@ class _RecipeTile extends ConsumerWidget {
       if (kcal100 != null) '$kcal100 kcal / 100 g',
     ].join(' · ');
 
-    return ListTile(
-      leading: const Icon(Icons.restaurant_menu),
-      title: Text(recipe.name),
-      subtitle: Text(subtitle),
-      trailing: IconButton(
-        tooltip: context.s('btn.delete'),
-        icon: const Icon(Icons.delete_outline),
-        onPressed: onDelete,
+    return Card(
+      child: ListTile(
+        // Иконка рецепта — нейтральный textMuted (не акцент, 03-components §19)
+        leading: Icon(
+          Icons.restaurant_menu_outlined,
+          color: mutedColor,
+        ),
+        title: Text(recipe.name),
+        subtitle: Text(
+          subtitle,
+          style: textTheme.bodySmall?.copyWith(color: mutedColor),
+        ),
+        trailing: IconButton(
+          tooltip: context.s('btn.delete'),
+          icon: Icon(
+            Icons.delete_outline,
+            size: 20,
+            color: ext?.textFaint,
+          ),
+          onPressed: onDelete,
+        ),
+        onTap: () => context.push('/recipes/${recipe.id}'),
       ),
-      onTap: () => context.push('/recipes/${recipe.id}'),
     );
   }
 }
@@ -142,22 +172,26 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurface.withAlpha(80);
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    // textFaint — третичный уровень для пустых состояний (01-color.md)
+    final faintColor = ext?.textFaint ?? Theme.of(context).colorScheme.onSurface.withAlpha(80);
+
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.restaurant_menu, size: 56, color: muted),
-          const SizedBox(height: 16),
-          Text(
-            context.s('food.recipes_empty'),
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: muted),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.restaurant_menu_outlined, size: 56, color: faintColor),
+            const SizedBox(height: 16),
+            Text(
+              context.s('food.recipes_empty'),
+              textAlign: TextAlign.center,
+              style: textTheme.bodyMedium?.copyWith(color: faintColor),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -176,7 +210,7 @@ Future<String?> _promptName(
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(title),
+      title: Text(title, style: ctx.textTheme.titleMedium),
       content: TextField(
         controller: controller,
         autofocus: true,
@@ -205,3 +239,8 @@ Future<String?> promptRecipeName(
   String initial = '',
 }) =>
     _promptName(context, title: title, initial: initial);
+
+// Расширение для удобного доступа к textTheme (локальный хелпер)
+extension _ContextTextTheme on BuildContext {
+  TextTheme get textTheme => Theme.of(this).textTheme;
+}

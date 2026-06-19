@@ -13,8 +13,10 @@ import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/settings/water_goal_provider.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../core/utils/breakpoints.dart';
+import '../../core/widgets/kai_loader.dart';
 import 'sleep_stats.dart';
 
 /// Сумма выпитого за сегодня (реактивно).
@@ -82,7 +84,7 @@ class WaterReminderNotifier extends StateNotifier<bool> {
       final scheduled = _nextInstance(hour);
       await _plugin.zonedSchedule(
         id: _baseId + i,
-        title: 'Time to drink water 💧',
+        title: 'Time to drink water',
         body: 'Stay hydrated!',
         scheduledDate: scheduled,
         notificationDetails: details,
@@ -126,23 +128,23 @@ class HealthScreen extends ConsumerWidget {
   /// Mobile single-column layout (< 600px).
   Widget _buildMobileLayout(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final total = ref.watch(todayWaterProvider).valueOrNull ?? 0;
     final waterGoalMl = ref.watch(waterGoalProvider);
     final progress = (total / waterGoalMl).clamp(0.0, 1.0);
     final dao = ref.read(waterDaoProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(24),
+      // 24dp screen margin — spec §4.1
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
       children: [
+        // headlineMedium — display font (серифный), 32sp, w700
         Text(context.s('health.title'), style: textTheme.headlineMedium),
-        const SizedBox(height: 16),
-        _buildWaterCard(context, ref, colorScheme, textTheme, total,
-            waterGoalMl, progress, dao),
+        const SizedBox(height: 24),
+        _buildWaterCard(context, ref, textTheme, total, waterGoalMl, progress, dao),
         const SizedBox(height: 16),
         const _SleepCard(),
-        const SizedBox(height: 16),
-        ..._buildNavTileCards(context, colorScheme),
+        const SizedBox(height: 24),
+        ..._buildNavTileCards(context),
       ],
     );
   }
@@ -152,26 +154,26 @@ class HealthScreen extends ConsumerWidget {
   /// Below: GridView crossAxisCount=2 for navigation tiles.
   Widget _buildTabletLayout(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final total = ref.watch(todayWaterProvider).valueOrNull ?? 0;
     final waterGoalMl = ref.watch(waterGoalProvider);
     final progress = (total / waterGoalMl).clamp(0.0, 1.0);
     final dao = ref.read(waterDaoProvider);
-    final navTiles = _buildNavTileCards(context, colorScheme);
+    final navTiles = _buildNavTileCards(context);
 
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
         Text(context.s('health.title'), style: textTheme.headlineMedium),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         // Water + Sleep side by side
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: _buildWaterCard(context, ref, colorScheme, textTheme,
-                    total, waterGoalMl, progress, dao),
+                child: _buildWaterCard(
+                  context, ref, textTheme, total, waterGoalMl, progress, dao,
+                ),
               ),
               const SizedBox(width: 16),
               const Expanded(child: _SleepCard()),
@@ -194,35 +196,41 @@ class HealthScreen extends ConsumerWidget {
   }
 
   /// Карточка трекера воды.
+  /// ACCENT DISCIPLINE: только кнопки лога — Outlined (повторяемые действия).
+  /// Иконка воды — нейтральная (textMuted); акцент только на прогресс-дуге.
   Widget _buildWaterCard(
     BuildContext context,
     WidgetRef ref,
-    ColorScheme colorScheme,
     TextTheme textTheme,
     int total,
     int waterGoalMl,
     double progress,
     dynamic dao,
   ) {
+    // Берём ext для доступа к textMuted / success без хардкода hex
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Заголовок карточки — иконка нейтральная (textMuted)
             Row(
               children: [
-                Icon(Icons.water_drop, color: colorScheme.primary),
+                Icon(Icons.water_drop_outlined, color: ext.textMuted),
                 const SizedBox(width: 8),
                 Text(context.s('health.water'), style: textTheme.titleMedium),
                 const Spacer(),
+                // Метрика: текст нейтральный (bodyMedium), акцент НЕ применяется
                 Text(
                   '$total / $waterGoalMl ml',
-                  style: textTheme.titleMedium,
+                  style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.open_in_new, size: 18),
+                  icon: Icon(Icons.open_in_new, size: 18, color: ext.textMuted),
                   tooltip: context.s('health.water_full_view'),
                   onPressed: () => context.push('/water'),
                 ),
@@ -237,15 +245,19 @@ class HealthScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Первичная метрика — headlineSmall, display font, accent color
                       Text(
                         '$total ml',
-                        style: textTheme.headlineSmall,
+                        style: textTheme.headlineSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                       Text(
                         context.s('health.water_goal_of').replaceFirst('{goal}', '$waterGoalMl'),
                         style: textTheme.bodySmall,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
+                      // Прогресс-бар: accent только когда он несёт смысл метрики
                       LinearProgressIndicator(
                         value: progress,
                         minHeight: 4,
@@ -257,6 +269,7 @@ class HealthScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 16),
+            // Кнопки лога: Outlined (повторяемые действия — §2 BUTTON HIERARCHY)
             Row(
               children: [
                 Expanded(
@@ -275,19 +288,26 @@ class HealthScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Undo — IconButton (tertiary, без акцента)
                 IconButton(
                   tooltip: context.s('health.water_undo'),
-                  icon: const Icon(Icons.undo),
+                  icon: Icon(Icons.undo, color: ext.textMuted),
                   onPressed: () => dao.undoLast(DateTime.now()),
                 ),
               ],
             ),
             const SizedBox(height: 8),
+            // Тоггл напоминаний — нейтральная иконка
             Row(
               children: [
-                const Icon(Icons.notifications_outlined, size: 16),
+                Icon(Icons.notifications_outlined, size: 16, color: ext.textMuted),
                 const SizedBox(width: 8),
-                Expanded(child: Text(context.s('health.water_reminders'))),
+                Expanded(
+                  child: Text(
+                    context.s('health.water_reminders'),
+                    style: textTheme.bodySmall,
+                  ),
+                ),
                 Switch.adaptive(
                   value: ref.watch(waterReminderProvider),
                   onChanged: (v) =>
@@ -298,9 +318,10 @@ class HealthScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             // График: последние 7 дней относительно нормы
             _WeekWaterChart(goalMl: waterGoalMl),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            // "View report" — TextButton (навигационный нудж, не основное действие)
             TextButton.icon(
-              icon: const Icon(Icons.arrow_forward),
+              icon: const Icon(Icons.arrow_forward, size: 16),
               label: Text(context.s('health.view_report')),
               onPressed: () => context.push('/water-report'),
             ),
@@ -310,98 +331,103 @@ class HealthScreen extends ConsumerWidget {
     );
   }
 
-  /// Навигационные карточки-плитки (Food, Focus, Workouts, Breathing, Posture,
-  /// Habits, Co-study) — используются и в mobile (список), и в tablet (грид).
-  List<Widget> _buildNavTileCards(
-      BuildContext context, ColorScheme colorScheme) {
+  /// Навигационные карточки-плитки.
+  /// ИСПРАВЛЕНИЕ ГЛАВНОЙ ПРОБЛЕМЫ: иконки нейтральные (textMuted),
+  /// НЕ colorScheme.primary — так на всех ~9 плитках не будет «стены лайма».
+  /// Accent зарезервирован для одного первичного/активного элемента.
+  List<Widget> _buildNavTileCards(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    // Нейтральный цвет для всех иконок навигационных плиток
+    final iconColor = ext.textMuted;
+
     return [
       // --- Еда ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.restaurant_outlined, color: colorScheme.primary),
+          leading: Icon(Icons.restaurant_outlined, color: iconColor),
           title: Text(context.s('health.food')),
           subtitle: Text(context.s('health.food_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/food'),
         ),
       ),
       // --- Фокус-сессии ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.timer_outlined, color: colorScheme.primary),
+          leading: Icon(Icons.timer_outlined, color: iconColor),
           title: Text(context.s('health.focus_session')),
           subtitle: Text(context.s('health.focus_session_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/focus'),
         ),
       ),
       // --- Тренировки (Ф2) ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.fitness_center, color: colorScheme.primary),
+          leading: Icon(Icons.fitness_center_outlined, color: iconColor),
           title: Text(context.s('health.workouts')),
           subtitle: Text(context.s('health.workouts_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/workouts'),
         ),
       ),
       // --- Дыхание (Ф2) ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.air, color: colorScheme.primary),
+          leading: Icon(Icons.air, color: iconColor),
           title: Text(context.s('health.breathing')),
           subtitle: Text(context.s('health.breathing_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/breathing'),
         ),
       ),
       // --- Медитация (Ф2) ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.spa_outlined, color: colorScheme.primary),
+          leading: Icon(Icons.spa_outlined, color: iconColor),
           title: Text(context.s('health.meditation')),
           subtitle: Text(context.s('health.meditation_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/meditation'),
         ),
       ),
       // --- Осанка (Ф2) ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.self_improvement, color: colorScheme.primary),
+          leading: Icon(Icons.self_improvement, color: iconColor),
           title: Text(context.s('health.posture')),
           subtitle: Text(context.s('health.posture_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/posture'),
         ),
       ),
       // --- Экранное время ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.phone_android_outlined, color: colorScheme.primary),
+          leading: Icon(Icons.phone_android_outlined, color: iconColor),
           title: Text(context.s('health.screen_time')),
           subtitle: Text(context.s('health.screen_time_subtitle')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/screen-time'),
         ),
       ),
       // --- Трекер привычек ---
       Card(
         child: ListTile(
-          leading: Icon(Icons.track_changes, color: colorScheme.primary),
+          leading: Icon(Icons.track_changes_outlined, color: iconColor),
           title: Text(context.s('habits.title')),
           subtitle: Text(context.s('habits.subtitle_hub')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/habits'),
         ),
       ),
       // --- Совместная учёба ---
       Card(
         child: ListTile(
-          leading: const Icon(Icons.people_outline),
+          leading: Icon(Icons.people_outline, color: iconColor),
           title: Text(context.s('costudy.title')),
           subtitle: Text(context.s('costudy.subtitle_hub')),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
           onTap: () => context.push('/costudy'),
         ),
       ),
@@ -410,7 +436,7 @@ class HealthScreen extends ConsumerWidget {
 }
 
 /// Анимированный стакан с водой — заменяет плоский прогресс-бар.
-/// §4.2: при достижении 100% через 600 мс — тост.
+/// При достижении 100% через 600 мс — тост.
 class _AnimatedWaterGlass extends StatefulWidget {
   const _AnimatedWaterGlass({required this.progress});
   final double progress;
@@ -427,9 +453,11 @@ class _AnimatedWaterGlassState extends State<_AnimatedWaterGlass>
   @override
   void initState() {
     super.initState();
+    // Respect reduce-motion: при отключённой анимации используем duration=0
+    final reduce = MediaQuery.of(context).disableAnimations;
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: reduce ? Duration.zero : const Duration(milliseconds: 600),
     );
     _anim = Tween<double>(begin: 0, end: widget.progress).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
@@ -441,7 +469,7 @@ class _AnimatedWaterGlassState extends State<_AnimatedWaterGlass>
   void didUpdateWidget(_AnimatedWaterGlass old) {
     super.didUpdateWidget(old);
     if (old.progress != widget.progress) {
-      // §4.2: норма достигнута → задержка 600 мс → тост
+      // Норма достигнута → задержка 600 мс → тост
       if (old.progress < 1.0 && widget.progress >= 1.0) {
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
@@ -470,6 +498,7 @@ class _AnimatedWaterGlassState extends State<_AnimatedWaterGlass>
 
   @override
   Widget build(BuildContext context) {
+    // Стакан рисуется акцентным цветом — это первичная метрика прогресса воды
     final color = Theme.of(context).colorScheme.primary;
     return Tooltip(
       message: context.s('health.water_goal_reached'),
@@ -547,6 +576,7 @@ class _GlassPainter extends CustomPainter {
 }
 
 /// Мини-график воды за последние 7 дней (высота столбца — доля от нормы).
+/// Столбцы успешных дней — accent; остальные — textMuted c opacity.
 class _WeekWaterChart extends ConsumerWidget {
   const _WeekWaterChart({required this.goalMl});
 
@@ -561,6 +591,7 @@ class _WeekWaterChart extends ConsumerWidget {
     if (totals == null || totals.length != 7) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final textTheme = Theme.of(context).textTheme;
     final today = DateTime.now();
 
@@ -581,10 +612,12 @@ class _WeekWaterChart extends ConsumerWidget {
                 Container(
                   height: (_chartHeight * frac).clamp(3.0, _chartHeight),
                   decoration: BoxDecoration(
+                    // Accent только для дней где достигнута цель (success moment)
+                    // Остальные — нейтральная textMuted c пониженной opacity
                     color: reached
                         ? colorScheme.primary
-                        : colorScheme.primary.withValues(
-                            alpha: isToday ? 0.8 : 0.35,
+                        : ext.textMuted.withValues(
+                            alpha: isToday ? 0.55 : 0.30,
                           ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -594,9 +627,7 @@ class _WeekWaterChart extends ConsumerWidget {
                   _letters[day.weekday - 1],
                   style: textTheme.bodySmall?.copyWith(
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
-                    color: isToday
-                        ? colorScheme.onSurface
-                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: isToday ? ext.textMuted : ext.textFaint,
                   ),
                 ),
               ],
@@ -621,7 +652,7 @@ class _SleepCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     // Используем .when для разбора состояния загрузки корректно.
     final openAsync = ref.watch(openNightProvider);
     final dao = ref.read(sleepDaoProvider);
@@ -632,16 +663,23 @@ class _SleepCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Заголовок: иконка нейтральная (textMuted), не primary
             Row(
               children: [
-                Icon(Icons.bedtime_outlined, color: colorScheme.primary),
+                Icon(Icons.bedtime_outlined, color: ext.textMuted),
                 const SizedBox(width: 8),
                 Text(context.s('health.sleep'), style: textTheme.titleMedium),
               ],
             ),
             const SizedBox(height: 12),
             openAsync.when(
-              loading: () => const SizedBox(height: 48),
+              // Async spinner → KaiLoader (заменяет базовый CircularProgressIndicator)
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: KaiLoader(label: 'Loading sleep data…'),
+                ),
+              ),
               error: (_, e) => const SizedBox.shrink(),
               data: (open) {
                 if (open != null) {
@@ -657,6 +695,7 @@ class _SleepCard extends ConsumerWidget {
                         style: textTheme.bodyLarge,
                       ),
                       const SizedBox(height: 12),
+                      // FilledButton — единственное первичное действие в карточке
                       FilledButton.icon(
                         icon: const Icon(Icons.wb_sunny_outlined),
                         label: Text(context.s('health.sleep_im_awake')),
@@ -684,6 +723,7 @@ class _SleepCard extends ConsumerWidget {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // FilledButton — единственное первичное действие в карточке
                     FilledButton.icon(
                       icon: const Icon(Icons.bedtime),
                       label: Text(context.s('health.sleep_going_to_bed')),
@@ -691,9 +731,10 @@ class _SleepCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     _WeekSleepChart(goalHours: 7),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
+                    // TextButton — навигационный нудж (не основное действие)
                     TextButton.icon(
-                      icon: const Icon(Icons.arrow_forward),
+                      icon: const Icon(Icons.arrow_forward, size: 16),
                       label: Text(context.s('health.view_report')),
                       onPressed: () => context.push('/sleep-report'),
                     ),
@@ -709,7 +750,7 @@ class _SleepCard extends ConsumerWidget {
 }
 
 /// Мини-график сна за последние 7 дней (аналог _WeekWaterChart).
-/// Цель подсветки — ≥ 7 часов (accent color).
+/// Цель подсветки — ≥ 7 часов (accent color); остальные — textMuted.
 class _WeekSleepChart extends ConsumerWidget {
   const _WeekSleepChart({required this.goalHours});
 
@@ -721,6 +762,7 @@ class _WeekSleepChart extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nights = ref.watch(recentNightsProvider).valueOrNull;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final today = DateTime.now();
@@ -730,9 +772,7 @@ class _WeekSleepChart extends ConsumerWidget {
     if (nights.isEmpty) {
       return Text(
         context.s('health.sleep_no_nights'),
-        style: textTheme.bodySmall?.copyWith(
-          color: colorScheme.onSurface.withValues(alpha: 0.5),
-        ),
+        style: textTheme.bodySmall,
       );
     }
 
@@ -757,10 +797,11 @@ class _WeekSleepChart extends ConsumerWidget {
                 Container(
                   height: (_chartHeight * frac).clamp(3.0, _chartHeight),
                   decoration: BoxDecoration(
+                    // Accent для успешных дней; нейтральная textMuted для остальных
                     color: reached
                         ? colorScheme.primary
-                        : colorScheme.primary.withValues(
-                            alpha: isToday ? 0.8 : 0.35,
+                        : ext.textMuted.withValues(
+                            alpha: isToday ? 0.55 : 0.30,
                           ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -770,9 +811,7 @@ class _WeekSleepChart extends ConsumerWidget {
                   _letters[slot.day.weekday - 1],
                   style: textTheme.bodySmall?.copyWith(
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
-                    color: isToday
-                        ? colorScheme.onSurface
-                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: isToday ? ext.textMuted : ext.textFaint,
                   ),
                 ),
               ],

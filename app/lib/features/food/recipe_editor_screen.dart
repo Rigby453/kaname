@@ -9,6 +9,8 @@ import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 import 'food_nutrition.dart';
 import 'recipe_nutrition.dart';
@@ -110,6 +112,10 @@ class RecipeEditorScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
     final recipe = ref.watch(recipeProvider(recipeId)).valueOrNull;
     final ingredients =
         ref.watch(recipeIngredientsProvider(recipeId)).valueOrNull ??
@@ -119,7 +125,9 @@ class RecipeEditorScreen extends ConsumerWidget {
       // Рецепт удалён или ещё грузится первая выборка.
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(
+          child: KaiLoader(label: 'Loading recipe…'),
+        ),
       );
     }
 
@@ -141,14 +149,16 @@ class RecipeEditorScreen extends ConsumerWidget {
         children: [
           Expanded(
             child: ingredients.isEmpty
-                ? _emptyIngredients(context)
+                ? _emptyIngredients(context, ext)
                 : ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
                     itemCount: ingredients.length,
                     itemBuilder: (context, i) {
                       final ing = ingredients[i];
                       return Dismissible(
                         key: ValueKey(ing.id),
                         direction: DismissDirection.endToStart,
+                        // Фон свайпа — colorScheme.error (ember семантика)
                         background: Container(
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 24),
@@ -167,9 +177,17 @@ class RecipeEditorScreen extends ConsumerWidget {
                               ? null
                               : Text(
                                   '${(ing.calories! * ing.grams / 100).round()} kcal',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: mutedColor,
+                                  ),
                                 ),
                           trailing: TextButton(
-                            child: Text('${ing.grams.round()} g'),
+                            child: Text(
+                              '${ing.grams.round()} g',
+                              style: textTheme.labelMedium?.copyWith(
+                                color: mutedColor,
+                              ),
+                            ),
                             onPressed: () => _editGrams(context, ref, ing),
                           ),
                         ),
@@ -177,10 +195,11 @@ class RecipeEditorScreen extends ConsumerWidget {
                     },
                   ),
           ),
+          // Нижняя панель: итоги + кнопки действий
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -188,6 +207,7 @@ class RecipeEditorScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
+                      // Вторичное действие — OutlinedButton
                       Expanded(
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.add, size: 18),
@@ -196,6 +216,7 @@ class RecipeEditorScreen extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 12),
+                      // Первичное действие — FilledButton (03-components §2)
                       Expanded(
                         child: FilledButton.icon(
                           icon: const Icon(Icons.restaurant, size: 18),
@@ -217,21 +238,26 @@ class RecipeEditorScreen extends ConsumerWidget {
     );
   }
 
-  Widget _emptyIngredients(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurface.withAlpha(80);
+  Widget _emptyIngredients(BuildContext context, FocusThemeExtension? ext) {
+    // textFaint — третичный уровень для пустых состояний
+    final faintColor = ext?.textFaint ?? Theme.of(context).colorScheme.onSurface.withAlpha(80);
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.egg_alt_outlined, size: 56, color: muted),
-          const SizedBox(height: 16),
-          Text(
-            context.s('food.ingredients_empty'),
-            textAlign: TextAlign.center,
-            style:
-                Theme.of(context).textTheme.bodyMedium?.copyWith(color: muted),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.egg_alt_outlined, size: 56, color: faintColor),
+            const SizedBox(height: 16),
+            Text(
+              context.s('food.ingredients_empty'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: faintColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -252,7 +278,11 @@ class _TotalsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? colorScheme.onSurface.withAlpha(153);
     final t = totals.total;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -263,18 +293,37 @@ class _TotalsCard extends StatelessWidget {
               'Whole recipe · ${totals.totalGrams.round()} g',
               style: textTheme.titleSmall,
             ),
+            const SizedBox(height: 6),
+            // Калории рецепта — accent (единственная подчёркнутая метрика)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  _fmt(t.calories),
+                  style: textTheme.headlineSmall?.copyWith(
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'kcal',
+                  style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
+            // Макросы — мутед (не конкурируют с калориями)
             Text(
-              '${_fmt(t.calories)} kcal · P ${_fmt(t.protein)} · '
-              'F ${_fmt(t.fat)} · C ${_fmt(t.carbs)}',
-              style: textTheme.bodyMedium,
+              'P ${_fmt(t.protein)} g · F ${_fmt(t.fat)} g · C ${_fmt(t.carbs)} g',
+              style: textTheme.bodySmall?.copyWith(color: mutedColor),
             ),
             const SizedBox(height: 8),
             Text(
               'Per 100 g: ${_fmt(per100.calories)} kcal · '
               'P ${_fmt(per100.protein)} · F ${_fmt(per100.fat)} · '
               'C ${_fmt(per100.carbs)}',
-              style: textTheme.bodySmall,
+              style: textTheme.bodySmall?.copyWith(color: mutedColor),
             ),
           ],
         ),
@@ -354,11 +403,15 @@ class _IngredientSearchSheetState
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
     return Padding(
       padding: EdgeInsets.only(
+        // 24dp отступ по spec
         left: 24,
         right: 24,
-        top: 24,
+        top: 16,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
       child: SingleChildScrollView(
@@ -367,7 +420,7 @@ class _IngredientSearchSheetState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(context.s('food.add_ingredient'), style: textTheme.headlineSmall),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextField(
               controller: _controller,
               autofocus: true,
@@ -381,16 +434,22 @@ class _IngredientSearchSheetState
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            // Загрузка ингредиентов — KaiLoader
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(
+                  child: KaiLoader(label: 'Kai is finding food…'),
+                ),
               )
             else if (_error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(_error!, style: textTheme.bodyMedium),
+                child: Text(
+                  _error!,
+                  style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                ),
               )
             else
               ..._results.whereType<Map<String, dynamic>>().map((p) {
@@ -398,11 +457,16 @@ class _IngredientSearchSheetState
                 final kcal = (per?['calories'] as num?)?.round();
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text((p['name'] as String?) ?? context.s('food.unknown_product')),
-                  subtitle: Text([
-                    if (p['brand'] != null) p['brand'] as String,
-                    if (kcal != null) '$kcal kcal / 100g',
-                  ].join(' · ')),
+                  title: Text(
+                    (p['name'] as String?) ?? context.s('food.unknown_product'),
+                  ),
+                  subtitle: Text(
+                    [
+                      if (p['brand'] != null) p['brand'] as String,
+                      if (kcal != null) '$kcal kcal / 100g',
+                    ].join(' · '),
+                    style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                  ),
                   onTap: () => _pick(p),
                 );
               }),
@@ -428,7 +492,12 @@ Future<double?> _promptGrams(
   return showDialog<double>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(
+        title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: ctx.textTheme.titleMedium,
+      ),
       content: TextField(
         controller: controller,
         autofocus: true,
@@ -484,7 +553,12 @@ class _LogRecipeDialogState extends State<_LogRecipeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(
+        widget.name,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,9 +568,10 @@ class _LogRecipeDialogState extends State<_LogRecipeDialog> {
             keyboardType: TextInputType.number,
             decoration: InputDecoration(labelText: context.s('food.grams_eaten_label')),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: _meals.map((m) {
               // Локализуем название приёма пищи через ключ food.meal_*
               return ChoiceChip(
@@ -513,6 +588,7 @@ class _LogRecipeDialogState extends State<_LogRecipeDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(context.s('btn.cancel')),
         ),
+        // Первичное действие
         FilledButton(
           onPressed: () {
             final grams = double.tryParse(_grams.text.trim());
@@ -524,4 +600,9 @@ class _LogRecipeDialogState extends State<_LogRecipeDialog> {
       ],
     );
   }
+}
+
+// Расширение для удобного доступа к textTheme (локальный хелпер)
+extension _ContextTextTheme on BuildContext {
+  TextTheme get textTheme => Theme.of(this).textTheme;
 }

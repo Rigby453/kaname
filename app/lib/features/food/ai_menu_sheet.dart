@@ -13,6 +13,8 @@ import '../../core/animations/app_sheet.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/nutrition_goals_provider.dart';
 import '../../core/settings/tone_provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
 import '../paywall/paywall_screen.dart';
@@ -165,13 +167,17 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? colorScheme.onSurface.withAlpha(153);
     final total = proposedMenuTotal(_meals);
 
     return Padding(
       padding: EdgeInsets.only(
+        // 24dp горизонтальный отступ
         left: 24,
         right: 24,
-        top: 24,
+        top: 16,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
       child: SingleChildScrollView(
@@ -179,29 +185,34 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Заголовок листа — headlineSmall (22sp, display font) с иконкой
             Row(
               children: [
-                const Icon(Icons.auto_awesome, size: 20),
+                Icon(
+                  Icons.auto_awesome,
+                  size: 20,
+                  color: mutedColor,
+                ),
                 const SizedBox(width: 8),
                 Text(context.s('food.ai_menu_title'), style: textTheme.headlineSmall),
               ],
             ),
             const SizedBox(height: 16),
             if (_loading) ...[
-              Row(
-                children: [
-                  const AiPulseDot(size: 10),
-                  const SizedBox(width: 10),
-                  Text(context.s('food.ai_composing'),
-                      style: textTheme.bodyMedium),
-                ],
+              // KaiLoader вместо спиннера + AiSkeleton для каркаса контента
+              const Center(
+                child: KaiLoader(label: 'Kai is composing your menu…'),
               ),
               const SizedBox(height: 16),
               const AiSkeleton(lines: 4),
             ] else if (_error != null) ...[
               // _error может быть ключом локализации или сырым сообщением API
-              Text(context.s(_error!), style: textTheme.bodyMedium),
+              Text(
+                context.s(_error!),
+                style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+              ),
               const SizedBox(height: 12),
+              // Попробовать снова — OutlinedButton (вторичное, повторяемое действие)
               OutlinedButton.icon(
                 icon: const Icon(Icons.refresh, size: 18),
                 label: Text(context.s('food.try_again')),
@@ -217,15 +228,26 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
                       const SizedBox(height: 12),
                     ],
                     ..._meals.map((m) => _MealBlock(meal: m)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Day total: ${total.calories?.round() ?? 0} kcal · '
-                      'P ${total.protein?.round() ?? 0} g',
-                      style: textTheme.titleSmall,
+                    const SizedBox(height: 8),
+                    // Итоги дня — titleSmall, калории accent
+                    Row(
+                      children: [
+                        Text(
+                          '${total.calories?.round() ?? 0}',
+                          style: textTheme.titleMedium?.copyWith(
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        Text(
+                          ' kcal · P ${total.protein?.round() ?? 0} g',
+                          style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
+                        // Пересобрать — OutlinedButton (вторичное)
                         Expanded(
                           child: OutlinedButton(
                             onPressed: _applying ? null : _build,
@@ -233,6 +255,7 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
                           ),
                         ),
                         const SizedBox(width: 12),
+                        // Записать всё — FilledButton (первичное, 03-components §2)
                         Expanded(
                           child: FilledButton.icon(
                             icon: _applying
@@ -263,15 +286,19 @@ class _MealBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final muted = Theme.of(context).colorScheme.onSurface.withAlpha(140);
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    // Строки блюд — textMuted (не конкурируют с заголовком)
+    final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(140);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Название приёма пищи — titleSmall (14sp w600)
           Text(
             meal.meal[0].toUpperCase() + meal.meal.substring(1),
-            style: textTheme.titleMedium,
+            style: textTheme.titleSmall,
           ),
           const SizedBox(height: 4),
           ...meal.items.map(
@@ -280,7 +307,7 @@ class _MealBlock extends StatelessWidget {
               child: Text(
                 '${i.name} — ${i.grams.round()} g · '
                 '${i.nutrition.calories?.round() ?? 0} kcal',
-                style: textTheme.bodyMedium?.copyWith(color: muted),
+                style: textTheme.bodyMedium?.copyWith(color: mutedColor),
               ),
             ),
           ),

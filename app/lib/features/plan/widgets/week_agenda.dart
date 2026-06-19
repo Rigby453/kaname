@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import 'day_timeline.dart' show dayItemsProvider;
 import 'week_strip.dart' show selectedDayProvider;
@@ -73,8 +74,10 @@ class WeekAgenda extends ConsumerWidget {
     );
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      // 24dp горизонтальный отступ (02-type-space §4.1); 96dp снизу под FAB
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
       children: [
+        // Вторичное действие — TextButton (03-components §6)
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
@@ -83,6 +86,7 @@ class WeekAgenda extends ConsumerWidget {
             onPressed: () => _cloneWeek(context, ref, weekStart),
           ),
         ),
+        const SizedBox(height: 8),
         for (final day in days) _DaySection(day: day),
       ],
     );
@@ -98,6 +102,10 @@ class _DaySection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textFaint = ext?.textFaint ?? colorScheme.onSurface;
+    final border = ext?.border ?? colorScheme.outline;
+
     final items = ref.watch(dayItemsProvider(day)).valueOrNull ??
         const <ItemsTableData>[];
 
@@ -109,21 +117,27 @@ class _DaySection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
           child: Row(
             children: [
               Text(
                 DateFormat('EEE, MMM d').format(day),
+                // titleSmall для заголовков дней в week-agenda (02-type-space §1)
                 style: textTheme.titleSmall?.copyWith(
-                  color: isToday ? colorScheme.primary : null,
+                  // Акцент только на today-маркер (accent discipline)
+                  color: isToday ? colorScheme.primary : colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               if (isToday) ...[
                 const SizedBox(width: 6),
-                Text(context.s('plan.week_today_label'),
-                    style: textTheme.labelSmall?.copyWith(
-                        color: colorScheme.primary)),
+                // Лейбл «today» — accent только здесь как маркер текущего дня
+                Text(
+                  context.s('plan.week_today_label'),
+                  style: textTheme.labelSmall?.copyWith(
+                    color: colorScheme.primary,
+                  ),
+                ),
               ],
             ],
           ),
@@ -131,11 +145,13 @@ class _DaySection extends ConsumerWidget {
         if (items.isEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text('—', style: textTheme.bodySmall),
+            // Тире вместо пустоты — textFaint (01-color.md)
+            child: Text('—', style: textTheme.bodySmall?.copyWith(color: textFaint)),
           )
         else
           ...items.map((i) => _AgendaRow(item: i, day: day)),
-        const Divider(height: 16),
+        // Hairline разделитель 0.5dp (02-type-space §4.3)
+        Divider(height: 12, thickness: 0.5, color: border),
       ],
     );
   }
@@ -151,22 +167,27 @@ class _AgendaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
     final done = item.status == 'done';
 
     return InkWell(
       onTap: () => showAddTaskSheet(context, day: day, existing: item),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        // Комфортный вертикальный отступ строки
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           children: [
+            // Время — bodySmall для метаданных (02-type-space §1)
             SizedBox(
               width: 44,
               child: Text(
                 DateFormat.Hm().format(item.scheduledAt),
-                style: textTheme.bodySmall,
+                style: textTheme.bodySmall?.copyWith(color: textMuted),
               ),
             ),
             const SizedBox(width: 8),
+            // Щит приоритета main — accent только для этого маркера (accent discipline)
             if (item.priority == 'main')
               Padding(
                 padding: const EdgeInsets.only(right: 6),
@@ -178,11 +199,10 @@ class _AgendaRow extends StatelessWidget {
                 item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                // bodyMedium для текста задач
                 style: textTheme.bodyMedium?.copyWith(
                   decoration: done ? TextDecoration.lineThrough : null,
-                  color: done
-                      ? colorScheme.onSurface.withValues(alpha: 0.5)
-                      : colorScheme.onSurface,
+                  color: done ? textMuted : colorScheme.onSurface,
                 ),
               ),
             ),

@@ -23,6 +23,7 @@ import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/settings/mascot_provider.dart';
 import '../../../core/settings/tone_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../services/api/api_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../mascot/kai_mascot.dart';
@@ -88,6 +89,7 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
 
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     final count = overdue.length;
     final tone = ref.watch(toneProvider);
 
@@ -98,6 +100,7 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
 
     return Card(
       child: Padding(
+        // md=16 внутренний отступ карточки (02-type-space.md §4.1)
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,7 +118,8 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
                     ),
                   )
                 else
-                  Icon(Icons.wb_twilight, color: colorScheme.secondary),
+                  // ember только для иконки утреннего разбора — сигнал «есть незакрытое»
+                  Icon(Icons.wb_twilight, color: ext?.ember ?? colorScheme.secondary),
                 const SizedBox(width: 8),
                 Text(context.s('today.morning_review'), style: textTheme.titleMedium),
                 const Spacer(),
@@ -225,7 +229,8 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        // lg=24 для внутреннего отступа шита (02-type-space.md §4.1)
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

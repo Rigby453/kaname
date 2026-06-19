@@ -10,6 +10,7 @@ import '../../core/animations/animated_check.dart';
 import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
 // Провайдер — реактивный список покупок
@@ -80,12 +81,14 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
   Widget build(BuildContext context) {
     final items = ref.watch(_shoppingListProvider).valueOrNull ?? const [];
     final hasChecked = items.any((i) => i.checked);
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
 
     return Scaffold(
       appBar: AppBar(
         title: Text(context.s('food.shopping_list_title')),
         actions: [
           // «Clear checked» — виден только если есть отмеченные позиции
+          // TextButton (лёгкое действие) — не нужен FilledButton
           if (hasChecked)
             TextButton(
               onPressed: () async {
@@ -97,9 +100,9 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
       ),
       body: Column(
         children: [
-          // --- Поле добавления ---
+          // --- Поле добавления (24dp горизонтальный отступ) ---
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             child: Row(
               children: [
                 Expanded(
@@ -115,21 +118,32 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Кнопка добавления — IconButton (не FilledButton, чтобы не перетягивать акцент)
                 IconButton(
                   tooltip: context.s('btn.add'),
-                  icon: const Icon(Icons.add),
+                  icon: Icon(
+                    Icons.add_circle_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   onPressed: _submit,
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          // Разделитель — тонкий (0.5dp) без лишней высоты
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: ext?.border,
+          ),
 
           // --- Список / пустое состояние ---
           Expanded(
             child: items.isEmpty
                 ? _EmptyState()
                 : ListView.builder(
+                    // Небольшой вертикальный отступ вверху списка
+                    padding: const EdgeInsets.only(top: 4, bottom: 24),
                     itemCount: items.length,
                     itemBuilder: (context, index) {
                       final item = items[index];
@@ -164,12 +178,16 @@ class _ShoppingTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final textMuted = theme.colorScheme.onSurface.withAlpha(120);
+    final ext = theme.extension<FocusThemeExtension>();
+    // textFaint — для зачёркнутых (выполненных) позиций
+    final faintColor = ext?.textFaint ?? theme.colorScheme.onSurface.withAlpha(120);
+    // textMuted — для количества
+    final mutedColor = ext?.textMuted ?? theme.colorScheme.onSurface.withAlpha(153);
 
     return Dismissible(
       key: ValueKey(item.id),
       direction: DismissDirection.endToStart,
-      // Фон при свайпе вправо-влево: красный с иконкой удаления
+      // Фон при свайпе: colorScheme.error (= ember семантика)
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
@@ -178,6 +196,7 @@ class _ShoppingTile extends ConsumerWidget {
       ),
       confirmDismiss: (_) => onDismiss(),
       child: ListTile(
+        // Чекбокс-анимация — accent (выполнено = positiveState, 03-components §1)
         leading: AnimatedCheck(
           checked: item.checked,
           color: theme.colorScheme.primary,
@@ -186,17 +205,17 @@ class _ShoppingTile extends ConsumerWidget {
         title: Text(
           item.name,
           style: item.checked
-              ? TextStyle(
+              ? theme.textTheme.bodyLarge?.copyWith(
                   decoration: TextDecoration.lineThrough,
-                  color: textMuted,
+                  color: faintColor,
                 )
               : null,
         ),
-        // Количество серым справа (если указано)
+        // Количество — bodySmall muted справа
         trailing: item.quantity != null
             ? Text(
                 item.quantity!,
-                style: theme.textTheme.bodySmall?.copyWith(color: textMuted),
+                style: theme.textTheme.bodySmall?.copyWith(color: mutedColor),
               )
             : null,
         onTap: () {
@@ -217,19 +236,25 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final muted = Theme.of(context).colorScheme.onSurface.withAlpha(80);
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    // textFaint — третичный уровень для пустых состояний
+    final faintColor = ext?.textFaint ?? Theme.of(context).colorScheme.onSurface.withAlpha(80);
+
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.shopping_cart_outlined, size: 56, color: muted),
-          const SizedBox(height: 16),
-          Text(
-            context.s('food.shopping_empty'),
-            style: textTheme.bodyMedium?.copyWith(color: muted),
-            textAlign: TextAlign.center,
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shopping_cart_outlined, size: 56, color: faintColor),
+            const SizedBox(height: 16),
+            Text(
+              context.s('food.shopping_empty'),
+              style: textTheme.bodyMedium?.copyWith(color: faintColor),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

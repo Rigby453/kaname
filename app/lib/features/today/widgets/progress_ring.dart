@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import '../../../core/animations/constants.dart';
 import '../../../core/database/database.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_theme.dart';
 
 class ProgressRing extends StatefulWidget {
   const ProgressRing({
@@ -167,6 +168,7 @@ class _ProgressRingState extends State<ProgressRing>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     final total = widget.items.length;
     final done = total == 0
         ? 0
@@ -187,9 +189,10 @@ class _ProgressRingState extends State<ProgressRing>
               painter: _RingPainter(
                 progress: total == 0 ? 1.0 : _progressAnimation.value,
                 isEmpty: total == 0,
+                // accent только для прогресс-дуги (03-components §1)
                 accentColor: colorScheme.primary,
-                // Серый трек — onSurface с низкой прозрачностью
-                trackColor: colorScheme.onSurface.withAlpha(30),
+                // Трек — border (нейтральный hairline, не accent, не onSurface magic)
+                trackColor: ext?.border ?? colorScheme.outline,
               ),
               child: Center(
                 child: Column(
@@ -197,13 +200,14 @@ class _ProgressRingState extends State<ProgressRing>
                   children: [
                     Text(
                       total == 0 ? '—' : '$done/$total',
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: colorScheme.onSurface,
-                      ),
+                      // headlineLarge: 40sp display-font — большое число в кольце
+                      // Цвет — onSurface (text) без переопределения (тема задаёт)
+                      style: Theme.of(context).textTheme.headlineLarge,
                     ),
                     if (total > 0)
                       Text(
                         context.s('today.ring_main'),
+                        // bodySmall уже textMuted из темы — рецессивная подпись
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                   ],

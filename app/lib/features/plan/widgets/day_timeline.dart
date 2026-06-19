@@ -11,6 +11,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/kai_loader.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import 'plan_providers.dart';
 import 'week_strip.dart';
@@ -29,6 +30,11 @@ class DayTimeline extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedDay = ref.watch(selectedDayProvider);
     final itemsAsync = ref.watch(dayItemsProvider(selectedDay));
+
+    // KaiLoader вместо CircularProgressIndicator (03-components §17 / kai_loader.dart)
+    if (itemsAsync.isLoading && itemsAsync.valueOrNull == null) {
+      return const Center(child: KaiLoader());
+    }
 
     // valueOrNull: не блокируем UI на loading — список появится как только
     // стрим доставит данные; ошибка логируется через itemsAsync.error
@@ -54,8 +60,10 @@ class DayTimeline extends ConsumerWidget {
       return _EmptyState(day: selectedDay);
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      // 24dp горизонтальный отступ экрана (02-type-space §4.1); 96dp снизу под FAB
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
       itemCount: sorted.length,
+      // Комфортный зазор между карточками (02-type-space §4.1)
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final item = sorted[index];
@@ -78,10 +86,18 @@ class _ItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final themeExt = Theme.of(context).extension<FocusThemeExtension>();
+    // ThemeExtension — источник дополнительных цветов (01-color.md)
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     final textTheme = Theme.of(context).textTheme;
 
-    final borderColor = themeExt?.border ?? colorScheme.outline;
+    final borderColor = ext?.border ?? colorScheme.outline;
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
+
+    // Экзамены/дедлайны — ember-рамка (03-components §10 Ember card variant)
+    final isUrgent = item.type == 'exam' || item.type == 'deadline';
+    final ember = ext?.ember ?? colorScheme.secondary;
+    final cardBorderColor = isUrgent ? ember : borderColor;
+    final cardBorderWidth = isUrgent ? 1.5 : 0.5; // hairline для обычных карточек
 
     return InkWell(
       onTap: () => showAddTaskSheet(
@@ -91,22 +107,22 @@ class _ItemCard extends StatelessWidget {
       ),
       borderRadius: BorderRadius.circular(16), // radius.md
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        // 16dp внутренний отступ карточки (02-type-space §4.1)
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor),
+          border: Border.all(color: cardBorderColor, width: cardBorderWidth),
         ),
         child: Row(
           children: [
-            // Время
+            // Время — bodySmall для метаданных (02-type-space §1)
             SizedBox(
-              width: 48,
+              width: 44,
               child: Text(
                 DateFormat.Hm().format(item.scheduledAt),
                 style: textTheme.bodySmall?.copyWith(
-                  color: themeExt?.textMuted ?? colorScheme.onSurface,
-                  fontWeight: FontWeight.w500,
+                  color: textMuted,
                 ),
               ),
             ),
@@ -119,23 +135,27 @@ class _ItemCard extends StatelessWidget {
                 children: [
                   Text(
                     item.title,
-                    style: textTheme.bodyMedium?.copyWith(
+                    // titleSmall для обычных задач, titleMedium для main (02-type-space §1)
+                    style: (item.priority == 'main'
+                            ? textTheme.titleMedium
+                            : textTheme.titleSmall)
+                        ?.copyWith(
                       decoration: item.status == 'done'
                           ? TextDecoration.lineThrough
                           : null,
                       color: item.status == 'done'
-                          ? (themeExt?.textMuted ?? colorScheme.onSurface)
+                          ? textMuted
                           : colorScheme.onSurface,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  // Обратный отсчёт для экзаменов/дедлайнов
-                  if (item.type == 'exam' || item.type == 'deadline')
+                  // Обратный отсчёт для экзаменов/дедлайнов — ember (correct per spec)
+                  if (isUrgent)
                     Text(
                       _countdownLabel(context, item.scheduledAt),
                       style: textTheme.bodySmall?.copyWith(
-                        color: themeExt?.ember ?? colorScheme.secondary,
+                        color: ember,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -165,7 +185,10 @@ String _countdownLabel(BuildContext context, DateTime at) {
   return '${context.s('plan.countdown_in_days_prefix')}$days${context.s('plan.countdown_in_days_suffix')}';
 }
 
-/// Маленький цветной значок типа задачи.
+/// Маленький значок типа задачи.
+/// Exam/deadline → ember (correct per accent discipline spec).
+/// Event → нейтральный textMuted/accentMuted (не accent fill).
+/// Task → textFaint (минимальный вес).
 class _TypeBadge extends StatelessWidget {
   const _TypeBadge({required this.type});
 
@@ -174,27 +197,32 @@ class _TypeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final themeExt = Theme.of(context).extension<FocusThemeExtension>();
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
 
+    final ember = ext?.ember ?? colorScheme.secondary;
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
+    final textFaint = ext?.textFaint ?? colorScheme.onSurface;
+
+    // Accent discipline: только ember для urgent, нейтрали для event/task
     final (label, color) = switch (type) {
-      'exam' => (context.s('plan.type_exam'), themeExt?.ember ?? colorScheme.secondary),
-      'deadline' => (context.s('plan.type_deadline'), themeExt?.ember ?? colorScheme.secondary),
-      'event' => (context.s('plan.type_event'), colorScheme.primary.withValues(alpha: 0.8)),
-      _ => (context.s('plan.type_task'), colorScheme.primary.withValues(alpha: 0.5)),
+      'exam'     => (context.s('plan.type_exam'), ember),
+      'deadline' => (context.s('plan.type_deadline'), ember),
+      'event'    => (context.s('plan.type_event'), textMuted),
+      _          => (context.s('plan.type_task'), textFaint),
     };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        // Фон с малой прозрачностью — не accent fill
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999), // radius.pill
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: color,
-              fontSize: 10,
             ),
       ),
     );
@@ -209,11 +237,13 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeExt = Theme.of(context).extension<FocusThemeExtension>();
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     final colorScheme = Theme.of(context).colorScheme;
+    final textFaint = ext?.textFaint ?? colorScheme.onSurface;
 
     return Center(
       child: Padding(
+        // 32dp отступ с воздухом
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -221,19 +251,21 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.calendar_today_outlined,
               size: 48,
-              color: themeExt?.textMuted ?? colorScheme.onSurface,
+              // textFaint для пустых состояний (01-color.md textFaint)
+              color: textFaint,
             ),
             const SizedBox(height: 16),
             Text(
               '${context.s('plan.empty_prefix')}${DateFormat.MMMd().format(day)}',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: themeExt?.textMuted ?? colorScheme.onSurface,
+                    color: ext?.textMuted ?? colorScheme.onSurface,
                   ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               context.s('plan.empty_hint'),
+              // bodySmall для подсказки (02-type-space §1)
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),

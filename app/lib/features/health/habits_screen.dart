@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/kai_loader.dart';
 
 final _habitsProvider = StreamProvider.autoDispose<List<HabitsTableData>>((ref) {
   return ref.watch(habitsDaoProvider).watchActive();
@@ -18,6 +20,7 @@ class HabitsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final habitsAsync = ref.watch(_habitsProvider);
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('habits.title'))),
@@ -26,24 +29,43 @@ class HabitsScreen extends ConsumerWidget {
         child: const Icon(Icons.add),
       ),
       body: habitsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        // KaiLoader вместо базового CircularProgressIndicator
+        loading: () => const Center(child: KaiLoader(label: 'Loading habits…')),
+        error: (e, _) => Center(
+          child: Text(
+            'Error: $e',
+            style: textTheme.bodyMedium?.copyWith(color: ext.ember),
+          ),
+        ),
         data: (habits) {
           if (habits.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('🌱', style: TextStyle(fontSize: 48)),
-                  const SizedBox(height: 16),
-                  Text(context.s('habits.empty_title'), style: textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(
-                    context.s('habits.empty_body'),
-                    textAlign: TextAlign.center,
-                    style: textTheme.bodyMedium,
-                  ),
-                ],
+              child: Padding(
+                // 24dp screen margin
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Emoji заменяется нейтральной иконкой в стиле дизайн-системы
+                    Icon(
+                      Icons.track_changes_outlined,
+                      size: 48,
+                      color: ext.textMuted,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      context.s('habits.empty_title'),
+                      style: textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      context.s('habits.empty_body'),
+                      textAlign: TextAlign.center,
+                      style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -52,9 +74,11 @@ class HabitsScreen extends ConsumerWidget {
           final bad = habits.where((h) => h.type == 'bad').toList();
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            // 24dp screen margin — spec §4.1
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
             children: [
               if (good.isNotEmpty) ...[
+                // Секционный заголовок — titleMedium (body font, w600)
                 Text(context.s('habits.good_habits'), style: textTheme.titleMedium),
                 const SizedBox(height: 8),
                 ...good.map((h) => _GoodHabitCard(habit: h)),
@@ -75,7 +99,7 @@ class HabitsScreen extends ConsumerWidget {
   Future<void> _showAddDialog(BuildContext context, WidgetRef ref) async {
     final nameController = TextEditingController();
     String type = 'good';
-    String emoji = '✅';
+    String emoji = '';
 
     await showDialog<void>(
       context: context,
@@ -100,7 +124,7 @@ class HabitsScreen extends ConsumerWidget {
                     selected: type == 'good',
                     onSelected: (_) => setState(() {
                       type = 'good';
-                      emoji = '✅';
+                      emoji = '';
                     }),
                   ),
                   const SizedBox(width: 8),
@@ -109,7 +133,7 @@ class HabitsScreen extends ConsumerWidget {
                     selected: type == 'bad',
                     onSelected: (_) => setState(() {
                       type = 'bad';
-                      emoji = '🚫';
+                      emoji = '';
                     }),
                   ),
                 ],
@@ -121,6 +145,7 @@ class HabitsScreen extends ConsumerWidget {
               onPressed: () => Navigator.of(ctx).pop(),
               child: Text(ctx.s('btn.cancel')),
             ),
+            // FilledButton — единственное первичное действие в диалоге
             FilledButton(
               onPressed: () async {
                 final name = nameController.text.trim();
@@ -153,13 +178,16 @@ class _GoodHabitCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final textTheme = Theme.of(context).textTheme;
     final dao = ref.read(habitsDaoProvider);
 
     return Card(
+      // Отступ между карточками
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        // 16dp card inner padding — spec §4.1
+        padding: const EdgeInsets.all(16),
         child: FutureBuilder<int>(
           future: dao.countForDate(habit.id, DateTime.now()),
           builder: (context, snap) {
@@ -173,47 +201,62 @@ class _GoodHabitCard extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Text(habit.emoji, style: const TextStyle(fontSize: 24)),
-                    const SizedBox(width: 8),
+                    // Emoji из данных привычки
+                    Text(
+                      habit.emoji.isNotEmpty ? habit.emoji : '',
+                      style: const TextStyle(fontSize: 22),
+                    ),
+                    if (habit.emoji.isNotEmpty) const SizedBox(width: 8),
                     Expanded(
                       child: Text(habit.name, style: textTheme.titleSmall),
                     ),
+                    // Кнопка логирования: иконка нейтральная когда не выполнено;
+                    // accent (success) — только в состоянии done
                     if (!done)
                       IconButton(
-                        icon: const Icon(Icons.check_circle_outline),
-                        color: colorScheme.primary,
+                        icon: Icon(
+                          Icons.check_circle_outline,
+                          // Иконка нейтральная — не accent, до момента завершения
+                          color: ext.textMuted,
+                        ),
                         onPressed: () => dao.logHabit(habit.id),
                       )
                     else
-                      const Icon(Icons.check_circle, color: Colors.green),
+                      // Done state — accent moment (success)
+                      Icon(Icons.check_circle, color: ext.success),
                     PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert, color: ext.textMuted, size: 20),
                       onSelected: (v) {
                         if (v == 'archive') dao.archive(habit.id);
                       },
                       itemBuilder: (_) => [
-                        PopupMenuItem(value: 'archive', child: Text(context.s('habits.archive'))),
+                        PopupMenuItem(
+                          value: 'archive',
+                          child: Text(context.s('habits.archive')),
+                        ),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
+                // Прогресс-бар: accent при done (success moment), иначе textMuted
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 6,
-                    backgroundColor: colorScheme.onSurface.withValues(alpha: 0.12),
+                    backgroundColor: ext.textMuted.withValues(alpha: 0.18),
                     valueColor: AlwaysStoppedAnimation(
-                      done ? Colors.green : colorScheme.primary,
+                      done ? colorScheme.primary : ext.textMuted,
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
-                  // "$count / $target today" — числа не переводятся; "today" опускаем через ключ
                   done ? context.s('habits.done') : '$count / $target today',
                   style: textTheme.bodySmall?.copyWith(
-                    color: done ? Colors.green : colorScheme.outline,
+                    // Done: success color; иначе textFaint (самый тихий уровень)
+                    color: done ? ext.success : ext.textFaint,
                   ),
                 ),
               ],
@@ -236,13 +279,15 @@ class _BadHabitCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final textTheme = Theme.of(context).textTheme;
     final dao = ref.read(habitsDaoProvider);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        // 16dp card inner padding
+        padding: const EdgeInsets.all(16),
         child: FutureBuilder<int>(
           future: dao.countForDate(habit.id, DateTime.now()),
           builder: (context, snap) {
@@ -250,34 +295,49 @@ class _BadHabitCard extends ConsumerWidget {
 
             return Row(
               children: [
-                Text(habit.emoji, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 8),
+                Text(
+                  habit.emoji.isNotEmpty ? habit.emoji : '',
+                  style: const TextStyle(fontSize: 22),
+                ),
+                if (habit.emoji.isNotEmpty) const SizedBox(width: 8),
                 Expanded(child: Text(habit.name, style: textTheme.titleSmall)),
+                // Счётчик нарушений: ember при count>0 (признак срочности/проблемы)
+                // surface fill — без colorScheme.errorContainer (не стандарт дизайн-системы)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
+                    // Нейтральный фон; текст ember только если count > 0
                     color: count > 0
-                        ? colorScheme.errorContainer
-                        : colorScheme.surfaceContainer,
+                        ? ext.ember.withValues(alpha: 0.12)
+                        : colorScheme.surface,
                     borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: count > 0 ? ext.ember.withValues(alpha: 0.4) : ext.border,
+                    ),
                   ),
                   child: Text(
                     '$count',
                     style: textTheme.titleMedium?.copyWith(
-                      color: count > 0 ? colorScheme.error : colorScheme.outline,
+                      // Ember — только для плохих событий (согласно 03-components §1)
+                      color: count > 0 ? ext.ember : ext.textMuted,
                     ),
                   ),
                 ),
+                const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.add),
+                  icon: Icon(Icons.add, color: ext.textMuted),
                   onPressed: () => dao.logHabit(habit.id),
                 ),
                 PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: ext.textMuted, size: 20),
                   onSelected: (v) {
                     if (v == 'archive') dao.archive(habit.id);
                   },
                   itemBuilder: (_) => [
-                    PopupMenuItem(value: 'archive', child: Text(context.s('habits.archive'))),
+                    PopupMenuItem(
+                      value: 'archive',
+                      child: Text(context.s('habits.archive')),
+                    ),
                   ],
                 ),
               ],

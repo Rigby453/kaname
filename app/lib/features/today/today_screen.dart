@@ -12,8 +12,10 @@ import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/tone_provider.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/breakpoints.dart';
 import '../../core/widgets/collapsing_fab.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../features/mascot/kai_mascot.dart';
 import '../../services/streak/streak_service.dart';
 import '../../services/widget/widget_service.dart';
@@ -137,11 +139,15 @@ class TodayScreen extends ConsumerWidget {
             label: const Text('+ Add'),
           ),
           body: itemsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+            // Заменяем стандартный спиннер на KaiLoader (BOLD design system)
+            loading: () => const Center(
+              child: KaiLoader(label: 'Loading tasks…'),
+            ),
             error: (err, _) => Center(child: Text('Failed to load tasks: $err')),
             data: (items) {
               return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                // 24dp горизонтальный отступ экрана (02-type-space.md §4.1: lg=24)
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
                 children: [
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,12 +163,11 @@ class TodayScreen extends ConsumerWidget {
                       const _ToneToggle(),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const MorningReviewCard(),
-                  const EveningReviewCard(),
-                  const SizedBox(height: 8),
+                  // xl=32 между шапкой и кольцом (02-type-space.md §4.1)
+                  const SizedBox(height: 32),
                   Center(child: ProgressRing(items: mainItems)),
-                  const SizedBox(height: 24),
+                  // xl=32 между кольцом и streak-строкой
+                  const SizedBox(height: 32),
                   const StreakRow(),
                   if (allMainDone) ...[
                     const SizedBox(height: 16),
@@ -170,13 +175,20 @@ class TodayScreen extends ConsumerWidget {
                       child: Text(
                         ToneCopy.allDone(tone),
                         textAlign: TextAlign.center,
+                        // success-цвет через ThemeExtension (не accent — это позитивный фидбэк)
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
+                              color: Theme.of(context)
+                                  .extension<FocusThemeExtension>()
+                                  ?.success,
                             ),
                       ),
                     ),
                   ],
-                  const SizedBox(height: 24),
+                  // Карточки обзора — после streak, с разделителем xl=32
+                  const SizedBox(height: 32),
+                  const MorningReviewCard(),
+                  const EveningReviewCard(),
+                  const SizedBox(height: 32),
                   TaskList(items: items, day: now),
                 ],
               );
@@ -239,9 +251,9 @@ class TodayScreen extends ConsumerWidget {
                             const _ToneToggle(),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 32),
                         Center(child: ProgressRing(items: mainItems)),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 32),
                         const StreakRow(),
                         if (allMainDone) ...[
                           const SizedBox(height: 16),
@@ -249,18 +261,19 @@ class TodayScreen extends ConsumerWidget {
                             child: Text(
                               ToneCopy.allDone(tone),
                               textAlign: TextAlign.center,
+                              // success-цвет через ThemeExtension
                               style: Theme.of(context)
                                   .textTheme
                                   .titleMedium
                                   ?.copyWith(
                                     color: Theme.of(context)
-                                        .colorScheme
-                                        .primary,
+                                        .extension<FocusThemeExtension>()
+                                        ?.success,
                                   ),
                             ),
                           ),
                         ],
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 32),
                         const MorningReviewCard(),
                         const EveningReviewCard(),
                       ],
@@ -300,14 +313,17 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    // textFaint для даты — tertiary, не конкурирует с приветствием
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(_greeting(context), style: textTheme.headlineMedium),
+        // headlineLarge: 40sp, display-font (Fraunces/Newsreader/...) по 02-type-space.md §1
+        Text(_greeting(context), style: textTheme.headlineLarge),
         const SizedBox(height: 4),
         Text(
           DateFormat.yMMMMEEEEd().format(now),
-          style: textTheme.bodyMedium,
+          style: textTheme.bodyMedium?.copyWith(color: ext?.textFaint),
         ),
       ],
     );

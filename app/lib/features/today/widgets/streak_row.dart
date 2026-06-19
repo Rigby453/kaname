@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_theme.dart';
 
 class StreakRow extends ConsumerWidget {
   const StreakRow({super.key});
@@ -43,29 +44,28 @@ class _StreakRowContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Иконка огня
+        // Иконка огня — ember (urgent/streak) по 03-components §1
         Icon(
           Icons.local_fire_department,
-          color: colorScheme.secondary, // ember из темы
+          color: ext?.ember ?? colorScheme.secondary,
           size: 22,
         ),
         const SizedBox(width: 6),
 
-        // Число дней подряд
+        // Число дней подряд — titleMedium без лишнего copyWith (тема уже задаёт w600)
         Text(
           '$current',
-          style: textTheme.titleMedium?.copyWith(
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
+          style: textTheme.titleMedium,
         ),
         const SizedBox(width: 4),
         Text(
           current == 1 ? context.s('today.streak_day') : context.s('today.streak_days'),
+          // bodySmall уже textMuted из темы
           style: textTheme.bodySmall,
         ),
 
@@ -73,16 +73,23 @@ class _StreakRowContent extends StatelessWidget {
 
         // 7 точек: для MVP показываем заполненными last N дней по счётчику
         // Полная история по датам будет в step 8 (sync + DayLogs)
-        ..._buildDots(context, current),
+        ..._buildDots(context, current, ext),
       ],
     );
   }
 
   /// 7 точек: заполненные для дней со streak, пустые для остальных
-  /// MVP: считаем от текущей позиции назад (max 7 заполненных)
-  List<Widget> _buildDots(BuildContext context, int streakCount) {
+  /// Заполненные — success (позитивное состояние), пустые — border (hairline, рецессивный)
+  /// 03-components §1: streak dots FILLED = success (не accent!)
+  List<Widget> _buildDots(
+    BuildContext context,
+    int streakCount,
+    FocusThemeExtension? ext,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final filled = streakCount.clamp(0, 7);
+    final successColor = ext?.success ?? colorScheme.primary;
+    final borderColor = ext?.border ?? colorScheme.outline;
 
     return List.generate(7, (i) {
       // Точки идут от старых к новым слева направо
@@ -95,11 +102,10 @@ class _StreakRowContent extends StatelessWidget {
           height: 8,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isFilled ? colorScheme.primary : Colors.transparent,
+            // Заполненные — success, пустые — прозрачные с border (01-color.md)
+            color: isFilled ? successColor : Colors.transparent,
             border: Border.all(
-              color: isFilled
-                  ? colorScheme.primary
-                  : colorScheme.onSurface.withAlpha(60),
+              color: isFilled ? successColor : borderColor,
               width: 1.5,
             ),
           ),

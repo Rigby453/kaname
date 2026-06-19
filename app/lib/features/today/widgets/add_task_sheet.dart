@@ -25,6 +25,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/settings/recent_subjects.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/id.dart';
 
 const List<String> _types = ['task', 'event', 'exam', 'deadline'];
@@ -525,7 +526,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       // Скролл вместо Padding: с открытой клавиатурой контент не помещается
       // и Column переполнялся («BOTTOM OVERFLOWED BY 112 PIXELS», ревью MVP).
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16), // spacing.md
+        // lg=24 горизонтальный отступ шита (02-type-space.md §4.1)
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,32 +624,39 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             // когда выбран main, чтобы не захламлять UI по умолчанию.
             if (_priority == 'main') ...[
               const SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(
-                    Icons.shield_outlined,
-                    size: 14,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    context.s('today.protected_hint'),
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                ],
+              Builder(
+                builder: (context) {
+                  // success-цвет для подсказки «защищено» — позитивное состояние
+                  final ext = Theme.of(context).extension<FocusThemeExtension>();
+                  final hintColor = ext?.success ?? colorScheme.primary;
+                  return Row(
+                    children: [
+                      Icon(Icons.shield_outlined, size: 14, color: hintColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        context.s('today.protected_hint'),
+                        style: textTheme.bodySmall?.copyWith(color: hintColor),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
             // Подпись лимита: показывается когда уже занято 3 слота main.
             if (_mainCount >= _maxMainPerDay && _priority != 'main')
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  context.s('today.main_limit'),
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.primary,
-                  ),
+                child: Builder(
+                  builder: (context) {
+                    // ember для предупреждения о лимите — ограничивающее состояние
+                    final ext = Theme.of(context).extension<FocusThemeExtension>();
+                    return Text(
+                      context.s('today.main_limit'),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: ext?.ember ?? colorScheme.secondary,
+                      ),
+                    );
+                  },
                 ),
               ),
             const SizedBox(height: 16),
@@ -718,11 +727,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 // Текущее значение рядом для наглядности
                 if (_durationMinutes > 0) ...[
                   const SizedBox(width: 8),
-                  Text(
-                    _durationLabel(_durationMinutes),
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurface.withAlpha(160),
-                    ),
+                  Builder(
+                    builder: (ctx) {
+                      // textFaint для вспомогательного отображения значения (01-color.md)
+                      final ext = Theme.of(ctx).extension<FocusThemeExtension>();
+                      return Text(
+                        _durationLabel(_durationMinutes),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: ext?.textFaint ?? colorScheme.onSurface.withAlpha(160),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ],
@@ -787,11 +802,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                               a.type == 'photo'
                                   ? Image.file(File(a.localPath),
                                       fit: BoxFit.cover)
-                                  : Container(
-                                      color: colorScheme.surfaceContainerHighest,
-                                      child: Icon(Icons.play_circle_outline,
-                                          size: 36,
-                                          color: colorScheme.onSurface),
+                                  : Builder(
+                                      builder: (ctx) {
+                                        // surfaceElevated для модального контента (01-color.md)
+                                        final ext = Theme.of(ctx).extension<FocusThemeExtension>();
+                                        return Container(
+                                          color: ext?.surfaceElevated ?? colorScheme.surface,
+                                          child: Icon(Icons.play_circle_outline,
+                                              size: 36,
+                                              color: colorScheme.onSurface),
+                                        );
+                                      },
                                     ),
                               Positioned(
                                 top: 4,
@@ -946,6 +967,10 @@ class _TemplatesRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    // accentMuted для фона шаблонов — нейтральный chip-fill (01-color.md §accentMuted)
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final chipFill = ext?.accentMuted ?? colorScheme.surface;
+
     return SizedBox(
       height: 40,
       child: ListView.separated(
@@ -959,7 +984,8 @@ class _TemplatesRow extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
+                // accentMuted: selection highlight / chip fill (01-color.md)
+                color: chipFill,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(

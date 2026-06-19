@@ -24,6 +24,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/settings/swipe_hint_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import 'add_task_sheet.dart';
 
 class TaskList extends ConsumerStatefulWidget {
@@ -130,13 +131,17 @@ class _TaskListState extends ConsumerState<TaskList>
     final items = widget.items;
 
     if (items.isEmpty) {
+      final ext = Theme.of(context).extension<FocusThemeExtension>();
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 48),
         child: Center(
           child: Text(
             context.s('today.empty'),
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium,
+            // textFaint: placeholder/empty-state цвет (01-color.md §textFaint)
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ext?.textFaint,
+                ),
           ),
         ),
       );
@@ -181,21 +186,25 @@ class _TaskListState extends ConsumerState<TaskList>
     }
 
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    // success и textFaint из ThemeExtension — нет hardcoded цветов (03-components §1)
+    final successColor = ext?.success ?? colorScheme.primary;
+    final textFaintColor = ext?.textFaint ?? colorScheme.onSurface.withAlpha(140);
 
     Widget dismissible = Dismissible(
       key: ValueKey(item.id),
-      // Свайп вправо = done
+      // Свайп вправо = done: success-цвет (03-components §1: success только для done)
       background: _swipeBg(
-        color: Colors.green.withAlpha(40),
+        color: successColor.withAlpha(40),
         icon: Icons.check,
-        iconColor: Colors.green,
+        iconColor: successColor,
         alignment: Alignment.centerLeft,
       ),
-      // Свайп влево = skip
+      // Свайп влево = skip: нейтральный textFaint
       secondaryBackground: _swipeBg(
-        color: colorScheme.onSurface.withAlpha(20),
+        color: textFaintColor.withAlpha(25),
         icon: Icons.remove_circle_outline,
-        iconColor: colorScheme.onSurface.withAlpha(140),
+        iconColor: textFaintColor,
         alignment: Alignment.centerRight,
       ),
       // Выполняем действие и возвращаем false: строка не удаляется,
@@ -271,12 +280,16 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 8),
+      // sm=8 снизу, md=16 сверху чтобы отделить секции
+      padding: const EdgeInsets.only(bottom: 8, top: 16),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+        // titleSmall: 14sp w600 — подзаголовок списка, body-font (02-type-space.md)
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              // textMuted для заголовков секций — нейтрально, не конкурирует с задачами
+              color: ext?.textMuted,
             ),
       ),
     );
@@ -317,19 +330,24 @@ class _TaskCardState extends State<_TaskCard> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     final isDone = widget.item.status == 'done';
     final isSkipped = widget.item.status == 'skipped';
     final isCompleted = isDone || isSkipped;
+    final isMain = widget.item.priority == 'main';
+
+    // textFaint для завершённых/пропущенных — мягкое затухание без явного серого
+    final completedColor = ext?.textFaint ?? colorScheme.onSurface.withAlpha(120);
 
     // §2.3 strikethrough с fade через AnimatedDefaultTextStyle
-    final titleStyle = (textTheme.bodyLarge ?? const TextStyle()).copyWith(
+    // titleMedium для main, titleSmall для остальных (02-type-space.md §1)
+    final baseStyle = isMain
+        ? (textTheme.titleMedium ?? const TextStyle())
+        : (textTheme.titleSmall ?? const TextStyle());
+    final titleStyle = baseStyle.copyWith(
       decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
-      decorationColor: isCompleted
-          ? colorScheme.onSurface.withAlpha(120)
-          : colorScheme.onSurface,
-      color: isCompleted
-          ? colorScheme.onSurface.withAlpha(120)
-          : colorScheme.onSurface,
+      decorationColor: isCompleted ? completedColor : colorScheme.onSurface,
+      color: isCompleted ? completedColor : colorScheme.onSurface,
     );
 
     return Pressable(
@@ -339,7 +357,8 @@ class _TaskCardState extends State<_TaskCard> {
           onTap: () => showAddTaskSheet(context, day: widget.day, existing: widget.item),
           leading: Text(
             DateFormat.Hm().format(widget.item.scheduledAt),
-            style: textTheme.labelMedium,
+            // labelSmall для временной метки — tertiary info
+            style: textTheme.labelSmall?.copyWith(color: ext?.textFaint),
           ),
           title: AnimatedDefaultTextStyle(
             style: titleStyle,
@@ -347,28 +366,36 @@ class _TaskCardState extends State<_TaskCard> {
             curve: kCurveSnap,
             child: Text(widget.item.title),
           ),
-          subtitle: Text(widget.item.type, style: textTheme.bodySmall),
-          trailing: _trailing(context, colorScheme, isDone),
+          subtitle: Text(
+            widget.item.type,
+            style: textTheme.bodySmall?.copyWith(color: ext?.textFaint),
+          ),
+          trailing: _trailing(context, colorScheme, ext, isDone),
         ),
       ),
     );
   }
 
-  Widget? _trailing(BuildContext context, ColorScheme colorScheme, bool isDone) {
+  Widget? _trailing(
+    BuildContext context,
+    ColorScheme colorScheme,
+    FocusThemeExtension? ext,
+    bool isDone,
+  ) {
     if (isDone) {
-      // §2.3: AnimatedCheck вместо статичного Icon. Анимация — только при
-      // свежем переходе pending→done (_justCompleted), не при открытии экрана.
+      // §2.3: AnimatedCheck — success-цвет (03-components §1: done = success)
       return AnimatedCheck(
         checked: true,
-        color: Colors.green,
+        color: ext?.success ?? colorScheme.primary,
         animateOnAppear: _justCompleted,
       );
     }
     if (widget.item.status == 'skipped') {
+      // textFaint для пропущенных — нейтрально, не конкурирует
       return Icon(Icons.remove_circle_outline,
-          color: colorScheme.onSurface.withAlpha(120));
+          color: ext?.textFaint ?? colorScheme.onSurface.withAlpha(120));
     }
-    // Баг 3: Tooltip объясняет назначение щита без лишних элементов в UI.
+    // Щит — accent только для main (03-components §1: active/selected state)
     if (widget.item.priority == 'main') {
       return Tooltip(
         message: context.s('today.shield_tooltip'),

@@ -10,7 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/id.dart';
+import '../../core/widgets/kai_loader.dart';
 import 'goal_progress.dart';
 
 // ---------------------------------------------------------------------------
@@ -67,7 +69,8 @@ class GoalsScreen extends ConsumerWidget {
         label: Text(context.s('plan.goals_new_button')),
       ),
       body: goalsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        // KaiLoader вместо CircularProgressIndicator (kai_loader.dart)
+        loading: () => const Center(child: KaiLoader()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (goals) {
           if (goals.isEmpty) {
@@ -98,24 +101,33 @@ class GoalsScreen extends ConsumerWidget {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textFaint = ext?.textFaint ?? Theme.of(context).colorScheme.onSurface;
+    final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
+
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.flag_outlined,
-            size: 64,
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            context.s('plan.goals_empty'),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.flag_outlined,
+              size: 64,
+              // textFaint для иконки пустого состояния (01-color.md)
+              color: textFaint,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              context.s('plan.goals_empty'),
+              textAlign: TextAlign.center,
+              // bodyLarge для основного текста пустого состояния
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: textMuted,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -131,6 +143,11 @@ class _GoalsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
+
     // Группируем по горизонту в заданном порядке
     final byHorizon = <String, List<GoalsTableData>>{};
     for (final key in _horizonKeys) {
@@ -141,19 +158,18 @@ class _GoalsList extends ConsumerWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 88),
+      // 24dp горизонтальный отступ, 88dp снизу под FAB (02-type-space §4.1)
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 88),
       children: [
         for (final key in _horizonKeys)
           if (byHorizon.containsKey(key)) ...[
-            // Заголовок секции
+            // Заголовок горизонта — titleSmall, нейтральный цвет (не primary)
             Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
               child: Text(
                 _horizonLabel(context, key),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                // titleSmall для заголовков секций (accent discipline: не primary)
+                style: textTheme.titleSmall?.copyWith(color: textMuted),
               ),
             ),
             for (final goal in byHorizon[key]!)
@@ -196,9 +212,11 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(ctx.s('btn.cancel')),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
+          // Danger variant: ember foreground + ember border (03-components §5)
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(ctx).colorScheme.secondary,
+              side: BorderSide(color: Theme.of(ctx).colorScheme.secondary),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(ctx.s('plan.goals_delete_button')),
@@ -246,11 +264,25 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
   @override
   Widget build(BuildContext context) {
     final stepsAsync = ref.watch(_stepsFamily(widget.goal.id));
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final colorScheme = Theme.of(context).colorScheme;
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
+    final textTheme = Theme.of(context).textTheme;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      // 8dp вертикальный отступ между карточками (02-type-space §4.1)
+      margin: const EdgeInsets.only(bottom: 8),
       child: stepsAsync.when(
-        loading: () => ListTile(title: Text(widget.goal.title)),
+        // Inline 20dp спиннер — слишком мал для KaiLoader; используем
+        // CircularProgressIndicator напрямую (trailing в ListTile карточки)
+        loading: () => ListTile(
+          title: Text(widget.goal.title),
+          trailing: const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
         error: (e, _) => ListTile(title: Text(widget.goal.title)),
         data: (steps) {
           final progress = goalProgress(steps);
@@ -258,37 +290,46 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
 
           return ExpansionTile(
             // Заголовок + прогресс-бар
-            title: Text(widget.goal.title),
+            title: Text(
+              widget.goal.title,
+              // titleSmall для заголовков целей (02-type-space §1)
+              style: textTheme.titleSmall,
+            ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 LinearProgressIndicator(
                   value: progress,
-                  minHeight: 4,
+                  minHeight: 3,
+                  // success цвет для прогресса завершённости
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    ext?.success ?? colorScheme.primary,
+                  ),
+                  // Нейтральный трек (не accent)
+                  backgroundColor: ext?.border ?? colorScheme.outline,
                   borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
                   steps.isEmpty
                       ? context.s('plan.goals_no_steps')
                       : '$doneCount ${context.s('plan.goals_steps_of')} ${steps.length}${context.s('plan.goals_steps_suffix')}',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  // bodySmall для вспомогательного текста (02-type-space §1)
+                  style: textTheme.bodySmall,
                 ),
               ],
             ),
-            // Иконка удаления в trailing
+            // Иконка удаления в trailing — нейтральный цвет
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20),
+                  icon: Icon(Icons.delete_outline, size: 20, color: textMuted),
                   tooltip: context.s('plan.goals_delete_tooltip'),
                   onPressed: () => _confirmDelete(context),
                 ),
-                // Стандартная стрелка ExpansionTile появится после trailing
-                // только если не переопределена; используем кастомный chevron
-                const Icon(Icons.expand_more),
+                Icon(Icons.expand_more, color: textMuted),
               ],
             ),
             // Отключаем встроенную trailing-иконку, чтобы наш trailing работал
@@ -300,6 +341,8 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
                   contentPadding: const EdgeInsets.only(left: 16, right: 8),
                   leading: Checkbox(
                     value: step.done,
+                    // success цвет при завершении (01-color.md)
+                    activeColor: ext?.success ?? colorScheme.primary,
                     onChanged: (val) => ref
                         .read(goalsDaoProvider)
                         .setStepDone(step.id, val ?? false),
@@ -307,13 +350,14 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
                   title: Text(
                     step.title,
                     style: step.done
-                        ? const TextStyle(
+                        ? textTheme.bodyMedium?.copyWith(
                             decoration: TextDecoration.lineThrough,
+                            color: textMuted,
                           )
-                        : null,
+                        : textTheme.bodyMedium,
                   ),
                   trailing: IconButton(
-                    icon: const Icon(Icons.today_outlined, size: 20),
+                    icon: Icon(Icons.today_outlined, size: 20, color: textMuted),
                     tooltip: context.s('plan.goals_plan_today_tooltip'),
                     onPressed: () => _planToday(context, step),
                   ),
@@ -321,8 +365,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
 
               // Поле добавления шага
               Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: Row(
                   children: [
                     Expanded(
@@ -337,7 +380,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.add),
+                      icon: Icon(Icons.add, color: textMuted),
                       tooltip: context.s('plan.goals_add_step_tooltip'),
                       onPressed: _addStep,
                     ),
@@ -392,7 +435,13 @@ class _NewGoalDialogState extends State<_NewGoalDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
+
     return AlertDialog(
+      // 24dp внутренний отступ диалога (02-type-space §4.1)
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
       title: Text(context.s('plan.goals_new_title')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -405,9 +454,13 @@ class _NewGoalDialogState extends State<_NewGoalDialog> {
             decoration: InputDecoration(hintText: context.s('plan.goals_new_hint')),
             onSubmitted: (_) => _save(),
           ),
-          const SizedBox(height: 16),
-          Text(context.s('plan.goals_horizon_label'), style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
+          // labelMedium для подписи поля горизонта
+          Text(
+            context.s('plan.goals_horizon_label'),
+            style: textTheme.labelMedium?.copyWith(color: textMuted),
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -421,6 +474,7 @@ class _NewGoalDialogState extends State<_NewGoalDialog> {
                 )
                 .toList(),
           ),
+          const SizedBox(height: 8),
         ],
       ),
       actions: [
@@ -428,6 +482,7 @@ class _NewGoalDialogState extends State<_NewGoalDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(context.s('btn.cancel')),
         ),
+        // Единственная primary action — FilledButton (03-components §3)
         FilledButton(
           onPressed: _saving ? null : _save,
           child: Text(context.s('plan.goals_create_button')),

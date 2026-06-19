@@ -18,6 +18,7 @@ import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/settings/mascot_provider.dart';
 import '../../../core/settings/tone_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../services/api/api_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../mascot/kai_mascot.dart';
@@ -57,6 +58,7 @@ class EveningReviewCard extends ConsumerWidget {
 
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
     final tone = ref.watch(toneProvider);
     final pending = ref.watch(_todayPendingProvider).valueOrNull ??
         const <ItemsTableData>[];
@@ -68,6 +70,7 @@ class EveningReviewCard extends ConsumerWidget {
 
     return Card(
       child: Padding(
+        // md=16 внутренний отступ карточки (02-type-space.md §4.1)
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,7 +88,8 @@ class EveningReviewCard extends ConsumerWidget {
                     ),
                   )
                 else
-                  Icon(Icons.bedtime_outlined, color: colorScheme.secondary),
+                  // textMuted для вечерней иконки — менее срочный сигнал чем утренний
+                  Icon(Icons.bedtime_outlined, color: ext?.textMuted ?? colorScheme.secondary),
                 const SizedBox(width: 8),
                 Text(context.s('today.plan_tomorrow'), style: textTheme.titleMedium),
               ],
@@ -179,7 +183,8 @@ class _EveningReviewSheetState extends ConsumerState<_EveningReviewSheet> {
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        // lg=24 для внутреннего отступа шита (02-type-space.md §4.1)
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

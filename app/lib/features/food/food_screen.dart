@@ -22,6 +22,7 @@ import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/nutrition_goals_provider.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
 import 'ai_menu_sheet.dart';
@@ -79,7 +80,8 @@ class FoodScreen extends ConsumerWidget {
         label: Text(context.s('food.add')),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        // 24dp экранный отступ по spec (02-type-space.md §4.1)
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
         children: [
           _TotalsCard(totals: totals),
           const SizedBox(height: 16),
@@ -106,6 +108,7 @@ class FoodScreen extends ConsumerWidget {
                 child: Text(
                   context.s('food.nothing_today'),
                   textAlign: TextAlign.center,
+                  // Пустое состояние — bodyMedium из темы (цвет text по умолчанию)
                   style: textTheme.bodyMedium,
                 ),
               ),
@@ -126,7 +129,11 @@ class _BalanceCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
+    // success — из ThemeExtension (01-color.md)
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final successColor = ext?.success ?? Theme.of(context).colorScheme.primary;
+    final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
     final balance = evaluateDayBalance(
       totals,
       calorieGoal: ref.watch(calorieGoalProvider),
@@ -146,14 +153,11 @@ class _BalanceCard extends ConsumerWidget {
                       ? Icons.check_circle_outline
                       : Icons.tips_and_updates_outlined,
                   size: 20,
-                  // Иконка подсказки — нейтральный мутед, не акцент:
-                  // лайм должен означать «важное», а не «совет».
-                  color: balance.balanced
-                      ? Colors.green
-                      : colorScheme.onSurface.withAlpha(120),
+                  // Сбалансировано → success (зелёный); совет → нейтральный мутед
+                  color: balance.balanced ? successColor : mutedColor,
                 ),
                 const SizedBox(width: 8),
-                Text(context.s('food.balance_title'), style: textTheme.titleMedium),
+                Text(context.s('food.balance_title'), style: textTheme.titleSmall),
               ],
             ),
             const SizedBox(height: 8),
@@ -170,8 +174,13 @@ class _BalanceCard extends ConsumerWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('· ', style: textTheme.bodyMedium),
-                      Expanded(child: Text(context.s(key), style: textTheme.bodyMedium)),
+                      Text('· ', style: textTheme.bodyMedium?.copyWith(color: mutedColor)),
+                      Expanded(
+                        child: Text(
+                          context.s(key),
+                          style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -185,7 +194,7 @@ class _BalanceCard extends ConsumerWidget {
 
 // Карточка «Итоги дня» — применяет правило «акцент = дефицитный ресурс» (UX-LAYOUT §6.3):
 // • Акцент (primary/лайм): только заголовочная цифра калорий.
-// • Вторичные бары (Б/Ж/У): нейтральный текст (textMuted).
+// • Вторичные бары (Б/Ж/У): нейтральный textMuted.
 // • Сахар: ember/urgent (семантика «следи»).
 // • Клетчатка: нейтральный мутед (нейтрально-позитивный тон).
 class _TotalsCard extends StatelessWidget {
@@ -197,10 +206,9 @@ class _TotalsCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>();
-    // textMuted — из ThemeExtension; fallback на onSurface.withAlpha для совместимости.
-    final mutedColor =
-        ext?.textMuted ?? colorScheme.onSurface.withAlpha(153);
-    // ember — семантика «срочное/следи», используется для Сахара.
+    // textMuted — из ThemeExtension; fallback на onSurface.withAlpha
+    final mutedColor = ext?.textMuted ?? colorScheme.onSurface.withAlpha(153);
+    // ember — семантика «срочное/следи», используется для Сахара
     final emberColor = ext?.ember ?? colorScheme.secondary;
 
     String g(double? v) => v == null ? '—' : v.round().toString();
@@ -211,9 +219,11 @@ class _TotalsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(context.s('food.totals_today'), style: textTheme.titleMedium),
-            const SizedBox(height: 8),
+            // Заголовок карточки — titleSmall (чуть менее тяжёлый чем titleMedium)
+            Text(context.s('food.totals_today'), style: textTheme.titleSmall),
+            const SizedBox(height: 12),
             // Калории — единственная метрика с акцентом (лайм = «главное»).
+            // headlineMedium (32sp, display font) из type scale
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -225,11 +235,14 @@ class _TotalsCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Text('kcal', style: textTheme.bodyMedium),
+                Text(
+                  'kcal',
+                  style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            // Вторичные макросы (Б/Ж/У) — мутед: важны, но не «главная» метрика.
+            // Вторичные макросы (Б/Ж/У) — mutedColor: важны, но не «главная» метрика
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -251,7 +264,7 @@ class _TotalsCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // Следящие метрики: Сахар — ember (семантика «следи»), Клетчатка — мутед.
+            // Следящие метрики: Сахар — ember (семантика «следи»), Клетчатка — мутед
             Row(
               children: [
                 Icon(Icons.cookie_outlined, size: 16, color: emberColor),
@@ -280,7 +293,7 @@ class _Macro extends StatelessWidget {
   const _Macro({required this.label, required this.value, this.color});
   final String label;
   final String value;
-  // Цвет цифры и подписи — передаётся снаружи (мутед для вторичных макросов).
+  // Цвет цифры и подписи — передаётся снаружи (мутед для вторичных макросов)
   final Color? color;
 
   @override
@@ -288,7 +301,8 @@ class _Macro extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Column(
       children: [
-        Text(value, style: textTheme.titleMedium?.copyWith(color: color)),
+        // titleSmall (14sp w600) — достаточно веса без конкуренции с headline калорий
+        Text(value, style: textTheme.titleSmall?.copyWith(color: color)),
         Text(label, style: textTheme.bodySmall?.copyWith(color: color)),
       ],
     );
@@ -302,16 +316,27 @@ class _FoodRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
     final kcal = log.calories == null ? '—' : '${log.calories!.round()} kcal';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
+        // Название продукта — bodyLarge из темы (titleText style уже задан в ListTileTheme)
         title: Text(log.name),
-        subtitle: Text('${log.grams.round()} g · ${log.meal} · $kcal',
-            style: textTheme.bodySmall),
+        subtitle: Text(
+          '${log.grams.round()} g · ${log.meal} · $kcal',
+          style: textTheme.bodySmall?.copyWith(color: mutedColor),
+        ),
         trailing: IconButton(
           tooltip: context.s('food.remove_tooltip'),
-          icon: const Icon(Icons.close, size: 18),
+          // Иконка удаления — нейтральный textFaint (не акцент, не ember)
+          icon: Icon(
+            Icons.close,
+            size: 18,
+            color: ext?.textFaint,
+          ),
           onPressed: () => ref.read(foodLogsDaoProvider).deleteLog(log.id),
         ),
       ),
@@ -494,20 +519,26 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? colorScheme.onSurface.withAlpha(153);
+
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
+          // 24dp экранный отступ (02-type-space.md §4.1)
+          left: 24,
+          right: 24,
           top: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Заголовок листа — headlineSmall (22sp, display font)
             Text(context.s('food.add'), style: textTheme.headlineSmall),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextField(
               controller: _controller,
               autofocus: true,
@@ -529,8 +560,9 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                           : context.s('food.voice_input'),
                       icon: Icon(
                         _listening ? Icons.mic : Icons.mic_none,
+                        // Активный микрофон — ember (urgent), не акцент
                         color: _listening
-                            ? Theme.of(context).colorScheme.error
+                            ? (ext?.ember ?? colorScheme.error)
                             : null,
                       ),
                       onPressed: _voiceSearch,
@@ -565,20 +597,29 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
               AiInsightReveal(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(_aiNote!, style: textTheme.bodySmall),
+                  child: Text(
+                    _aiNote!,
+                    style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                  ),
                 ),
               ),
             const SizedBox(height: 4),
+            // Загрузка: KaiLoader («Kai is finding food») вместо спиннера
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(
+                  child: KaiLoader(label: 'Kai is finding food…'),
+                ),
               )
             else if (_error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 // _error может быть ключом локализации или сырым сообщением API
-                child: Text(context.s(_error!), style: textTheme.bodyMedium),
+                child: Text(
+                  context.s(_error!),
+                  style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                ),
               )
             else
               Flexible(
@@ -594,11 +635,17 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                         name: p['name'] as String?,
                         category: p['category'] as String?,
                       ),
-                      title: Text((p['name'] as String?) ?? context.s('food.unknown_product')),
-                      subtitle: Text([
-                        if (p['brand'] != null) p['brand'] as String,
-                        if (kcal != null) '$kcal kcal / 100g',
-                      ].join(' · ')),
+                      // Название продукта — titleSmall (из темы ListTile)
+                      title: Text(
+                        (p['name'] as String?) ?? context.s('food.unknown_product'),
+                      ),
+                      subtitle: Text(
+                        [
+                          if (p['brand'] != null) p['brand'] as String,
+                          if (kcal != null) '$kcal kcal / 100g',
+                        ].join(' · '),
+                        style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                      ),
                       onTap: () => _addProduct(p),
                     );
                   },
@@ -773,7 +820,13 @@ class _PortionDialogState extends State<_PortionDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+      // Без лишних рамок: elevation 0, CardTheme уже задан в теме
+      title: Text(
+        widget.name,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -783,9 +836,10 @@ class _PortionDialogState extends State<_PortionDialog> {
             keyboardType: TextInputType.number,
             decoration: InputDecoration(labelText: context.s('food.grams_label')),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: _meals.map((m) {
               // Локализуем название приёма пищи через ключ food.meal_*
               return ChoiceChip(
@@ -802,6 +856,7 @@ class _PortionDialogState extends State<_PortionDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(context.s('btn.cancel')),
         ),
+        // Единственный FilledButton — первичное действие (03-components §2)
         FilledButton(
           onPressed: () {
             final grams = double.tryParse(_grams.text.trim());

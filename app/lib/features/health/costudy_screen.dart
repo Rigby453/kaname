@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 
 // Активная сессия: null = нет сессии, иначе ID сессии
@@ -65,7 +67,7 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
           final names = studying.map((f) => (f['email'] as String).split('@').first).join(', ');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('$names ${studying.length == 1 ? 'is' : 'are'} studying now! 📚'),
+              content: Text('$names ${studying.length == 1 ? 'is' : 'are'} studying now!'),
               action: SnackBarAction(
                 label: context.s('costudy.start_too'),
                 onPressed: _startSession,
@@ -96,6 +98,7 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(ctx.s('btn.cancel')),
           ),
+          // FilledButton — единственное первичное действие в диалоге
           FilledButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
             child: Text(ctx.s('btn.add')),
@@ -109,7 +112,6 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
       _load();
     } catch (_) {
       if (mounted) {
-        // "Not found: $email" — email не переводится, оставляем как есть
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Not found: $email')),
         );
@@ -157,20 +159,24 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
     if (code == null || code.isEmpty || !mounted) return;
     try {
       final info = await ref.read(apiClientProvider).getSessionByCode(code);
-      // Show info and let user start their own synchronized session
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(ctx.s('costudy.study_together')),
           content: Text(
-            // Интерполяция с числом минут — оставляем английский вариант,
-            // чтобы не сломать русские словоформы (1 минута / 2 минуты / 5 минут).
+            // Интерполяция с числом минут — оставляем английский вариант
             '${info['user_email']} has been studying for ${info['elapsed_minutes']} min.\nJoin their session?',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.s('btn.cancel'))),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.s('costudy.start'))),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ctx.s('btn.cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ctx.s('costudy.start')),
+            ),
           ],
         ),
       );
@@ -210,17 +216,20 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final inSession = ref.watch(_activeSessionProvider) != null;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(context.s('costudy.title')),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           IconButton(
-            icon: const Icon(Icons.person_add_outlined),
+            icon: Icon(Icons.refresh, color: ext.textMuted),
+            onPressed: _load,
+          ),
+          IconButton(
+            icon: Icon(Icons.person_add_outlined, color: ext.textMuted),
             onPressed: _addFriend,
           ),
         ],
@@ -228,7 +237,8 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          // 24dp screen margin — spec §4.1
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
           children: [
             // Карточка сессии
             Card(
@@ -236,23 +246,30 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
+                    // Иконка книги: accent только в активной сессии (единственный акцент на экране)
+                    // В неактивном состоянии — нейтральный textMuted
                     Icon(
                       inSession ? Icons.menu_book : Icons.menu_book_outlined,
                       size: 48,
                       color: inSession
-                          ? colorScheme.primary
-                          : colorScheme.onSurface.withValues(alpha: 0.4),
+                          ? Theme.of(context).colorScheme.primary
+                          : ext.textMuted,
                     ),
                     const SizedBox(height: 12),
                     if (inSession) ...[
+                      // Таймер — displaySmall (display font, крупный)
                       Text(_formatElapsed(), style: textTheme.displaySmall),
                       const SizedBox(height: 4),
-                      Text(context.s('costudy.session_in_progress'), style: textTheme.bodySmall),
+                      Text(
+                        context.s('costudy.session_in_progress'),
+                        style: textTheme.bodySmall,
+                      ),
                       if (_sessionCode != null) ...[
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
+                            // Код сессии — titleLarge, широкий трекинг
                             Text(
                               '${context.s('costudy.session_code_label')} $_sessionCode',
                               style: textTheme.titleLarge?.copyWith(
@@ -262,7 +279,7 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
                             ),
                             const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.copy_outlined, size: 18),
+                              icon: Icon(Icons.copy_outlined, size: 18, color: ext.textMuted),
                               onPressed: () {
                                 Clipboard.setData(ClipboardData(text: _sessionCode!));
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -275,11 +292,13 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
                         Text(context.s('costudy.share_code'), style: textTheme.bodySmall),
                       ],
                       const SizedBox(height: 16),
+                      // Tonal — вторичное действие (завершить менее важно чем кнопка Start)
                       FilledButton.tonal(
                         onPressed: _endSession,
                         child: Text(context.s('costudy.end_session')),
                       ),
                     ] else ...[
+                      // Заголовок в состоянии покоя — titleMedium
                       Text(context.s('costudy.ready_to_focus'), style: textTheme.titleMedium),
                       const SizedBox(height: 4),
                       Text(
@@ -288,10 +307,12 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
+                      // FilledButton — единственное первичное действие на экране
                       FilledButton(
                         onPressed: _startSession,
                         child: Text(context.s('costudy.start_session')),
                       ),
+                      // TextButton — вторичный навигационный нудж
                       TextButton(
                         onPressed: _joinByCode,
                         child: Text(context.s('costudy.join_by_code')),
@@ -302,13 +323,15 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
             // Секция друзей
             Row(
               children: [
+                // titleSmall — секционный подзаголовок (body font, w600)
                 Text(context.s('costudy.study_buddies'), style: textTheme.titleSmall),
                 const Spacer(),
+                // TextButton — навигационный нудж (не основное действие)
                 TextButton.icon(
                   icon: const Icon(Icons.add, size: 16),
                   label: Text(context.s('btn.add')),
@@ -318,7 +341,8 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
             ),
             const SizedBox(height: 8),
             if (_loadingFriends)
-              const Center(child: CircularProgressIndicator())
+              // KaiLoader заменяет CircularProgressIndicator
+              const Center(child: KaiLoader(label: 'Loading buddies…'))
             else if (_friends.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -341,7 +365,7 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
                 ),
               )),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
             // Таблица лидеров
             Text(context.s('costudy.this_week'), style: textTheme.titleSmall),
@@ -373,23 +397,34 @@ class _FriendTile extends StatelessWidget {
     final inSession = friend['in_session'] == true;
     final minutes = friend['session_minutes'] as int?;
     final email = friend['email'] as String;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
     return ListTile(
       leading: CircleAvatar(
-        child: Text(email.substring(0, 1).toUpperCase()),
+        // Avatar — нейтральный (surface + textMuted label)
+        backgroundColor: ext.border,
+        child: Text(
+          email.substring(0, 1).toUpperCase(),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: ext.textMuted,
+              ),
+        ),
       ),
       title: Text(email),
       subtitle: inSession
           ? Text(
-              // Интерполяция с числом минут — оставляем как есть (EN),
-              // чтобы не сломать русские словоформы (мин/минута/минуты).
+              // "Studying · Xm" — accent color для активного состояния (единственный)
               'Studying${minutes != null && minutes > 0 ? ' · ${minutes}m' : ''}',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-              ),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
             )
-          : Text(context.s('costudy.friend_idle')),
+          : Text(
+              context.s('costudy.friend_idle'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
       trailing: IconButton(
-        icon: const Icon(Icons.person_remove_outlined, size: 20),
+        icon: Icon(Icons.person_remove_outlined, size: 20, color: ext.textMuted),
         onPressed: onRemove,
       ),
     );
@@ -415,14 +450,23 @@ class _LeaderboardTile extends StatelessWidget {
         : rank == 3
         ? '\u{1F949}'
         : '#$rank';
+
     return ListTile(
-      leading: Text(medal, style: const TextStyle(fontSize: 24)),
+      leading: Text(medal, style: const TextStyle(fontSize: 22)),
       title: Text(
         entry['email'] as String,
-        style: isMe ? const TextStyle(fontWeight: FontWeight.bold) : null,
+        // Своя строка — w600 (titleSmall weight) для выделения без акцента
+        style: isMe
+            ? Theme.of(context).textTheme.titleSmall
+            : Theme.of(context).textTheme.bodyMedium,
       ),
       subtitle: isMe ? Text(context.s('costudy.you')) : null,
-      trailing: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+      trailing: Text(
+        label,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).extension<FocusThemeExtension>()!.textMuted,
+            ),
+      ),
     );
   }
 }

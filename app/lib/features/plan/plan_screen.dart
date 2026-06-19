@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/l10n/app_strings.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/breakpoints.dart';
 import '../../core/widgets/collapsing_fab.dart';
 import '../import/import_sheet.dart';
@@ -91,6 +92,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     PlanView view,
     bool searchVisible,
   ) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final border = ext?.border ?? Theme.of(context).colorScheme.outline;
 
     return Column(
       children: [
@@ -99,13 +102,15 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         // Строка поиска (разворачивается при searchVisible в режиме Day)
         if (view == PlanView.day && searchVisible)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            // 24dp горизонтальный отступ экрана (02-type-space.md §4.1)
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
             child: _SearchField(
               onChanged: (v) =>
                   ref.read(planSearchQueryProvider.notifier).state = v,
             ),
           ),
-        const Divider(height: 1),
+        // Тонкий разделитель (hairline 0.5dp, убираем лишнюю высоту)
+        Divider(height: 0.5, thickness: 0.5, color: border),
         Expanded(child: _bodyContent(view)),
       ],
     );
@@ -120,6 +125,11 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     PlanView view,
     bool searchVisible,
   ) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final border = ext?.border ?? Theme.of(context).colorScheme.outline;
+    final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
+    final textTheme = Theme.of(context).textTheme;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -127,11 +137,12 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         Expanded(
           flex: 1,
           child: SingleChildScrollView(
+            // 24dp горизонтальный отступ (02-type-space.md §4.1)
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Переключатель вида
+                // Переключатель вида — SegmentedButton (correct per 03-components §13)
                 SegmentedButton<PlanView>(
                   segments: [
                     ButtonSegment(value: PlanView.day, label: Text(context.s('plan.view_day'))),
@@ -143,7 +154,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                   onSelectionChanged: (s) =>
                       ref.read(planViewProvider.notifier).state = s.first,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 // Выбор даты + Today
                 Row(
                   children: [
@@ -171,20 +182,16 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                           children: [
                             Text(
                               _formatSelectedDate(selectedDay),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelMedium
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface,
-                                  ),
+                              // bodySmall для метаданных/дат (02-type-space §1)
+                              style: textTheme.bodySmall?.copyWith(
+                                color: textMuted,
+                              ),
                             ),
                             const SizedBox(width: 2),
                             Icon(
                               Icons.arrow_drop_down,
                               size: 18,
-                              color: Theme.of(context).colorScheme.onSurface,
+                              color: textMuted,
                             ),
                           ],
                         ),
@@ -195,16 +202,18 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                 const SizedBox(height: 8),
                 // WeekStrip на планшете в левой колонке
                 if (view != PlanView.month) const WeekStrip(),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 // Поиск (только в режиме Day)
                 if (view == PlanView.day)
                   Row(
                     children: [
+                      // Нейтральная иконка без акцента (accent discipline)
                       IconButton(
                         icon: Icon(
                           searchVisible
                               ? Icons.search_off
                               : Icons.search,
+                          color: textMuted,
                         ),
                         tooltip: context.s('plan.search_tooltip'),
                         onPressed: () {
@@ -218,26 +227,29 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                         },
                       ),
                       const SizedBox(width: 4),
-                      Text(context.s('plan.search_label')),
+                      Text(
+                        context.s('plan.search_label'),
+                        style: textTheme.bodySmall?.copyWith(color: textMuted),
+                      ),
                     ],
                   ),
                 if (view == PlanView.day && searchVisible)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: 8),
                     child: _SearchField(
                       onChanged: (v) =>
                           ref.read(planSearchQueryProvider.notifier).state = v,
                     ),
                   ),
                 const SizedBox(height: 8),
-                // Дополнительные действия
+                // Дополнительные действия — нейтральные иконки (не accent)
                 IconButton(
-                  icon: const Icon(Icons.flag_outlined),
+                  icon: Icon(Icons.flag_outlined, color: textMuted),
                   tooltip: context.s('plan.goals_tooltip'),
                   onPressed: () => context.push('/goals'),
                 ),
                 TextButton.icon(
-                  icon: const Icon(Icons.upload_file_outlined, size: 18),
+                  icon: Icon(Icons.upload_file_outlined, size: 18, color: textMuted),
                   label: Text(context.s('plan.import_label')),
                   onPressed: () =>
                       showImportSheet(context, day: selectedDay),
@@ -246,7 +258,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
             ),
           ),
         ),
-        const VerticalDivider(width: 1),
+        // Вертикальный разделитель — hairline (02-type-space §4.3)
+        VerticalDivider(width: 1, thickness: 0.5, color: border),
         // --- Правая колонка: содержимое ---
         Expanded(
           flex: 2,
@@ -263,8 +276,13 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     PlanView view,
     bool searchVisible,
   ) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
+    final textTheme = Theme.of(context).textTheme;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      // 24dp горизонтальный отступ экрана (02-type-space.md §4.1)
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -315,29 +333,28 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                     children: [
                       Text(
                         _formatSelectedDate(selectedDay),
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelMedium
-                            ?.copyWith(
-                              color:
-                                  Theme.of(context).colorScheme.onSurface,
-                            ),
+                        // bodySmall для метаданных (02-type-space §1)
+                        style: textTheme.bodySmall?.copyWith(
+                          color: textMuted,
+                        ),
                       ),
                       const SizedBox(width: 2),
                       Icon(
                         Icons.arrow_drop_down,
                         size: 18,
-                        color: Theme.of(context).colorScheme.onSurface,
+                        // нейтральный цвет для иконок тулбара (accent discipline)
+                        color: textMuted,
                       ),
                     ],
                   ),
                 ),
               ),
-              // Иконка поиска (только в режиме Day)
+              // Иконка поиска (только в режиме Day) — нейтральный цвет
               if (view == PlanView.day)
                 IconButton(
                   icon: Icon(
                     searchVisible ? Icons.search_off : Icons.search,
+                    color: textMuted,
                   ),
                   tooltip: context.s('plan.search_tooltip'),
                   onPressed: () {
@@ -350,13 +367,14 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                     }
                   },
                 ),
+              // Нейтральные иконки тулбара (не accent — accent discipline)
               IconButton(
-                icon: const Icon(Icons.flag_outlined),
+                icon: Icon(Icons.flag_outlined, color: textMuted),
                 tooltip: context.s('plan.goals_tooltip'),
                 onPressed: () => context.push('/goals'),
               ),
               TextButton.icon(
-                icon: const Icon(Icons.upload_file_outlined, size: 18),
+                icon: Icon(Icons.upload_file_outlined, size: 18, color: textMuted),
                 label: Text(context.s('plan.import_label')),
                 onPressed: () => showImportSheet(context, day: selectedDay),
               ),
@@ -369,23 +387,27 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
 
   /// Содержимое тела в mobile (с WeekStrip внутри для Day/Week).
   Widget _bodyContent(PlanView view) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final border = ext?.border ?? Theme.of(context).colorScheme.outline;
+
     switch (view) {
       case PlanView.month:
         return const MonthView();
       case PlanView.week:
-        return const Column(
+        return Column(
           children: [
-            WeekStrip(),
-            Divider(height: 1),
-            Expanded(child: WeekAgenda()),
+            const WeekStrip(),
+            // Тонкий разделитель (02-type-space §4.3 hairline)
+            Divider(height: 0.5, thickness: 0.5, color: border),
+            const Expanded(child: WeekAgenda()),
           ],
         );
       case PlanView.day:
-        return const Column(
+        return Column(
           children: [
-            WeekStrip(),
-            Divider(height: 1),
-            Expanded(child: DayTimeline()),
+            const WeekStrip(),
+            Divider(height: 0.5, thickness: 0.5, color: border),
+            const Expanded(child: DayTimeline()),
           ],
         );
     }
@@ -393,21 +415,24 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
 
   /// Содержимое правой колонки на планшете (без WeekStrip — он в левой колонке).
   Widget _bodyContentTablet(PlanView view) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final border = ext?.border ?? Theme.of(context).colorScheme.outline;
+
     switch (view) {
       case PlanView.month:
         return const MonthView();
       case PlanView.week:
-        return const Column(
+        return Column(
           children: [
-            Divider(height: 1),
-            Expanded(child: WeekAgenda()),
+            Divider(height: 0.5, thickness: 0.5, color: border),
+            const Expanded(child: WeekAgenda()),
           ],
         );
       case PlanView.day:
-        return const Column(
+        return Column(
           children: [
-            Divider(height: 1),
-            Expanded(child: DayTimeline()),
+            Divider(height: 0.5, thickness: 0.5, color: border),
+            const Expanded(child: DayTimeline()),
           ],
         );
     }
@@ -435,6 +460,7 @@ class _SearchFieldState extends State<_SearchField> {
 
   @override
   Widget build(BuildContext context) {
+    // Используем InputDecorationTheme из ThemeData — не переопределяем форму
     return TextField(
       controller: _controller,
       autofocus: true,
@@ -451,11 +477,6 @@ class _SearchFieldState extends State<_SearchField> {
               )
             : null,
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
       ),
       onChanged: (v) {
         setState(() {}); // обновляем suffixIcon

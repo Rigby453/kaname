@@ -8,6 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/animations/constants.dart';
+import '../../../core/theme/app_theme.dart';
+
 /// Выбранный день в плане. Нормализован до полуночи локального времени.
 /// По умолчанию — сегодня.
 final selectedDayProvider = StateProvider<DateTime>((ref) {
@@ -68,10 +71,12 @@ class _WeekStripState extends ConsumerState<WeekStrip> {
         targetWeekStart.difference(baseWeekStart).inDays ~/ 7;
     final targetPage = _initialPage + weekDiff;
 
+    // Уважаем reduce-motion (ANIMATIONS.md §10)
+    final duration = effectiveDuration(context, kDurationNormal);
     _pageController.animateToPage(
       targetPage,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
+      duration: duration == Duration.zero ? Duration.zero : kDurationNormal,
+      curve: kCurveLift,
     );
     ref.read(selectedDayProvider.notifier).state = date;
   }
@@ -89,7 +94,6 @@ class _WeekStripState extends ConsumerState<WeekStrip> {
       height: 72,
       child: PageView.builder(
         controller: _pageController,
-        // Анимация lateral: normal=200ms, easeOut (design-tokens)
         pageSnapping: true,
         itemBuilder: (context, pageIndex) {
           // pageIndex - _initialPage = смещение в неделях от сегодня
@@ -179,27 +183,34 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
+    final reduceMotion = reduceMotionOf(context);
 
-    // Цвета
+    // Accent discipline: fill только для selected; accent text для today
     final Color bgColor =
         isSelected ? colorScheme.primary : Colors.transparent;
     final Color textColor = isSelected
-        ? colorScheme.onPrimary
+        ? colorScheme.onPrimary  // контрастный текст поверх accent fill
         : isToday
-            ? colorScheme.primary
+            ? colorScheme.primary  // accent только для маркера «сегодня»
             : colorScheme.onSurface;
+    final Color mutedTextColor = isSelected
+        ? colorScheme.onPrimary.withValues(alpha: 0.8)
+        : textMuted;
 
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
       child: AnimatedContainer(
-        // normal=200ms из design-tokens
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
+        // Уважаем reduce-motion (ANIMATIONS.md §10)
+        duration: reduceMotion ? Duration.zero : kDurationFast,
+        curve: kCurveLift,
         margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(8), // radius.sm
+          // radius.sm = 8 (02-type-space §4.2)
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -209,8 +220,9 @@ class _DayCell extends StatelessWidget {
               DateFormat.E().format(day).substring(0, 3),
               maxLines: 1,
               overflow: TextOverflow.clip,
+              // labelSmall для коротких меток (02-type-space §1)
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: textColor,
+                    color: mutedTextColor,
                     fontWeight: FontWeight.w500,
                   ),
             ),
@@ -219,6 +231,7 @@ class _DayCell extends StatelessWidget {
               day.day.toString(),
               maxLines: 1,
               overflow: TextOverflow.clip,
+              // bodyMedium для числа дня
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: textColor,
                     fontWeight: isSelected || isToday
@@ -232,4 +245,3 @@ class _DayCell extends StatelessWidget {
     );
   }
 }
-
