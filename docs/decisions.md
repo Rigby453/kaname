@@ -5,6 +5,17 @@
 
 ---
 
+## ADR-039: Платежи — пейвол это UI поверх абстракции, реальный биллинг не подключён
+**Date:** 2026-06-19
+**Decision:** Экран `/paywall` (прозрачный, под Apple 3.1.2/5.6 + EU) и CTA зовут `PurchaseService` →
+`StubPurchaseService` (debug: `dev-upgrade` включает premium для теста AI; release: возвращает
+`unavailable`). Реального списания НЕТ. Целевая архитектура: iOS App Store IAP + Android Google Play
+Billing через **RevenueCat** (подмена реализации `purchase_service.dart` — одна строка в провайдере);
+**веб — отдельно через Stripe / RevenueCat Web Billing** (сторовый биллинг RevenueCat на вебе не работает).
+**Reason:** Платежи — Phase 1, требуют аккаунтов Apple/Google, проекта RevenueCat + ключей и (для веба)
+Stripe. Держим клиентскую абстракцию готовой, чтобы подключение свелось к ключам/конфигу без переписывания
+UI. До этого premium включается dev-кнопкой (`POST /subscription/dev-upgrade`, 404 в проде).
+
 ## ADR-001: Flutter for all platforms
 **Date:** 2025-01
 **Decision:** Flutter (iOS + Android + Web) over React Native or separate codebases

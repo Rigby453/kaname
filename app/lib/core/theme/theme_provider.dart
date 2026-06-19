@@ -23,7 +23,17 @@ class ThemeNotifier extends Notifier<AppThemeKey> {
   AppThemeKey build() {
     final prefs = ref.read(sharedPreferencesProvider);
     final saved = prefs.getString(_kThemePrefsKey);
-    if (saved == null) return AppThemeKey.focus; // default = focus
+    if (saved == null) {
+      // Тема ещё не выбрана → по умолчанию следуем системной яркости:
+      // светлая система → White, тёмная → Black. В онбординге/профиле
+      // пользователь может выбрать другую (Focus/Calm/Contrast/свою) — выбор
+      // сохраняется и дальше имеет приоритет над системой.
+      final brightness =
+          WidgetsBinding.instance.platformDispatcher.platformBrightness;
+      return brightness == Brightness.dark
+          ? AppThemeKey.black
+          : AppThemeKey.white;
+    }
 
     return AppThemeKey.values.firstWhere(
       (k) => k.prefsKey == saved,
