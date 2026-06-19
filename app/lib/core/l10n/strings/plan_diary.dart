@@ -43,6 +43,10 @@ const Map<String, Map<String, String>> planDiaryStrings = {
   // Plan — DayTimeline: типы задач (метки значков)
   'plan.type_exam': {'en': 'exam', 'ru': 'экзамен', 'de': 'Prüfung'},
   'plan.type_deadline': {'en': 'DL', 'ru': 'ДЛ', 'de': 'DL'},
+
+  // Plan — PinnedExamCard: метки типа (заглавные через toUpperCase в виджете)
+  'plan.pinned_type_exam': {'en': 'exam', 'ru': 'экзамен', 'de': 'Prüfung'},
+  'plan.pinned_type_deadline': {'en': 'deadline', 'ru': 'дедлайн', 'de': 'Frist'},
   'plan.type_event': {'en': 'event', 'ru': 'событие', 'de': 'Termin'},
   'plan.type_task': {'en': 'task', 'ru': 'задача', 'de': 'Aufgabe'},
 

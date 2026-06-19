@@ -136,14 +136,15 @@ class _MorningReviewCardState extends ConsumerState<MorningReviewCard> {
               ],
             ),
             const SizedBox(height: 8),
-            // AI-сообщение появляется с reveal (§7.3); fallback — rule-based текст без анимации
+            // AI-сообщение появляется с reveal (§7.3); fallback — локализованный
+            // rule-based текст через KaiCopy (поддерживает EN/RU/DE).
             if (_aiMessage != null)
               AiInsightReveal(
                 child: Text(_aiMessage!, style: textTheme.bodyMedium),
               )
             else
               Text(
-                ToneCopy.morningReview(tone, count),
+                KaiCopy.morningReview(context, tone, count),
                 style: textTheme.bodyMedium,
               ),
             const SizedBox(height: 12),

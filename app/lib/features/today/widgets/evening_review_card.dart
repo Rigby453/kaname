@@ -95,8 +95,9 @@ class EveningReviewCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 8),
+            // Локализованный tone-aware текст (KaiCopy поддерживает EN/RU/DE).
             Text(
-              ToneCopy.eveningReview(tone, pending.length),
+              KaiCopy.eveningReview(context, tone, pending.length),
               style: textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),

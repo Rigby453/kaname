@@ -18,6 +18,7 @@ import '../import/import_sheet.dart';
 import '../today/widgets/add_task_sheet.dart';
 import 'widgets/day_timeline.dart';
 import 'widgets/month_view.dart';
+import 'widgets/pinned_exam_card.dart';
 import 'widgets/plan_providers.dart';
 import 'widgets/week_agenda.dart';
 import 'widgets/week_strip.dart';
@@ -399,6 +400,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
             const WeekStrip(),
             // Тонкий разделитель (02-type-space §4.3 hairline)
             Divider(height: 0.5, thickness: 0.5, color: border),
+            // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
+            const PinnedExamCard(),
             const Expanded(child: WeekAgenda()),
           ],
         );
@@ -407,6 +410,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           children: [
             const WeekStrip(),
             Divider(height: 0.5, thickness: 0.5, color: border),
+            // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
+            const PinnedExamCard(),
             const Expanded(child: DayTimeline()),
           ],
         );
@@ -425,6 +430,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         return Column(
           children: [
             Divider(height: 0.5, thickness: 0.5, color: border),
+            // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
+            const PinnedExamCard(),
             const Expanded(child: WeekAgenda()),
           ],
         );
@@ -432,6 +439,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         return Column(
           children: [
             Divider(height: 0.5, thickness: 0.5, color: border),
+            // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
+            const PinnedExamCard(),
             const Expanded(child: DayTimeline()),
           ],
         );

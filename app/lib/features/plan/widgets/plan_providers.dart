@@ -24,3 +24,25 @@ final planSearchVisibleProvider = StateProvider<bool>((ref) => false);
 
 /// Текущий поисковый запрос на экране Plan.
 final planSearchQueryProvider = StateProvider<String>((ref) => '');
+
+/// Ближайший будущий экзамен или дедлайн (закреплённая карточка Plan).
+/// Реактивно смотрит задачи на [сегодня, сегодня + 365 дней).
+/// Возвращает null, если нет ни одного предстоящего exam/deadline.
+final nearestExamDeadlineProvider =
+    StreamProvider.autoDispose<ItemsTableData?>((ref) {
+  final now = DateTime.now();
+  // Ищем от начала сегодняшнего дня, чтобы «сегодня» тоже показывалось.
+  final from = DateTime.utc(now.year, now.month, now.day);
+  final to = from.add(const Duration(days: 365));
+  return ref
+      .watch(itemsDaoProvider)
+      .watchItemsInRange(from, to)
+      .map((items) {
+    // Отбираем только exam/deadline, ближайший по scheduledAt.
+    final urgent = items
+        .where((i) => i.type == 'exam' || i.type == 'deadline')
+        .toList()
+      ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    return urgent.isEmpty ? null : urgent.first;
+  });
+});

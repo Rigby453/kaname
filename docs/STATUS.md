@@ -15,6 +15,8 @@
 - **Цели C4** — Месяц / Год / 5 / 10 лет → шаг цели становится задачей на сегодня («Plan today»).
 - **UX-бэклог 16–17 июня** — история за прошлые даты (Water/Sleep/Diary/Plan), выбор даты календарём, восстановление пароля, трекер привычек, шаблоны задач, хештеги + поиск, глобальный undo, вложения фото/видео к задачам, адаптивная вёрстка всех 4 табов, экранное время (лимиты по категориям), аналитика образа жизни, Terms & Privacy, **импорт из планнеров (ICS + Todoist CSV)**.
 
+- **Fast-entry hooks (2026-06-19):** NL-парсер дат/времени (`core/utils/nl_datetime.dart`) — RU/EN/DE, 26 юнит-тестов все зелёные. Поле заголовка в `add_task_sheet.dart` получило mic-иконку (голосовой ввод через `speech_to_text`, web gracefully hidden) + dismissible hint-чип с распознанной датой ("Tomorrow 17:00 — tap to change"). Диктовка тоже прогоняется через NL-парсер. `flutter analyze` 0.
+
 ### ⏸ Осталось — упирается в тебя / железо / аккаунты (не в код)
 - **Health Connect / Apple Health** — нет устройств для проверки.
 - **iOS-сборка и iOS-виджет** — нужен Mac.
@@ -46,6 +48,8 @@
 ---
 
 ## Журнал работ (хронология сделанного по блокам)
+
+- [x] **Plan: pinned exam card + l10n sweep (2026-06-19, ветка design-kai):** JOB 1 — ближайший предстоящий exam/deadline теперь закреплён НАД прокручиваемым контентом Plan (Day и Week). Новый `nearestExamDeadlineProvider` (StreamProvider, ищет [today, +365d), фильтр exam/deadline, берёт ближайший по scheduledAt) в `plan_providers.dart`. Новый виджет `pinned_exam_card.dart` (`PinnedExamCard`): ember-рамка 1.5dp, иконка типа (school/flag), название + обратный отсчёт через `plan.countdown_*`, тап → `showAddTaskSheet` + переключение selectedDay; скрыт если нет предстоящего. В `plan_screen.dart` вставлен в `_bodyContent` и `_bodyContentTablet` для Day/Week (поверх WeekStrip/Divider, вне скролла). 2 новых l10n-ключа (`plan.pinned_type_exam`, `plan.pinned_type_deadline`, en+ru+de). JOB 2 — `morning_review_card.dart` и `evening_review_card.dart` заменили `ToneCopy.morningReview/eveningReview(tone,…)` на `KaiCopy.morningReview/eveningReview(context,tone,…)` — тексты теперь полностью локализованы (EN/RU/DE). `ToneCopy` сохранён как mixin без использования в UI. `flutter analyze` 0 ошибок.
 
 - [x] **Kai prominent + speech bubble + ToneCopy l10n (2026-06-19, ветка design-kai):** Kai в шапке Today увеличен до 104dp и стал центральным якорем экрана (был 56dp в углу). Добавлена `_KaiHeaderSection`: Kai сверху по центру, под ним `KaiSpeechBubble` с текущим сообщением (контекст-зависимое), ниже — приветствие + тумблер тона в строке. Новый виджет `app/lib/features/mascot/kai_speech_bubble.dart` — `KaiSpeechBubble` (surface-карточка + хвостик-треугольник, fade+rise 280ms, reduce-motion safe, `KaiBubbleTail.bottomCenter/rightCenter`). Анимация внимания в `_KaiHeader`: bounce −8px каждые 6–10 с (elasticOut 420ms, отменяется при reduce-motion). Emotion `away` теперь тригерится на пустой день (allItems.isEmpty + данные загрузились). `ToneCopy` сохранён для BC; добавлен `KaiCopy` с методами morningReview / allDone / eveningReview / emptyDay / idle (принимают BuildContext, резолвят через S.of). L10n: 18 новых ключей `kai.*` в `strings/today.dart` (en+ru+de). `celebration_overlay.dart`: Kai вырос до 96dp; harsh-тон — нейтральная эмоция без spring-scale (сдержанный кивок, MASCOT.md §6). `flutter analyze` 0 ошибок.
 

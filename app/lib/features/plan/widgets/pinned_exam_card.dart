@@ -1,0 +1,125 @@
+// FL-PLAN: Закреплённая карточка ближайшего экзамена/дедлайна.
+// Отображается НАД прокручиваемым контентом Plan (Day и Week).
+// Использует ember-цвет (accent-discipline: только для urgent/overdue).
+// UX-LAYOUT.md §5 §9 п.2: «EXAM COMING» — закреплена вверху ленты,
+// не уезжает при скролле, пока дедлайн актуален.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../today/widgets/add_task_sheet.dart';
+import 'plan_providers.dart';
+import 'week_strip.dart' show selectedDayProvider;
+
+/// Закреплённая карточка ближайшего предстоящего экзамена или дедлайна.
+/// Если нет ни одного — виджет не занимает места (SizedBox.shrink).
+class PinnedExamCard extends ConsumerWidget {
+  const PinnedExamCard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asyncItem = ref.watch(nearestExamDeadlineProvider);
+
+    // Пока загружается или ошибка — ничего не показываем
+    final item = asyncItem.valueOrNull;
+    if (item == null) return const SizedBox.shrink();
+
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final ember = ext?.ember ?? colorScheme.secondary;
+    final surface = colorScheme.surface;
+
+    final countdown = _countdownLabel(context, item.scheduledAt);
+    final typeKey = item.type == 'exam'
+        ? 'plan.pinned_type_exam'
+        : 'plan.pinned_type_deadline';
+
+    return GestureDetector(
+      onTap: () {
+        // Тап открывает редактирование задачи; переключаем день на день экзамена.
+        final examDay = DateTime(
+          item.scheduledAt.year,
+          item.scheduledAt.month,
+          item.scheduledAt.day,
+        );
+        ref.read(selectedDayProvider.notifier).state = examDay;
+        showAddTaskSheet(context, day: examDay, existing: item);
+      },
+      child: Container(
+        // 24dp горизонтальный отступ, 12dp вертикальный (02-type-space §4.1)
+        margin: const EdgeInsets.fromLTRB(24, 8, 24, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          // Ember-рамка — сигнал срочности (accent-discipline)
+          border: Border.all(color: ember, width: 1.5),
+        ),
+        child: Row(
+          children: [
+            // Иконка типа — ember
+            Icon(
+              item.type == 'exam'
+                  ? Icons.school_outlined
+                  : Icons.flag_outlined,
+              color: ember,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Метка «exam» / «deadline» — labelSmall, ember
+                  Text(
+                    context.s(typeKey).toUpperCase(),
+                    style: textTheme.labelSmall?.copyWith(
+                      color: ember,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  // Название задачи — titleSmall
+                  Text(
+                    item.title,
+                    style: textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Обратный отсчёт — ember, выровнен вправо
+            Text(
+              countdown,
+              style: textTheme.bodySmall?.copyWith(
+                color: ember,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, color: ember, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Обратный отсчёт до даты задачи (reuse логики из day_timeline.dart).
+String _countdownLabel(BuildContext context, DateTime at) {
+  final now = DateTime.now();
+  final d0 = DateTime(now.year, now.month, now.day);
+  final d1 = DateTime(at.year, at.month, at.day);
+  final days = d1.difference(d0).inDays;
+  if (days < 0) return context.s('plan.countdown_overdue');
+  if (days == 0) return context.s('plan.countdown_today');
+  if (days == 1) return context.s('plan.countdown_tomorrow');
+  return '${context.s('plan.countdown_in_days_prefix')}$days${context.s('plan.countdown_in_days_suffix')}';
+}
