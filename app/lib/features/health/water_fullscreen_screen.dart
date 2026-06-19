@@ -172,18 +172,30 @@ class _BigWaterGlassState extends State<_BigWaterGlass>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late Animation<double> _anim;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
-    // Уважаем reduce-motion: при disableAnimations → duration=0
-    final reduce = MediaQuery.of(context).disableAnimations;
+    // MediaQuery.of(context) НЕЛЬЗЯ в initState (ассерт + краш экрана).
+    // reduce-motion читаем в didChangeDependencies.
     _ctrl = AnimationController(
       vsync: this,
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 600),
     );
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _ctrl.animateTo(widget.progress);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.of(context).disableAnimations;
+    _ctrl.duration =
+        reduce ? Duration.zero : const Duration(milliseconds: 600);
+    if (!_started) {
+      _started = true;
+      _ctrl.animateTo(widget.progress);
+    }
   }
 
   @override

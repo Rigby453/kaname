@@ -468,20 +468,35 @@ class _AnimatedWaterGlassState extends State<_AnimatedWaterGlass>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
-    // Respect reduce-motion: при отключённой анимации используем duration=0
-    final reduce = MediaQuery.of(context).disableAnimations;
+    // ВАЖНО: MediaQuery.of(context) НЕЛЬЗЯ вызывать в initState — это кидает
+    // ассерт «dependOnInheritedWidgetOfExactType before initState completed»
+    // и каскадом валит весь экран. reduce-motion читаем в didChangeDependencies.
     _ctrl = AnimationController(
       vsync: this,
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 600),
     );
     _anim = Tween<double>(begin: 0, end: widget.progress).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
     );
-    _ctrl.forward();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Respect reduce-motion: при отключённой анимации duration=0.
+    // didChangeDependencies вызывается после initState и при смене зависимостей.
+    final reduce = MediaQuery.of(context).disableAnimations;
+    _ctrl.duration =
+        reduce ? Duration.zero : const Duration(milliseconds: 600);
+    if (!_started) {
+      _started = true;
+      _ctrl.forward();
+    }
   }
 
   @override
