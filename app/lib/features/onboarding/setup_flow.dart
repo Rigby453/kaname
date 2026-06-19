@@ -93,7 +93,9 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   int _page = 0;
 
   // Общее число экранов.
-  static const _pageCount = 16;
+  // 12 экранов: ценность и выбор языка перенесены в /onboarding (первый запуск),
+  // здесь — только персонализация (цели → тело → первая задача → демо → пейвол).
+  static const _pageCount = 12;
 
   // --- Экран 5: цели ---
   final Set<String> _selectedGoals = {};
@@ -290,8 +292,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   // UI-helpers
   // ---------------------------------------------------------------------------
 
-  /// Показывать ли прогресс-индикатор (не на экранах 12 и 15 → индексы 12, 15).
-  bool get _showProgress => _page != 12 && _page != 15;
+  /// Показывать ли прогресс-индикатор (не на демо-экране 8 и пейволе 11).
+  bool get _showProgress => _page != 8 && _page != 11;
 
   /// Карточка-выбор (single select) с accent-границей у выбранной.
   Widget _choiceTile({
@@ -426,8 +428,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
 
     // Лейбл CTA на последнем экране (экран 16 — пейволл, кнопка не нужна).
     final isLastPage = _page == _pageCount - 1;
-    // Экран 16 (пейволл) управляет собой сам — кнопок нет.
-    final showBottomButtons = _page != 15;
+    // Экран хендоффа в пейволл (индекс 11) управляет собой сам — кнопок нет.
+    final showBottomButtons = _page != 11;
 
     return Scaffold(
       body: SafeArea(
@@ -444,28 +446,24 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 onPageChanged: (i) => setState(() {
                   _page = i;
-                  // Сбрасываем демо при возврате на экран 13
-                  if (i == 12) _taskMoved = false;
-                  // Запускаем «расчёт» на экране 15
-                  if (i == 14) _triggerSummaryReady();
+                  // Сбрасываем демо при возврате на экран демо-пересборки (8)
+                  if (i == 8) _taskMoved = false;
+                  // Запускаем «расчёт» на экране сводки (10)
+                  if (i == 10) _triggerSummaryReady();
                 }),
                 children: [
-                  _buildScreen1(),  // 0
-                  _buildScreen2(),  // 1
-                  _buildScreen3(),  // 2
-                  _buildScreen4(),  // 3
-                  _buildScreen5(),  // 4
-                  _buildScreen6(),  // 5
-                  _buildScreen7(),  // 6
-                  _buildScreen8(),  // 7
-                  _buildScreen9(),  // 8
-                  _buildScreen10(), // 9
-                  _buildScreen11(), // 10
-                  _buildScreen12(), // 11
-                  _buildScreen13(), // 12
-                  _buildScreen14(), // 13
-                  _buildScreen15(), // 14
-                  _buildScreen16(), // 15
+                  _buildScreen5(),  // 0  Цели
+                  _buildScreen6(),  // 1  Время на планирование
+                  _buildScreen7(),  // 2  Горизонт
+                  _buildScreen8(),  // 3  Проекция
+                  _buildScreen9(),  // 4  Возраст/пол
+                  _buildScreen10(), // 5  Рост/вес
+                  _buildScreen11(), // 6  Активность
+                  _buildScreen12(), // 7  Первая задача
+                  _buildScreen13(), // 8  Демо-пересборка
+                  _buildScreen14(), // 9  Время разборов
+                  _buildScreen15(), // 10 Сводка
+                  _buildScreen16(), // 11 Хендофф в пейвол
                 ],
               ),
             ),
@@ -490,8 +488,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   ) {
     // Общее число экранов с прогрессом (без 13 и 16)
     // Для простоты: нумеруем 1-based, показываем из 14 (1-12, 14-15)
-    final displayPage = _page < 12 ? _page + 1 : _page; // пропускаем 13
-    final total = 14;
+    final displayPage = _page + 1;
+    final total = _pageCount;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 12, 0),
@@ -577,7 +575,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             child: SizedBox(
               height: 52,
               child: FilledButton(
-                onPressed: _page == 11 ? _handleAddTask : _next,
+                onPressed: _page == 7 ? _handleAddTask : _next,
                 child: Text(context.s(ctaKey)),
               ),
             ),
@@ -589,22 +587,18 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
 
   /// Ключ строки для CTA по индексу страницы.
   String _ctaKey(int page) => switch (page) {
-        0 => 'onboarding_quiz.s1_cta',
-        1 => 'onboarding_quiz.s2_cta',
-        2 => 'onboarding_quiz.s3_cta',
-        3 => 'onboarding_quiz.s4_cta',
-        4 => 'onboarding_quiz.s5_cta',
-        5 => 'onboarding_quiz.s6_cta',
-        6 => 'onboarding_quiz.s7_cta',
-        7 => 'onboarding_quiz.s8_cta',
-        8 => 'onboarding_quiz.s9_cta',
-        9 => 'onboarding_quiz.s10_cta',
-        10 => 'onboarding_quiz.s11_cta',
-        11 => 'onboarding_quiz.s12_cta', // Добавить задачу
-        12 => 'onboarding_quiz.s13_cta',
-        13 => 'onboarding_quiz.s14_cta',
-        14 => 'onboarding_quiz.s15_cta',
-        _ => 'onboarding_quiz.s4_cta',
+        0 => 'onboarding_quiz.s5_cta', // Цели
+        1 => 'onboarding_quiz.s6_cta', // Время на планирование
+        2 => 'onboarding_quiz.s7_cta', // Горизонт
+        3 => 'onboarding_quiz.s8_cta', // Проекция
+        4 => 'onboarding_quiz.s9_cta', // Возраст/пол
+        5 => 'onboarding_quiz.s10_cta', // Рост/вес
+        6 => 'onboarding_quiz.s11_cta', // Активность
+        7 => 'onboarding_quiz.s12_cta', // Добавить задачу
+        8 => 'onboarding_quiz.s13_cta', // Демо-пересборка
+        9 => 'onboarding_quiz.s14_cta', // Время разборов
+        10 => 'onboarding_quiz.s15_cta', // Сводка
+        _ => 'onboarding_quiz.s5_cta',
       };
 
   // ---------------------------------------------------------------------------
@@ -642,127 +636,6 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
         .then((_) {
       if (mounted) setState(() => _summaryReady = true);
     });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Экран 1: Hello / Promise
-  // ---------------------------------------------------------------------------
-
-  Widget _buildScreen1() {
-    final textTheme = Theme.of(context).textTheme;
-    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 16),
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          KaiMascot(size: 96, emotion: KaiEmotion.success),
-          const SizedBox(height: 32),
-          Text(
-            context.s('onboarding_quiz.s1_title'),
-            style: textTheme.displaySmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            context.s('onboarding_quiz.s1_subtitle'),
-            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Экран 2: Проблема
-  // ---------------------------------------------------------------------------
-
-  Widget _buildScreen2() {
-    return _stepFrame(
-      kaiEmotion: KaiEmotion.thinking,
-      title: context.s('onboarding_quiz.s2_title'),
-      subtitle: context.s('onboarding_quiz.s2_body'),
-      child: const SizedBox.shrink(),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Экран 3: Решение
-  // ---------------------------------------------------------------------------
-
-  Widget _buildScreen3() {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final bullets = [
-      context.s('onboarding_quiz.s3_bullet1'),
-      context.s('onboarding_quiz.s3_bullet2'),
-      context.s('onboarding_quiz.s3_bullet3'),
-    ];
-    return _stepFrame(
-      kaiEmotion: KaiEmotion.neutral,
-      title: context.s('onboarding_quiz.s3_title'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: bullets.map((b) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.check_rounded,
-                    color: colorScheme.primary, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(b, style: textTheme.bodyLarge),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Экран 4: Язык (NO skip)
-  // ---------------------------------------------------------------------------
-
-  Widget _buildScreen4() {
-    final locale = ref.watch(localeNotifierProvider);
-    return _stepFrame(
-      kaiEmotion: KaiEmotion.neutral,
-      title: context.s('onboarding_quiz.s4_title'),
-      child: Column(
-        children: [
-          _choiceTile(
-            selected: locale.languageCode == 'ru',
-            title: 'Русский',
-            onTap: () =>
-                ref.read(localeNotifierProvider.notifier).setLocale(
-                      const Locale('ru'),
-                    ),
-          ),
-          _choiceTile(
-            selected: locale.languageCode == 'en',
-            title: 'English',
-            onTap: () =>
-                ref.read(localeNotifierProvider.notifier).setLocale(
-                      const Locale('en'),
-                    ),
-          ),
-          _choiceTile(
-            selected: locale.languageCode == 'de',
-            title: 'Deutsch',
-            onTap: () =>
-                ref.read(localeNotifierProvider.notifier).setLocale(
-                      const Locale('de'),
-                    ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ---------------------------------------------------------------------------

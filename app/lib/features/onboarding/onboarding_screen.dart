@@ -1,10 +1,12 @@
-// Онбординг первого запуска: 3 слайда о сути продукта, затем переход к входу.
+// Онбординг первого запуска: Language-слайд + 3 слайда о сути продукта,
+// затем переход к входу.
 // Флаг 'onboarding_done' хранится в SharedPreferences; redirect в роутере
 // показывает онбординг, пока флаг не выставлен.
 //
-// Редизайн (design-kai): editorial feel — displayLarge/headlineLarge serif,
-// xxl breathing room, accent только на активном dot + кнопке Continue,
-// Kai-маскот на первом слайде (отключается при reduce-motion).
+// Страница 0: выбор языка (3 кнопки; тап выставляет locale + переходит дальше).
+// Страницы 1–3: editorial value slides (Kai на первой).
+// Редизайн (design-kai): displayLarge/headlineLarge serif,
+// xxl breathing room, accent только на активном dot + кнопке Continue.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +14,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/animations/constants.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/locale_provider.dart';
 import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -20,6 +23,10 @@ import '../../features/mascot/kai_mascot.dart';
 
 const onboardingDoneKey = 'onboarding_done';
 
+// Индекс language-слайда.
+const _kLangPage = 0;
+
+// Value-слайды (после language).
 class _SlideData {
   const _SlideData(this.icon, this.titleKey, this.subtitleKey);
   final IconData icon;
@@ -45,6 +52,9 @@ const _slides = [
   ),
 ];
 
+// Всего страниц: 1 language + 3 value.
+const _pageCount = 1 + 3; // 4
+
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -68,7 +78,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _next() {
-    if (_page < _slides.length - 1) {
+    if (_page < _pageCount - 1) {
       _pageController.nextPage(
         duration: effectiveDuration(context, kDurationNormal),
         curve: kCurveLift,
@@ -78,13 +88,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  /// Тап на кнопку языка: выставляет locale LIVE и переходит к следующей странице.
+  void _selectLocale(String code) {
+    ref.read(localeNotifierProvider.notifier).setLocale(Locale(code));
+    _next();
+  }
+
+  bool get _isLangPage => _page == _kLangPage;
+  bool get _isLastPage => _page == _pageCount - 1;
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    final isLast = _page == _slides.length - 1;
-    // Kai: только на первом слайде, отключается при reduce-motion
     final showKai = ref.watch(showKaiProvider);
     final tone = ref.watch(toneProvider);
     final reduce = reduceMotionOf(context);
@@ -93,7 +110,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Skip — TextButton, минимальный вес
+            // Skip — показываем на всех страницах, включая language
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 16, 0),
               child: Row(
@@ -113,16 +130,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
             ),
 
-            // Слайды
+            // Страницы
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
                 onPageChanged: (i) => setState(() => _page = i),
-                itemCount: _slides.length,
+                itemCount: _pageCount,
                 itemBuilder: (context, i) {
-                  final s = _slides[i];
-                  // Первый слайд — Kai вместо иконки (при желании)
-                  final bool isFirst = i == 0;
+                  // Страница 0 — выбор языка
+                  if (i == _kLangPage) {
+                    return _LanguageSlide(
+                      ext: ext,
+                      textTheme: textTheme,
+                      colorScheme: colorScheme,
+                      onSelect: _selectLocale,
+                    );
+                  }
+                  // Страницы 1–3 — value slides (индекс слайда = i - 1)
+                  final s = _slides[i - 1];
+                  final isFirst = i == 1; // первый value-слайд показывает Kai
                   return _OnboardingSlide(
                     slideData: s,
                     isFirst: isFirst,
@@ -136,10 +162,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
             ),
 
-            // Dot-индикаторы: активный = accent, остальные = border
+            // Dot-индикаторы
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_slides.length, (i) {
+              children: List.generate(_pageCount, (i) {
                 final active = i == _page;
                 return AnimatedContainer(
                   duration: effectiveDuration(context, kDurationFast),
@@ -148,7 +174,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   width: active ? 24 : 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    // Accent только для активного dot — дисциплина акцента
                     color: active ? colorScheme.primary : ext.border,
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -158,20 +183,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
             const SizedBox(height: 32),
 
-            // Единственная primary-кнопка на шаг
+            // CTA-кнопка: скрыта на language-слайде (переход идёт через кнопки языка).
+            // На остальных — Continue / Get started.
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _next,
-                  child: Text(
-                    isLast
-                        ? context.s('onboarding.btn_get_started')
-                        : context.s('onboarding.btn_next'),
-                  ),
-                ),
-              ),
+              child: _isLangPage
+                  ? const SizedBox.shrink()
+                  : SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _next,
+                        child: Text(
+                          _isLastPage
+                              ? context.s('onboarding.btn_get_started')
+                              : context.s('onboarding.btn_next'),
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -180,7 +208,155 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 }
 
-/// Слайд онбординга — editorial верстка с xxl spacing.
+// ---------------------------------------------------------------------------
+// Слайд выбора языка
+// ---------------------------------------------------------------------------
+
+class _LanguageSlide extends ConsumerWidget {
+  const _LanguageSlide({
+    required this.ext,
+    required this.textTheme,
+    required this.colorScheme,
+    required this.onSelect,
+  });
+
+  final FocusThemeExtension ext;
+  final TextTheme textTheme;
+  final ColorScheme colorScheme;
+  final void Function(String code) onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeNotifierProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Иконка языка — нейтральная, не accent
+          Center(
+            child: Icon(
+              Icons.language_rounded,
+              size: 64,
+              color: ext.textMuted,
+            ),
+          ),
+          const SizedBox(height: 48),
+
+          Text(
+            context.s('onboarding_quiz.s4_title'),
+            style: textTheme.headlineLarge,
+            textAlign: TextAlign.left,
+          ),
+          const SizedBox(height: 32),
+
+          // Три большие кнопки языка — тап выставляет locale + переходит дальше
+          _LangButton(
+            label: 'Русский',
+            code: 'ru',
+            selected: locale.languageCode == 'ru',
+            colorScheme: colorScheme,
+            ext: ext,
+            textTheme: textTheme,
+            onTap: () => onSelect('ru'),
+          ),
+          const SizedBox(height: 12),
+          _LangButton(
+            label: 'English',
+            code: 'en',
+            selected: locale.languageCode == 'en',
+            colorScheme: colorScheme,
+            ext: ext,
+            textTheme: textTheme,
+            onTap: () => onSelect('en'),
+          ),
+          const SizedBox(height: 12),
+          _LangButton(
+            label: 'Deutsch',
+            code: 'de',
+            selected: locale.languageCode == 'de',
+            colorScheme: colorScheme,
+            ext: ext,
+            textTheme: textTheme,
+            onTap: () => onSelect('de'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LangButton extends StatelessWidget {
+  const _LangButton({
+    required this.label,
+    required this.code,
+    required this.selected,
+    required this.colorScheme,
+    required this.ext,
+    required this.textTheme,
+    required this.onTap,
+  });
+
+  final String label;
+  final String code;
+  final bool selected;
+  final ColorScheme colorScheme;
+  final FocusThemeExtension ext;
+  final TextTheme textTheme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: kDurationSnap,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? colorScheme.primary : ext.border,
+              width: selected ? 1.5 : 1.0,
+            ),
+            color: selected
+                ? colorScheme.primary.withAlpha(18)
+                : Colors.transparent,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: selected ? colorScheme.primary : null,
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: colorScheme.primary,
+                  size: 20,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Value-слайд (editorial)
+// ---------------------------------------------------------------------------
+
 class _OnboardingSlide extends StatelessWidget {
   const _OnboardingSlide({
     required this.slideData,
@@ -208,7 +384,7 @@ class _OnboardingSlide extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Kai или иконка — размещено по центру горизонтально
+          // Kai или иконка — по центру горизонтально
           Center(
             child: showKai
                 ? KaiMascot(
@@ -219,14 +395,12 @@ class _OnboardingSlide extends StatelessWidget {
                 : Icon(
                     slideData.icon,
                     size: 64,
-                    // Иконки нейтральные (textMuted), не accent — дисциплина
                     color: ext.textMuted,
                   ),
           ),
 
           const SizedBox(height: 48), // xxl breathing room
 
-          // displayLarge / headlineLarge — editorial serif первого впечатления
           Text(
             context.s(slideData.titleKey),
             style: textTheme.headlineLarge,
@@ -235,7 +409,6 @@ class _OnboardingSlide extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // bodyLarge — комфортное чтение
           Text(
             context.s(slideData.subtitleKey),
             style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
