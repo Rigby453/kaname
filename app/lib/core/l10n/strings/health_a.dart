@@ -932,6 +932,21 @@ const Map<String, Map<String, String>> healthAStrings = {
     'ja': '削除',
     'ko': '삭제',
   },
+  // Прогресс хорошей привычки: «{count} / {target} сегодня».
+  // Замена: .replaceFirst('{count}', ...).replaceFirst('{target}', ...)
+  'habits.progress': {
+    'en': '{count} / {target} today',
+    'ru': '{count} / {target} сегодня',
+    'de': '{count} / {target} heute',
+    'fr': '{count} / {target} aujourd\'hui',
+    'it': '{count} / {target} oggi',
+    'pt': '{count} / {target} hoje',
+    'es': '{count} / {target} hoy',
+    'id': '{count} / {target} hari ini',
+    'hi': '{count} / {target} आज',
+    'ja': '今日 {count} / {target}',
+    'ko': '오늘 {count} / {target}',
+  },
 
   // ---------------------------------------------------------------------------
   // Health profile (health_profile_provider.dart, setup_flow.dart, profile_screen.dart)

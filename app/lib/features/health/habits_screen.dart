@@ -309,7 +309,12 @@ class _GoodHabitCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  done ? context.s('habits.done') : '$count / $target today',
+                  done
+                      ? context.s('habits.done')
+                      : context
+                          .s('habits.progress')
+                          .replaceFirst('{count}', '$count')
+                          .replaceFirst('{target}', '$target'),
                   style: textTheme.bodySmall?.copyWith(
                     // Done: success color; иначе textFaint (самый тихий уровень)
                     color: done ? ext.success : ext.textFaint,
