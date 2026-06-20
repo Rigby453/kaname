@@ -32,39 +32,6 @@ class ToneNotifier extends Notifier<AppTone> {
 
 final toneProvider = NotifierProvider<ToneNotifier, AppTone>(ToneNotifier.new);
 
-/// Тон-зависимые тексты (EN hard-coded) — для обратной совместимости.
-/// Для UI с локализацией используй KaiCopy.
-class ToneCopy {
-  ToneCopy._();
-
-  static String morningReview(AppTone tone, int count) {
-    if (tone == AppTone.harsh) {
-      return count == 1
-          ? 'Yesterday you bailed on 1 task. Today — no excuses.'
-          : 'Yesterday you quit on $count tasks. Get it together — close them today.';
-    }
-    return count == 1
-        ? 'Yesterday left 1 loose end — let\'s tuck it into today.'
-        : 'Yesterday left $count loose ends — let\'s fit them around what matters.';
-  }
-
-  static String allDone(AppTone tone) => tone == AppTone.harsh
-      ? 'Done. Now keep that standard — no slipping.'
-      : 'Everything that mattered — done. Proud of you.';
-
-  /// Вечерний разбор завтрашнего дня (SPEC B6).
-  static String eveningReview(AppTone tone, int pending) {
-    if (tone == AppTone.harsh) {
-      return pending == 0
-          ? 'Plan tomorrow now. A clear head tomorrow starts with a plan tonight.'
-          : '$pending unfinished. You\'re slipping — plan tomorrow and close the gap.';
-    }
-    return pending == 0
-        ? 'Want tomorrow handled? I\'ve got a plan ready.'
-        : '$pending unfinished today — want me to fit them into tomorrow?';
-  }
-}
-
 /// Локализованные Kai-строки для речевого пузыря (MASCOT.md §4, SPEC B6).
 /// Принимает BuildContext — резолвит через систему переводов S.
 /// Шаблон {count} заменяется вручную на сайте вызова.
