@@ -332,6 +332,8 @@ class ApiClient {
   /// Дельта-синхронизация: отправляем изменённые записи, получаем обновления сервера.
   /// [items] — задачи в snake_case; [waterLogs] — записи воды (append-only).
   /// [lastSyncAt] — ISO 8601 метка последней синхронизации.
+  /// [streak] — опциональный блок заморозок { freeze_count, last_freeze_accrual_at }.
+  ///   Включается в тело ТОЛЬКО если не null (по образцу water/food/daylogs).
   Future<Map<String, dynamic>> sync(
     List<Map<String, dynamic>> items,
     List<Map<String, dynamic>> waterLogs,
@@ -339,18 +341,24 @@ class ApiClient {
     List<String> deletedItemIds = const [],
     List<Map<String, dynamic>> dayLogs = const [],
     List<Map<String, dynamic>> foodLogs = const [],
+    Map<String, dynamic>? streak,
   }) async {
     try {
+      final body = <String, dynamic>{
+        'items': items,
+        'water_logs': waterLogs,
+        'food_logs': foodLogs,
+        'day_logs': dayLogs,
+        'deleted_item_ids': deletedItemIds,
+        'last_sync_at': lastSyncAt,
+      };
+      // Блок заморозок — только если есть данные (freeze_count или курсор)
+      if (streak != null) {
+        body['streak'] = streak;
+      }
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/sync',
-        data: {
-          'items': items,
-          'water_logs': waterLogs,
-          'food_logs': foodLogs,
-          'day_logs': dayLogs,
-          'deleted_item_ids': deletedItemIds,
-          'last_sync_at': lastSyncAt,
-        },
+        data: body,
       );
       return response.data!;
     } on DioException catch (e) {

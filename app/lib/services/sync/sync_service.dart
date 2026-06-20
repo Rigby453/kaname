@@ -14,19 +14,31 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/database/daos/day_logs_dao.dart';
+import '../../core/database/daos/streak_dao.dart';
+import '../../core/theme/theme_provider.dart' show sharedPreferencesProvider;
 import '../api/api_client.dart';
+import '../streak/freeze_accrual_service.dart' show kLastFreezeAccrualKey;
 
 class SyncService {
-  SyncService({required ApiClient apiClient, required AppDatabase db})
-    : _apiClient = apiClient,
-      _db = db;
+  SyncService({
+    required ApiClient apiClient,
+    required AppDatabase db,
+    required StreakDao streakDao,
+    required SharedPreferences prefs,
+  })  : _apiClient = apiClient,
+        _db = db,
+        _streakDao = streakDao,
+        _prefs = prefs;
 
   final ApiClient _apiClient;
   final AppDatabase _db;
+  final StreakDao _streakDao;
+  final SharedPreferences _prefs;
 
   // ---------------------------------------------------------------------------
   // Основной метод синхронизации
@@ -88,12 +100,26 @@ class SyncService {
       final localDayLogs = await dayLogsDao.changedSince(lastSyncDate);
       final outgoingDayLogs = localDayLogs.map(_dayLogToSnakeCase).toList();
 
+      // Блок заморозок для отправки (ADR-044).
+      // freeze_count берём из Drift StreakTable; курсор — из SharedPreferences.
+      // Включаем в тело запроса только если у нас есть хоть какие-то данные.
+      Map<String, dynamic>? streakBlock;
+      final localStreak = await _streakDao.getStreak();
+      final localLastAccrual = _prefs.getString(kLastFreezeAccrualKey);
+      if (localStreak != null || localLastAccrual != null) {
+        streakBlock = {
+          'freeze_count': localStreak?.freezeCount ?? 0,
+          'last_freeze_accrual_at': localLastAccrual, // null допустим по контракту
+        };
+      }
+
       debugPrint(
         '[SyncService] Syncing ${outgoing.length} items, '
         '${outgoingWater.length} water logs, '
         '${outgoingFood.length} food logs, '
         '${outgoingDayLogs.length} day logs, '
-        '${deletedItemIds.length} deletions, lastSyncAt=$lastSyncAt',
+        '${deletedItemIds.length} deletions, lastSyncAt=$lastSyncAt'
+        '${streakBlock != null ? ", streak=${streakBlock['freeze_count']} freezes" : ""}',
       );
 
       // Шаг 4: отправляем на сервер
@@ -104,6 +130,7 @@ class SyncService {
         deletedItemIds: deletedItemIds,
         dayLogs: outgoingDayLogs,
         foodLogs: outgoingFood,
+        streak: streakBlock,
       );
 
       // Удаления доставлены — очищаем обработанные tombstones
@@ -200,6 +227,60 @@ class SyncService {
         debugPrint(
           '[SyncService] Applied ${serverDeletedIds.length} remote deletions',
         );
+      }
+
+      // Шаг 5e: адоптируем серверные значения заморозок (ADR-044, LWW).
+      // Сервер уже выполнил LWW по last_freeze_accrual_at между устройствами —
+      // клиент принимает пришедшие значения как авторитетные.
+      // Правило: если сервер вернул null last_freeze_accrual_at (не знает о заморозках) —
+      // не затираем локальные данные (приоритет первого устройства с данными).
+      final serverStreak = response['streak'] as Map<String, dynamic>?;
+      if (serverStreak != null) {
+        final serverLastAccrual = serverStreak['last_freeze_accrual_at'] as String?;
+        if (serverLastAccrual != null) {
+          // Сервер знает о заморозках — принимаем его значения целиком.
+          final serverFreezeCount = (serverStreak['freeze_count'] as num?)?.toInt();
+          if (serverFreezeCount != null) {
+            await _streakDao.updateStreak(
+              StreakTableCompanion(freezeCount: Value(serverFreezeCount)),
+            );
+            debugPrint(
+              '[SyncService] Adopted server freeze_count=$serverFreezeCount',
+            );
+          }
+          await _prefs.setString(kLastFreezeAccrualKey, serverLastAccrual);
+          debugPrint(
+            '[SyncService] Adopted server last_freeze_accrual_at=$serverLastAccrual',
+          );
+        } else {
+          // Сервер вернул null курсор: не трогаем локальные данные.
+          debugPrint(
+            '[SyncService] Server streak.last_freeze_accrual_at=null — local values preserved',
+          );
+        }
+
+        // Дополнительно: синхронизируем current/longest/last_completed_date стрика,
+        // если сервер вернул их в том же объекте streak.
+        final serverCurrent = (serverStreak['current'] as num?)?.toInt();
+        final serverLongest = (serverStreak['longest'] as num?)?.toInt();
+        final serverLastDateStr = serverStreak['last_completed_date'] as String?;
+        final serverLastDate = serverLastDateStr != null
+            ? DateTime.tryParse(serverLastDateStr)
+            : null;
+
+        if (serverCurrent != null || serverLongest != null || serverLastDate != null) {
+          final companion = StreakTableCompanion(
+            current: serverCurrent != null ? Value(serverCurrent) : const Value.absent(),
+            longest: serverLongest != null ? Value(serverLongest) : const Value.absent(),
+            lastCompletedDate:
+                serverLastDate != null ? Value(serverLastDate) : const Value.absent(),
+          );
+          await _streakDao.updateStreak(companion);
+          debugPrint(
+            '[SyncService] Adopted server streak: current=$serverCurrent '
+            'longest=$serverLongest last_completed_date=$serverLastDateStr',
+          );
+        }
       }
 
       // Шаг 6: сохраняем метку успешной синхронизации
@@ -361,10 +442,12 @@ class SyncService {
 // ---------------------------------------------------------------------------
 
 /// Провайдер сервиса синхронизации.
-/// Зависит от apiClientProvider, appDatabaseProvider, sharedPreferencesProvider.
+/// Зависит от apiClientProvider, appDatabaseProvider, streakDaoProvider, sharedPreferencesProvider.
 final syncServiceProvider = Provider<SyncService>((ref) {
   return SyncService(
     apiClient: ref.read(apiClientProvider),
     db: ref.read(appDatabaseProvider),
+    streakDao: ref.read(streakDaoProvider),
+    prefs: ref.read(sharedPreferencesProvider),
   );
 });

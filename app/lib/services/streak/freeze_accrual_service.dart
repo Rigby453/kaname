@@ -25,8 +25,10 @@
 //   "Выдать Premium" = продлить local_premium_until в SharedPreferences.
 //   isPremiumProvider учитывает это поле наравне с серверным тиром.
 //
-// TODO(sync): при появлении серверной синхронизации передавать freezeCount
-//             и last_freeze_accrual_at на бэкенд и мерджить по updated_at.
+// Синхронизация заморозок (ADR-044): SyncService отправляет freeze_count +
+// last_freeze_accrual_at на сервер через /sync (блок streak), а при ответе
+// адоптирует серверные значения (LWW). Начисление остаётся клиентским —
+// сервер только хранит/мерджит для мульти-девайс.
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart' show debugPrint;
