@@ -401,9 +401,13 @@ class _PlanVsFactCard extends ConsumerWidget {
                 // Иконка: textMuted (не accent — не primary action, 03-components §1)
                 Icon(Icons.fact_check_outlined, color: ext.textMuted, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  context.s('diary.pvf_title'),
-                  style: textTheme.titleSmall,
+                // Expanded предотвращает overflow при крупном тексте (scale 1.5+)
+                Expanded(
+                  child: Text(
+                    context.s('diary.pvf_title'),
+                    style: textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -474,9 +478,13 @@ class _QuickInsightCard extends ConsumerWidget {
                 // Иконка insights: textMuted (информационная, не CTA)
                 Icon(Icons.insights, color: ext.textMuted, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  context.s('diary.this_week_card_title'),
-                  style: textTheme.titleSmall,
+                // Expanded предотвращает overflow при крупном тексте (scale 1.5+)
+                Expanded(
+                  child: Text(
+                    context.s('diary.this_week_card_title'),
+                    style: textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -565,9 +573,13 @@ class _LifeInsightsCard extends ConsumerWidget {
                 // Иконка: textMuted (информационная карточка, не CTA)
                 Icon(Icons.insights, color: ext.textMuted, size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  context.s('diary.life_insights_title'),
-                  style: textTheme.titleSmall,
+                // Expanded предотвращает overflow при крупном тексте (scale 1.5+)
+                Expanded(
+                  child: Text(
+                    context.s('diary.life_insights_title'),
+                    style: textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),

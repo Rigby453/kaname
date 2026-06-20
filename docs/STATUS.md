@@ -43,7 +43,7 @@
 4. **Контент** — видео техник упражнений, аудио медитаций; подключу, когда появится.
 
 ### Тесты
-На 2026-06-20 зелёные (`flutter analyze` — 0). Backend: 120/120 jest (11 сьютов, --runInBand). +10 новых тестов в `entitlement.test.ts` (ADR-041). +17 юнит-тестов `freeze_accrual_test.dart` (computeAccrual: инициализация, Free cadence, Premium cadence, пороги 10/25/50 — один раз за жизнь, одновременное достижение нескольких порогов, повторный unclaim невозможен).
+На 2026-06-20 зелёные (`flutter analyze` — 0). Backend: 120/120 jest (11 сьютов, --runInBand). +10 новых тестов в `entitlement.test.ts` (ADR-041). +17 юнит-тестов `freeze_accrual_test.dart` (computeAccrual: инициализация, Free cadence, Premium cadence, пороги 10/25/50 — один раз за жизнь, одновременное достижение нескольких порогов, повторный unclaim невозможен). **+10 overflow_audit_test.dart (2026-06-20):** все ключевые экраны (Today, Plan, Diary, Health, Food) без RenderFlex overflow на 320px и при textScale 1.5. Flutter: 238/238 tests, `flutter analyze` 0.
 
 ---
 

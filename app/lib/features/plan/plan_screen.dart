@@ -310,80 +310,89 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               ),
             ),
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Кнопка «Today» — видна только когда выбран не сегодня
-              Builder(builder: (ctx) {
-                final now = DateTime.now();
-                final today = DateTime(now.year, now.month, now.day);
-                if (selectedDay != today) {
-                  return TextButton(
-                    onPressed: () {
-                      ref.read(selectedDayProvider.notifier).state = today;
-                    },
-                    child: Text(ctx.s('plan.today')),
-                  );
-                }
-                return const SizedBox.shrink();
-              }),
-              // Тап на дату открывает DatePicker
-              GestureDetector(
-                onTap: () => _pickDate(selectedDay),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatSelectedDate(selectedDay),
-                        // bodySmall для метаданных (02-type-space §1)
-                        style: textTheme.bodySmall?.copyWith(
-                          color: textMuted,
-                        ),
+          // Правая группа: дата + поиск + иконки.
+          // Обёртка Flexible + SingleChildScrollView — на 320px эта группа
+          // не помещается по ширине; горизонтальный скролл предотвращает overflow
+          // (симметрично левой части с SegmentedButton).
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Кнопка «Today» — видна только когда выбран не сегодня
+                  Builder(builder: (ctx) {
+                    final now = DateTime.now();
+                    final today = DateTime(now.year, now.month, now.day);
+                    if (selectedDay != today) {
+                      return TextButton(
+                        onPressed: () {
+                          ref.read(selectedDayProvider.notifier).state = today;
+                        },
+                        child: Text(ctx.s('plan.today')),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
+                  // Тап на дату открывает DatePicker
+                  GestureDetector(
+                    onTap: () => _pickDate(selectedDay),
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formatSelectedDate(selectedDay),
+                            // bodySmall для метаданных (02-type-space §1)
+                            style: textTheme.bodySmall?.copyWith(
+                              color: textMuted,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            size: 18,
+                            // нейтральный цвет для иконок тулбара (accent discipline)
+                            color: textMuted,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.arrow_drop_down,
-                        size: 18,
-                        // нейтральный цвет для иконок тулбара (accent discipline)
+                    ),
+                  ),
+                  // Иконка поиска (только в режиме Day) — нейтральный цвет
+                  if (view == PlanView.day)
+                    IconButton(
+                      icon: Icon(
+                        searchVisible ? Icons.search_off : Icons.search,
                         color: textMuted,
                       ),
-                    ],
+                      tooltip: context.s('plan.search_tooltip'),
+                      onPressed: () {
+                        final notifier =
+                            ref.read(planSearchVisibleProvider.notifier);
+                        notifier.state = !notifier.state;
+                        if (notifier.state == false) {
+                          // Сбрасываем запрос при закрытии
+                          ref.read(planSearchQueryProvider.notifier).state = '';
+                        }
+                      },
+                    ),
+                  // Нейтральные иконки тулбара (не accent — accent discipline)
+                  IconButton(
+                    icon: Icon(Icons.flag_outlined, color: textMuted),
+                    tooltip: context.s('plan.goals_tooltip'),
+                    onPressed: () => context.push('/goals'),
                   ),
-                ),
-              ),
-              // Иконка поиска (только в режиме Day) — нейтральный цвет
-              if (view == PlanView.day)
-                IconButton(
-                  icon: Icon(
-                    searchVisible ? Icons.search_off : Icons.search,
-                    color: textMuted,
+                  TextButton.icon(
+                    icon: Icon(Icons.upload_file_outlined, size: 18, color: textMuted),
+                    label: Text(context.s('plan.import_label')),
+                    onPressed: () => showImportSheet(context, day: selectedDay),
                   ),
-                  tooltip: context.s('plan.search_tooltip'),
-                  onPressed: () {
-                    final notifier =
-                        ref.read(planSearchVisibleProvider.notifier);
-                    notifier.state = !notifier.state;
-                    if (notifier.state == false) {
-                      // Сбрасываем запрос при закрытии
-                      ref.read(planSearchQueryProvider.notifier).state = '';
-                    }
-                  },
-                ),
-              // Нейтральные иконки тулбара (не accent — accent discipline)
-              IconButton(
-                icon: Icon(Icons.flag_outlined, color: textMuted),
-                tooltip: context.s('plan.goals_tooltip'),
-                onPressed: () => context.push('/goals'),
+                ],
               ),
-              TextButton.icon(
-                icon: Icon(Icons.upload_file_outlined, size: 18, color: textMuted),
-                label: Text(context.s('plan.import_label')),
-                onPressed: () => showImportSheet(context, day: selectedDay),
-              ),
-            ],
+            ),
           ),
         ],
       ),

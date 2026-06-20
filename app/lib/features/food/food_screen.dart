@@ -334,7 +334,8 @@ class _TotalsCard extends ConsumerWidget {
             Text(context.s('food.totals_today'), style: textTheme.titleSmall),
             const SizedBox(height: 12),
             // Калории — единственная метрика с акцентом (лайм = «главное»).
-            // headlineMedium (32sp, display font) из type scale
+            // headlineMedium (32sp, display font) из type scale.
+            // Flexible на вторичном тексте — при scale 1.5× строка '/ 2000 kcal' усекается.
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -346,50 +347,67 @@ class _TotalsCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  '/ ${targets.kcal} kcal',
-                  style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                Flexible(
+                  child: Text(
+                    '/ ${targets.kcal} kcal',
+                    style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            // Вторичные макросы (Б/Ж/У) — mutedColor: важны, но не «главная» метрика
+            // Вторичные макросы (Б/Ж/У) — mutedColor: важны, но не «главная» метрика.
+            // Expanded делит ширину поровну — не даёт overflow при крупном тексте (1.5×).
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _Macro(
-                  label: context.s('food.macro_protein'),
-                  value: '${g(totals.protein)} / ${targets.proteinG} g',
-                  color: mutedColor,
+                Expanded(
+                  child: _Macro(
+                    label: context.s('food.macro_protein'),
+                    value: '${g(totals.protein)} / ${targets.proteinG} g',
+                    color: mutedColor,
+                  ),
                 ),
-                _Macro(
-                  label: context.s('food.macro_fat'),
-                  value: '${g(totals.fat)} / ${targets.fatG} g',
-                  color: mutedColor,
+                Expanded(
+                  child: _Macro(
+                    label: context.s('food.macro_fat'),
+                    value: '${g(totals.fat)} / ${targets.fatG} g',
+                    color: mutedColor,
+                  ),
                 ),
-                _Macro(
-                  label: context.s('food.macro_carbs'),
-                  value: '${g(totals.carbs)} / ${targets.carbsG} g',
-                  color: mutedColor,
+                Expanded(
+                  child: _Macro(
+                    label: context.s('food.macro_carbs'),
+                    value: '${g(totals.carbs)} / ${targets.carbsG} g',
+                    color: mutedColor,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            // Следящие метрики: Сахар — ember (семантика «следи»), Клетчатка — мутед
+            // Следящие метрики: Сахар — ember (семантика «следи»), Клетчатка — мутед.
+            // Wrap переносит метрики на новую строку при нехватке ширины (320px / 1.5×).
+            // Flexible внутри каждой мини-Row — защита от overflow если обе не влезают в строку.
             Row(
               children: [
                 Icon(Icons.cookie_outlined, size: 16, color: emberColor),
                 const SizedBox(width: 4),
-                Text(
-                  'Sugar ${g(totals.sugar)} / ${targets.sugarMaxG} g',
-                  style: textTheme.bodySmall?.copyWith(color: emberColor),
+                Flexible(
+                  child: Text(
+                    'Sugar ${g(totals.sugar)} / ${targets.sugarMaxG} g',
+                    style: textTheme.bodySmall?.copyWith(color: emberColor),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Icon(Icons.grass_outlined, size: 16, color: mutedColor),
                 const SizedBox(width: 4),
-                Text(
-                  'Fiber ${g(totals.fiber)} / ${targets.fiberG} g',
-                  style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                Flexible(
+                  child: Text(
+                    'Fiber ${g(totals.fiber)} / ${targets.fiberG} g',
+                    style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -412,9 +430,22 @@ class _Macro extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Column(
       children: [
-        // titleSmall (14sp w600) — достаточно веса без конкуренции с headline калорий
-        Text(value, style: textTheme.titleSmall?.copyWith(color: color)),
-        Text(label, style: textTheme.bodySmall?.copyWith(color: color)),
+        // titleSmall (14sp w600) — достаточно веса без конкуренции с headline калорий.
+        // maxLines+ellipsis: в Expanded-ячейке при scale 1.5× длинные значения усекаются.
+        Text(
+          value,
+          style: textTheme.titleSmall?.copyWith(color: color),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+        Text(
+          label,
+          style: textTheme.bodySmall?.copyWith(color: color),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }

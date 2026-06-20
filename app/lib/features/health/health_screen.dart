@@ -223,10 +223,14 @@ class HealthScreen extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text(context.s('health.water'), style: textTheme.titleMedium),
                 const Spacer(),
-                // Метрика: текст нейтральный (bodyMedium), акцент НЕ применяется
-                Text(
-                  '$total / $waterGoalMl ml',
-                  style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                // Метрика: текст нейтральный (bodyMedium), акцент НЕ применяется.
+                // Flexible предотвращает overflow на 320px: длинная строка усекается.
+                Flexible(
+                  child: Text(
+                    '$total / $waterGoalMl ml',
+                    style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 IconButton(
