@@ -262,11 +262,13 @@ class AppTheme {
     final double contrastBodyLetterSpacing = isContrast ? 0.2 : bodyLetterSpacing;
 
     // Фолбэк-шрифты для хинди (деванагари), японского и корейского.
-    // GoogleFonts тянет шрифты рантаймом — на устройствах hi/ja/ko надо проверить глазами.
-    final List<String> scriptFallbacks = [
-      GoogleFonts.notoSansDevanagari().fontFamily!,
-      GoogleFonts.notoSansJp().fontFamily!,
-      GoogleFonts.notoSansKr().fontFamily!,
+    // Шрифты вшиты как локальные ассеты (assets/fonts/) — не требуют сети,
+    // рисуются сразу без "вспышки квадратиков". Имена семейств совпадают
+    // с объявлением в pubspec.yaml flutter.fonts.
+    const List<String> scriptFallbacks = [
+      'Noto Sans Devanagari',
+      'Noto Sans JP',
+      'Noto Sans KR',
     ];
 
     // Вспомогательная функция: добавляет fontFamilyFallback к TextStyle.

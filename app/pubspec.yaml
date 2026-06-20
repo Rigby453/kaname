@@ -72,3 +72,16 @@ flutter:
     # Android читает из android/app/src/main/res/drawable-<density>/ напрямую.
     # Генерируются скриптом: flutter test test/generate_kai_assets_test.dart
     - assets/kai_widget/
+
+  fonts:
+    # Локально вшитые шрифты для деванагари / японского / корейского.
+    # Заменяют рантайм-загрузку через GoogleFonts — устраняют "вспышку квадратиков".
+    - family: 'Noto Sans Devanagari'
+      fonts:
+        - asset: assets/fonts/NotoSansDevanagari.ttf
+    - family: 'Noto Sans JP'
+      fonts:
+        - asset: assets/fonts/NotoSansJP.ttf
+    - family: 'Noto Sans KR'
+      fonts:
+        - asset: assets/fonts/NotoSansKR.ttf

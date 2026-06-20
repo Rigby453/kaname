@@ -15,3 +15,6 @@ Thumbs.db
 *.log
 backend/prisma/generated/
 coverage/
+
+# local screenshot/debug scratch (not committed)
+.shots/
