@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Use — Kaizen</title>
+  <meta name="description" content="Kaizen terms of use — your rights and responsibilities as a user." />
+
+  <!-- Google Fonts: Fraunces (display) + Hanken Grotesk (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Tailwind config: Focus theme tokens -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#141009',
+            surface: '#241D11',
+            text:    '#F6EFE1',
+            muted:   '#9E9070',
+            accent:  '#D9F24B',
+            ember:   '#FF6A3D',
+            border:  '#3A3020',
+          },
+          fontFamily: {
+            display: ['Fraunces', 'Georgia', 'serif'],
+            body:    ['Hanken Grotesk', 'system-ui', 'sans-serif'],
+          },
+          borderRadius: {
+            '2xl': '16px',
+            '3xl': '24px',
+            'pill': '999px',
+          },
+        },
+      },
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #141009;
+      color: #F6EFE1;
+      font-family: 'Hanken Grotesk', system-ui, sans-serif;
+    }
+    html { scroll-behavior: smooth; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #141009; }
+    ::-webkit-scrollbar-thumb { background: #3A3020; border-radius: 999px; }
+
+    .prose-doc h2 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 1.375rem;
+      font-weight: 600;
+      color: #F6EFE1;
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .prose-doc h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #F6EFE1;
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .prose-doc p {
+      color: #9E9070;
+      line-height: 1.75;
+      margin-bottom: 1rem;
+    }
+    .prose-doc ul {
+      list-style: disc;
+      padding-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .prose-doc ul li {
+      color: #9E9070;
+      line-height: 1.75;
+      margin-bottom: 0.35rem;
+    }
+    .prose-doc a {
+      color: #D9F24B;
+      text-decoration: underline;
+      text-decoration-color: rgba(217, 242, 75, 0.4);
+    }
+    .prose-doc a:hover {
+      text-decoration-color: #D9F24B;
+    }
+    .prose-doc strong {
+      color: #F6EFE1;
+      font-weight: 600;
+    }
+    .callout {
+      background: #241D11;
+      border: 1px solid #3A3020;
+      border-left: 3px solid #D9F24B;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .callout p {
+      margin-bottom: 0;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+
+<body class="font-body antialiased">
+
+<!-- HEADER -->
+<header class="sticky top-0 z-50 bg-bg/90 backdrop-blur border-b border-border">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+
+      <!-- Back link -->
+      <a href="index.html" class="inline-flex items-center gap-2 text-muted text-sm font-medium hover:text-text transition-colors duration-150">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Back to Kaizen
+      </a>
+
+      <!-- Wordmark -->
+      <a href="index.html" class="font-display text-xl font-semibold tracking-tight text-text">
+        Kaizen
+      </a>
+
+    </div>
+  </div>
+</header>
+
+
+<!-- MAIN CONTENT -->
+<main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-14 md:py-20">
+
+  <!-- Page heading -->
+  <div class="mb-10 pb-8 border-b border-border">
+    <p class="text-muted text-sm font-medium uppercase tracking-widest mb-3">Legal</p>
+    <h1 class="font-display text-3xl sm:text-4xl font-semibold text-text mb-4">Terms of Use</h1>
+    <p class="text-muted text-sm">Last updated: June 2026</p>
+  </div>
+
+  <!-- Document body -->
+  <div class="prose-doc">
+
+    <p>
+      These Terms of Use ("Terms") govern your access to and use of Kaizen — the app, website,
+      and related services (collectively, the "Service"). By creating an account or using the
+      Service, you agree to these Terms. If you do not agree, do not use the Service.
+    </p>
+    <p>
+      If you have questions, contact us at
+      <a href="mailto:maxklodstapen@gmail.com">maxklodstapen@gmail.com</a>.
+    </p>
+
+
+    <h2>1. What Kaizen is</h2>
+    <p>
+      Kaizen is a student productivity planner. It helps you organise tasks, track habits and
+      mood, and understand why your plans fail. The free tier uses rule-based logic to
+      reschedule your day. The paid Premium tier adds AI-powered suggestions, deeper diary
+      insights, and removes all ads.
+    </p>
+    <p>
+      Kaizen is a personal planning tool, not a medical or mental-health service. Do not rely
+      on it for health or safety decisions.
+    </p>
+
+
+    <h2>2. Accounts</h2>
+    <p>
+      You need an account to use the Service. You may register with either an email address
+      or a Russian phone number (+7) plus a password. You are responsible for keeping your
+      credentials confidential and for all activity that occurs under your account. If you
+      suspect unauthorised access, contact us immediately.
+    </p>
+    <p>
+      You must be at least 13 years old to create an account. By registering, you confirm
+      that you meet this requirement.
+    </p>
+    <p>
+      One person may have one account. Creating multiple accounts to circumvent limits or
+      bans is not allowed.
+    </p>
+
+
+    <h2>3. Free tier and Premium subscription</h2>
+
+    <h3>Free tier</h3>
+    <p>
+      The free tier is available at no charge and includes rule-based planning features,
+      streaks, diary, and week planning. The free tier contains non-intrusive ads. We reserve
+      the right to adjust what is included in the free tier at any time, with reasonable
+      notice.
+    </p>
+
+    <h3>Premium subscription — $10 / month</h3>
+
+    <div class="callout">
+      <p>
+        <strong>Current status:</strong> The Premium subscription screen is present in the app
+        but payment processing is not yet live. You cannot be charged today. This notice will
+        be removed when billing goes live.
+      </p>
+    </div>
+
+    <p>
+      Premium is a recurring monthly subscription at <strong>$10 per month</strong> (or local
+      equivalent where applicable). It unlocks AI-powered features, removes all ads, and adds
+      advanced insights.
+    </p>
+    <ul>
+      <li>Billing is handled by the platform you use (Apple App Store, Google Play, or web).</li>
+      <li>Your subscription renews automatically each month until you cancel.</li>
+      <li>
+        You may cancel at any time through your platform's subscription management. Access
+        continues until the end of the current billing period; no partial refunds are issued
+        for unused days unless required by law.
+      </li>
+      <li>
+        Prices may change. We will notify you at least 30 days before any price increase.
+        Continued use after the effective date constitutes acceptance.
+      </li>
+    </ul>
+
+    <h3>Refunds</h3>
+    <p>
+      Refund requests are handled by the platform through which you subscribed (Apple or
+      Google). For web payments, contact us and we will review requests on a case-by-case
+      basis within 14 days. We generally honour refund requests made within 7 days of initial
+      purchase if you have not used AI features during that period.
+    </p>
+
+
+    <h2>4. Acceptable use</h2>
+    <p>
+      You may use Kaizen for lawful personal productivity purposes. You may not:
+    </p>
+    <ul>
+      <li>Use the Service to store or transmit unlawful, harmful, or abusive content</li>
+      <li>Attempt to reverse-engineer, scrape, or extract data from the Service</li>
+      <li>
+        Use automated tools (bots, scripts) to access or interact with the Service beyond
+        what is provided by official integrations
+      </li>
+      <li>Interfere with or disrupt the Service or its infrastructure</li>
+      <li>
+        Attempt to gain unauthorised access to other users' accounts or data
+      </li>
+      <li>Resell or sublicense access to the Service</li>
+    </ul>
+    <p>
+      Violating these rules may result in suspension or permanent termination of your account.
+    </p>
+
+
+    <h2>5. Your content</h2>
+    <p>
+      Everything you create in Kaizen — tasks, diary entries, notes — belongs to you. You grant
+      us a limited licence to store, sync, and process your content solely to provide the
+      Service to you. We do not claim ownership of your content.
+    </p>
+    <p>
+      You are responsible for the content you store. Do not store sensitive third-party personal
+      data (e.g., other people's private information) without their consent.
+    </p>
+    <p>
+      When you delete your account, your content is deleted from our systems as described in
+      the Privacy Policy.
+    </p>
+
+
+    <h2>6. AI features</h2>
+    <p>
+      AI suggestions generated by the Service are provided for planning assistance only. They
+      are not professional advice. AI outputs can be inaccurate, incomplete, or inappropriate
+      for your specific situation. You are responsible for reviewing and acting on any AI
+      suggestion — we are not liable for outcomes resulting from following them.
+    </p>
+    <p>
+      AI features require sending a structured summary of your data to a third-party AI
+      provider. See our <a href="privacy.html">Privacy Policy</a> for details.
+    </p>
+
+
+    <h2>7. Intellectual property</h2>
+    <p>
+      The Kaizen name, logo, mascot (Kai), app design, and all proprietary software are owned
+      by us and protected by intellectual property law. You may not reproduce, distribute, or
+      create derivative works from them without our written permission.
+    </p>
+    <p>
+      Nothing in these Terms transfers ownership of our intellectual property to you.
+    </p>
+
+
+    <h2>8. Disclaimer of warranties</h2>
+    <p>
+      The Service is provided <strong>"as is"</strong> and <strong>"as available"</strong>
+      without warranties of any kind, express or implied. We do not guarantee that the Service
+      will be uninterrupted, error-free, or free from loss of data. We do not warrant that AI
+      suggestions will be accurate or suitable for your needs.
+    </p>
+    <p>
+      To the fullest extent permitted by applicable law, we disclaim all implied warranties,
+      including merchantability, fitness for a particular purpose, and non-infringement.
+    </p>
+
+
+    <h2>9. Limitation of liability</h2>
+    <p>
+      To the maximum extent permitted by law, Kaizen and its operators shall not be liable for
+      any indirect, incidental, special, consequential, or punitive damages — including lost
+      data, lost productivity, or missed deadlines — arising from your use of or inability to
+      use the Service, even if we have been advised of the possibility of such damages.
+    </p>
+    <p>
+      Our total liability for any claim arising from these Terms or the Service shall not exceed
+      the amount you paid us in the 12 months preceding the claim, or $10 (USD), whichever is
+      greater.
+    </p>
+    <p>
+      Some jurisdictions do not allow the exclusion of certain warranties or limitations of
+      liability; in those cases, our liability is limited to the greatest extent permitted by
+      law.
+    </p>
+
+
+    <h2>10. Termination</h2>
+    <p>
+      You may stop using the Service and delete your account at any time.
+    </p>
+    <p>
+      We may suspend or terminate your account if you violate these Terms, engage in fraudulent
+      activity, or if we are required to do so by law. We will give you reasonable notice
+      where possible, except in cases of serious violation. If your account is terminated due
+      to our decision rather than your violation, we will refund any prepaid subscription fees
+      for the unused period.
+    </p>
+    <p>
+      Upon termination, your right to use the Service ends. Sections 5 (Your content — deletion
+      obligations), 7 (Intellectual property), 8 (Disclaimer), 9 (Liability), and 11
+      (Governing law) survive termination.
+    </p>
+
+
+    <h2>11. Governing law and disputes</h2>
+    <p>
+      These Terms are governed by the laws of the Russian Federation, without regard to
+      conflict-of-law principles. If you access the Service from a jurisdiction with mandatory
+      local consumer-protection laws, those laws may also apply.
+    </p>
+    <p>
+      Before filing any formal claim, please contact us at
+      <a href="mailto:maxklodstapen@gmail.com">maxklodstapen@gmail.com</a> — most issues can
+      be resolved quickly by direct conversation.
+    </p>
+
+
+    <h2>12. Changes to these Terms</h2>
+    <p>
+      We may update these Terms from time to time. If the changes are material, we will notify
+      you via in-app notification or email at least 14 days before they take effect. Continued
+      use of the Service after the effective date means you accept the updated Terms.
+    </p>
+
+
+    <h2>13. Contact</h2>
+    <p>
+      Questions about these Terms:
+      <br />
+      <a href="mailto:maxklodstapen@gmail.com">maxklodstapen@gmail.com</a>
+    </p>
+
+  </div>
+
+</main>
+
+
+<!-- FOOTER -->
+<footer class="border-t border-border py-10 mt-4">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted">
+      <p>&copy; 2026 Kaizen. All rights reserved.</p>
+      <nav class="flex gap-5" aria-label="Legal navigation">
+        <a href="privacy.html" class="hover:text-text transition-colors duration-150">Privacy</a>
+        <a href="terms.html"   class="hover:text-text transition-colors duration-150 text-accent">Terms</a>
+        <a href="index.html"   class="hover:text-text transition-colors duration-150">Home</a>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -32,7 +32,7 @@
 - ~~RenderFlex overflow в тулбаре Plan на ~390px~~ → **закрыто 2026-06-18:** `SegmentedButton` обёрнут в `Flexible` + `SingleChildScrollView(Axis.horizontal)`; overflow на 360px устранён, поведение не изменилось.
 - ~~«Shared with me» краш с красным экраном~~ → **закрыто 2026-06-18:** `TextEditingController` перенесён в поле `_SharedWithMeCardState` (initState/dispose), больше не утилизируется синхронно после `await showDialog` — каскад ошибок (duplicate GlobalKey / multiple heroes / wrong build scope) устранён.
 - Шрифт Geist — временная замена, ждём пакет (`app/.../app_theme.dart`).
-- Ссылки сторов / Privacy / Terms на лендинге — плейсхолдеры (`landing/index.html`).
+- ~~Privacy / Terms на лендинге — плейсхолдеры~~ → **закрыто 2026-06-21:** созданы `landing/privacy.html` и `landing/terms.html` (полный текст, Focus-тема); ссылки в футере `index.html` обновлены. Ссылки сторов остаются плейсхолдерами до публикации приложений.
 - ~~`widget_test.dart` — пустышка~~ → **неактуально (2026-06-20):** файла-пустышки нет, реальные виджет-тесты живут в `screens_smoke_test.dart` + 20+ юнит-сьютов в `app/test/`.
 - **Перевод RU — остаток (2026-06-19):** основные пропуски устранены sweep-ом (51 ключ, см. блок выше). Обоснованно пропущено: `ToneCopy.*` строки в `tone_provider.dart` (нет BuildContext, строки tone-aware — риск рефактора), `screen_time_provider.dart` (данные провайдера без context), числовые plural-формы («$n min», «$missed workout(s)», счётчик упражнений) — без plural-библиотеки опасно для RU падежей, `'$type'` лейбл в shared-plan viewer, debug-строки `'Error: $err'`.
 
