@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../services/api/api_client.dart';
+import '../../services/streak/freeze_accrual_service.dart'
+    show kLocalPremiumUntilKey;
 import '../../services/sync/sync_service.dart';
 
 const _kGuestKey = 'guest_mode';
@@ -91,9 +93,29 @@ class AuthController extends Notifier<bool> {
 final authControllerProvider =
     NotifierProvider<AuthController, bool>(AuthController.new);
 
-/// Премиум-статус (из /me). false в офлайн-режиме или без аккаунта.
+/// Премиум-статус (из /me ИЛИ локального override local_premium_until).
+///
+/// Проверяет оба источника:
+///   1. Серверный tier == 'premium' (только при наличии токена).
+///   2. local_premium_until в SharedPreferences — выдаётся как награда за
+///      накопление заморозок (см. FreezeAccrualService).
+/// Возвращает true если хотя бы один источник активен.
 final isPremiumProvider = FutureProvider.autoDispose<bool>((ref) async {
   ref.watch(authControllerProvider); // пересчёт при смене статуса входа
+
+  // Проверить локальный override (offline-first, без сети).
+  final prefs = ref.read(sharedPreferencesProvider);
+  final localUntilRaw = prefs.getString(kLocalPremiumUntilKey);
+  if (localUntilRaw != null) {
+    try {
+      final localUntil = DateTime.parse(localUntilRaw).toUtc();
+      if (DateTime.now().toUtc().isBefore(localUntil)) {
+        return true; // локальная награда ещё активна
+      }
+    } catch (_) {}
+  }
+
+  // Проверить серверный тир.
   final api = ref.read(apiClientProvider);
   if (api.token == null) return false;
   try {
@@ -103,3 +125,4 @@ final isPremiumProvider = FutureProvider.autoDispose<bool>((ref) async {
     return false;
   }
 });
+

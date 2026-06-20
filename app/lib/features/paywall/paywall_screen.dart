@@ -26,6 +26,7 @@ import '../../features/mascot/kai_mascot.dart';
 import '../../features/mascot/kai_speech_bubble.dart';
 import '../../services/api/api_client.dart';
 import '../../services/purchases/purchase_service.dart';
+import '../../services/streak/freeze_accrual_service.dart';
 import '../auth/auth_controller.dart';
 import '../profile/profile_screen.dart' show currentUserProvider;
 
@@ -156,10 +157,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       switch (outcome) {
         case PurchaseOutcome.success:
+          // Разовый бонус +2 заморозки при покупке Premium.
+          await ref.read(freezeAccrualServiceProvider).grantPurchaseBonus();
           ref.invalidate(isPremiumProvider);
           ref.invalidate(currentUserProvider);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(context.s('paywall.welcome_premium'))),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.s('streak.freeze_purchase_bonus'))),
           );
           context.pop();
 

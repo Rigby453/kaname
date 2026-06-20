@@ -43,11 +43,13 @@
 4. **Контент** — видео техник упражнений, аудио медитаций; подключу, когда появится.
 
 ### Тесты
-На 2026-06-19 зелёные (`flutter analyze` — 0). Backend: 120/120 jest (11 сьютов, --runInBand). +10 новых тестов в `entitlement.test.ts` (ADR-041): вебхуки billing × 5 каналов, expired premiumUntil, dev-upgrade, AI-гейт с активным premiumUntil, free-блок, /status без auth, /auth/me содержит is_premium.
+На 2026-06-20 зелёные (`flutter analyze` — 0). Backend: 120/120 jest (11 сьютов, --runInBand). +10 новых тестов в `entitlement.test.ts` (ADR-041). +17 юнит-тестов `freeze_accrual_test.dart` (computeAccrual: инициализация, Free cadence, Premium cadence, пороги 10/25/50 — один раз за жизнь, одновременное достижение нескольких порогов, повторный unclaim невозможен).
 
 ---
 
 ## Журнал работ (хронология сделанного по блокам)
+
+- [x] **Экономика заморозок стрика (2026-06-20, ветка design-kai):** Реализовано начисление заморозок (ранее только тратились). Новый `app/lib/services/streak/freeze_accrual_service.dart`: чистая функция `computeAccrual` + класс `FreezeAccrualService` (Drift + SharedPreferences). Правила: Free +1/30 дней, Premium +1/14 дней; при покупке Premium +2 бонуса (`grantPurchaseBonus` в `paywall_screen.dart`). Пороги наград: 10 заморозок → +7 дней Premium, 25 → +30, 50 → +90 (каждый порог один раз, хранятся в prefs `freeze_reward_claimed_thresholds`). «Выдать Premium» = `local_premium_until` в prefs; `isPremiumProvider` в `auth_controller.dart` расширен: проверяет оба источника — серверный tier и локальный override. `ProfileScreen` переведён в `ConsumerStatefulWidget`; при открытии вызывает `accrueIfNeeded` с показом SnackBar на начисление/награду. Карточка стрика заменена на `_FreezeCard` с прогресс-баром (`LinearProgressIndicator`) к ближайшему порогу. L10n: 10 новых ключей (`streak.freeze_*`) на все 11 языков в `profile_paywall.dart`. `flutter analyze` 0. `freeze_accrual_test.dart` 17/17. TODO(sync): серверная синхронизация `last_freeze_accrual_at` + `freezeCount` — отдельная задача.
 
 - [x] **Финальная зачистка локализации (2026-06-20, ветка design-kai):** Добавлены ключи на все 12 языков для остатка захардкоженных пользовательских строк: `paywall.premium_feature_upsell` ({feature}), `today.failed_to_load` ({err}), `costudy.*` (not_found_email/friends_studying_one/many/studying_label/session_code_eg), `error.generic` ({err}, заменил `'Error: $e'` в habits/sleep/water/diary-history/goals) + `error.loading_workouts`, метки KaiLoader через существующие `loading.*`. Обоснованно пропущено: dev-only строки в `if(kDebugMode)` пейвола, preview-текст редактора тем, класс `ToneCopy` (подтверждён мёртвым — UI на context-версии `KaiCopy`). Полнота по 12 языкам проверена грепом, `flutter analyze` 0, `flutter test` 189/189.
 

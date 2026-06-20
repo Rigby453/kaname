@@ -29,6 +29,7 @@ import '../../core/theme/custom_theme_provider.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/api/api_client.dart';
 import '../../core/widgets/kai_loader.dart';
+import '../../services/streak/freeze_accrual_service.dart';
 import '../auth/auth_controller.dart';
 
 /// Streak пользователя (локально; наполняется через синхронизацию).
@@ -49,11 +50,73 @@ final currentUserProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((r
   }
 });
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Начислить созревшие заморозки при открытии профиля.
+    // Делаем это постфреймово, чтобы ref был готов.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runAccrual());
+  }
+
+  Future<void> _runAccrual() async {
+    if (!mounted) return;
+    final isPremium = ref.read(isPremiumProvider).valueOrNull ?? false;
+    final svc = ref.read(freezeAccrualServiceProvider);
+    final result = await svc.accrueIfNeeded(isPremium: isPremium);
+
+    if (!mounted) return;
+
+    // Показать снэкбар при начислении.
+    if (result.addedFreezes > 0) {
+      final msg = result.addedFreezes == 1
+          ? context.s('streak.freeze_accrued').replaceAll('{n}', '1')
+          : context.s('streak.freezes_accrued')
+              .replaceAll('{n}', '${result.addedFreezes}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+    }
+
+    // Показать снэкбар за каждый новый порог наград.
+    for (final threshold in result.newlyClaimedThresholds) {
+      if (!mounted) break;
+      final rewardLabel = _rewardLabel(context, threshold);
+      final msg = context
+          .s('streak.freeze_reward_granted')
+          .replaceAll('{reward}', rewardLabel);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Локализованное название награды по порогу.
+  String _rewardLabel(BuildContext ctx, int threshold) {
+    switch (threshold) {
+      case 10:
+        return ctx.s('streak.freeze_reward_10');
+      case 25:
+        return ctx.s('streak.freeze_reward_25');
+      case 50:
+        return ctx.s('streak.freeze_reward_50');
+      default:
+        return '$threshold';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final userAsync = ref.watch(currentUserProvider);
@@ -158,47 +221,8 @@ class ProfileScreen extends ConsumerWidget {
 
         const SizedBox(height: 24),
 
-        // Карточка streak
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _StreakStat(label: context.s('profile.streak'), value: '${streak?.current ?? 0}'),
-                    _StreakStat(label: context.s('profile.streak_best'), value: '${streak?.longest ?? 0}'),
-                    Tooltip(
-                      message: context.s('streak.freeze'),
-                      child: _StreakStat(
-                        label: context.s('profile.streak_freezes'),
-                        value: '${streak?.freezeCount ?? 0}',
-                      ),
-                    ),
-                  ],
-                ),
-                if ((streak?.freezeCount ?? 0) > 0) ...[
-                  const SizedBox(height: 12),
-                  Divider(color: ext.border, height: 1),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Text('😌', style: TextStyle(fontSize: 20)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          context.s('profile.freeze_hint'),
-                          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
+        // Карточка streak + заморозки с прогрессом к награде
+        _FreezeCard(streak: streak),
 
         const SizedBox(height: 12),
         const _PremiumCard(),
@@ -350,6 +374,163 @@ class ProfileScreen extends ConsumerWidget {
                   },
                 ),
               ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Карточка стрика + заморозок с прогрессом наград
+// ---------------------------------------------------------------------------
+
+/// Карточка со статистикой стрика, числом заморозок и прогресс-баром к
+/// ближайшей награде за накопление заморозок.
+class _FreezeCard extends ConsumerWidget {
+  const _FreezeCard({this.streak});
+
+  final StreakTableData? streak;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final freezes = streak?.freezeCount ?? 0;
+
+    final svc = ref.read(freezeAccrualServiceProvider);
+    final nextThreshold = svc.nextRewardThreshold(freezes);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Строка с тремя статами
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _StreakStat(
+                  label: context.s('profile.streak'),
+                  value: '${streak?.current ?? 0}',
+                ),
+                _StreakStat(
+                  label: context.s('profile.streak_best'),
+                  value: '${streak?.longest ?? 0}',
+                ),
+                Tooltip(
+                  message: context.s('streak.freeze'),
+                  child: _StreakStat(
+                    label: context.s('profile.streak_freezes'),
+                    value: '$freezes',
+                  ),
+                ),
+              ],
+            ),
+
+            // Подсказка про заморозку (если есть хотя бы одна)
+            if (freezes > 0) ...[
+              const SizedBox(height: 12),
+              Divider(color: ext.border, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('😌', style: TextStyle(fontSize: 20)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      context.s('profile.freeze_hint'),
+                      style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
+            // Прогресс к ближайшей награде
+            if (nextThreshold != null) ...[
+              const SizedBox(height: 12),
+              Divider(color: ext.border, height: 1),
+              const SizedBox(height: 12),
+              _FreezeRewardProgress(
+                currentFreezes: freezes,
+                threshold: nextThreshold,
+              ),
+            ] else ...[
+              // Все награды получены
+              const SizedBox(height: 12),
+              Divider(color: ext.border, height: 1),
+              const SizedBox(height: 8),
+              Text(
+                context.s('streak.freeze_reward_all_claimed'),
+                style: textTheme.bodySmall?.copyWith(color: ext.success),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Прогресс-бар + подпись к ближайшей награде за заморозки.
+class _FreezeRewardProgress extends StatelessWidget {
+  const _FreezeRewardProgress({
+    required this.currentFreezes,
+    required this.threshold,
+  });
+
+  final int currentFreezes;
+  final FreezeRewardThreshold threshold;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final progress =
+        (currentFreezes / threshold.freezeCount).clamp(0.0, 1.0);
+
+    final rewardKey = switch (threshold.freezeCount) {
+      10 => 'streak.freeze_reward_10',
+      25 => 'streak.freeze_reward_25',
+      50 => 'streak.freeze_reward_50',
+      _ => 'streak.freeze_reward_10',
+    };
+    final rewardLabel = context.s(rewardKey);
+
+    final progressLabel = context
+        .s('streak.freeze_progress_to_reward')
+        .replaceAll('{current}', '$currentFreezes')
+        .replaceAll('{target}', '${threshold.freezeCount}')
+        .replaceAll('{reward}', rewardLabel);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Text('🧊', style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                progressLabel,
+                style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            backgroundColor: ext.border,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              Theme.of(context).colorScheme.primary,
             ),
           ),
         ),

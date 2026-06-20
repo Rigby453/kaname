@@ -1902,4 +1902,158 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ja': 'Premium機能 — {feature}のためにアップグレード',
     'ko': 'Premium 기능 — {feature}을(를) 위해 업그레이드',
   },
+
+  // ---------------------------------------------------------------------------
+  // Freeze accrual — заморозки стрика (начисление + награды)
+  // ---------------------------------------------------------------------------
+
+  // Заголовок секции заморозок в карточке стрика.
+  'streak.freeze_progress_label': {
+    'en': 'Freeze progress',
+    'ru': 'Прогресс заморозок',
+    'de': 'Einfrierungsfortschritt',
+    'fr': 'Progression des gels',
+    'it': 'Progresso blocchi',
+    'pt': 'Progresso de congelamentos',
+    'es': 'Progreso de congelaciones',
+    'id': 'Progres pembekuan',
+    'hi': 'फ्रीज़ प्रगति',
+    'ja': 'フリーズ進捗',
+    'ko': '동결 진행',
+  },
+
+  // Прогресс к ближайшей награде. {current}/{target} — числа, {reward} — награда.
+  'streak.freeze_progress_to_reward': {
+    'en': '{current}/{target} — {reward}',
+    'ru': '{current}/{target} — {reward}',
+    'de': '{current}/{target} — {reward}',
+    'fr': '{current}/{target} — {reward}',
+    'it': '{current}/{target} — {reward}',
+    'pt': '{current}/{target} — {reward}',
+    'es': '{current}/{target} — {reward}',
+    'id': '{current}/{target} — {reward}',
+    'hi': '{current}/{target} — {reward}',
+    'ja': '{current}/{target} — {reward}',
+    'ko': '{current}/{target} — {reward}',
+  },
+
+  // Описание награды за 10 заморозок.
+  'streak.freeze_reward_10': {
+    'en': '1 week Premium',
+    'ru': '1 неделя Premium',
+    'de': '1 Woche Premium',
+    'fr': '1 semaine Premium',
+    'it': '1 settimana Premium',
+    'pt': '1 semana Premium',
+    'es': '1 semana Premium',
+    'id': '1 minggu Premium',
+    'hi': '1 हफ्ते Premium',
+    'ja': '1週間のプレミアム',
+    'ko': '1주 프리미엄',
+  },
+
+  // Описание награды за 25 заморозок.
+  'streak.freeze_reward_25': {
+    'en': '1 month Premium',
+    'ru': '1 месяц Premium',
+    'de': '1 Monat Premium',
+    'fr': '1 mois Premium',
+    'it': '1 mese Premium',
+    'pt': '1 mês Premium',
+    'es': '1 mes Premium',
+    'id': '1 bulan Premium',
+    'hi': '1 महीने Premium',
+    'ja': '1ヶ月のプレミアム',
+    'ko': '1개월 프리미엄',
+  },
+
+  // Описание награды за 50 заморозок.
+  'streak.freeze_reward_50': {
+    'en': '3 months Premium',
+    'ru': '3 месяца Premium',
+    'de': '3 Monate Premium',
+    'fr': '3 mois Premium',
+    'it': '3 mesi Premium',
+    'pt': '3 meses Premium',
+    'es': '3 meses Premium',
+    'id': '3 bulan Premium',
+    'hi': '3 महीने Premium',
+    'ja': '3ヶ月のプレミアム',
+    'ko': '3개월 프리미엄',
+  },
+
+  // Все пороги достигнуты.
+  'streak.freeze_reward_all_claimed': {
+    'en': 'All rewards collected!',
+    'ru': 'Все награды получены!',
+    'de': 'Alle Belohnungen erhalten!',
+    'fr': 'Toutes les récompenses obtenues !',
+    'it': 'Tutti i premi riscattati!',
+    'pt': 'Todas as recompensas coletadas!',
+    'es': '¡Todas las recompensas recibidas!',
+    'id': 'Semua hadiah terkumpul!',
+    'hi': 'सभी पुरस्कार मिल गए!',
+    'ja': '全報酬を獲得しました！',
+    'ko': '모든 보상 획득!',
+  },
+
+  // Снэкбар при начислении новой заморозки. {n} — количество.
+  'streak.freeze_accrued': {
+    'en': '+{n} freeze accrued',
+    'ru': '+{n} заморозка начислена',
+    'de': '+{n} Einfrierung gutgeschrieben',
+    'fr': '+{n} gel crédité',
+    'it': '+{n} blocco accreditato',
+    'pt': '+{n} congelamento creditado',
+    'es': '+{n} congelación acreditada',
+    'id': '+{n} pembekuan dikreditkan',
+    'hi': '+{n} फ्रीज़ जमा हुई',
+    'ja': '+{n}フリーズ付与',
+    'ko': '+{n} 동결 적립',
+  },
+
+  // Снэкбар при множественном начислении. {n} — количество.
+  'streak.freezes_accrued': {
+    'en': '+{n} freezes accrued',
+    'ru': '+{n} заморозок начислено',
+    'de': '+{n} Einfrierungen gutgeschrieben',
+    'fr': '+{n} gels crédités',
+    'it': '+{n} blocchi accreditati',
+    'pt': '+{n} congelamentos creditados',
+    'es': '+{n} congelaciones acreditadas',
+    'id': '+{n} pembekuan dikreditkan',
+    'hi': '+{n} फ्रीज़ जमा हुई',
+    'ja': '+{n}フリーズ付与',
+    'ko': '+{n} 동결 적립',
+  },
+
+  // Снэкбар при получении награды за накопление. {reward} — описание, напр. «1 неделя Premium».
+  'streak.freeze_reward_granted': {
+    'en': 'Reward unlocked: {reward}',
+    'ru': 'Награда получена: {reward}',
+    'de': 'Belohnung freigeschaltet: {reward}',
+    'fr': 'Récompense débloquée : {reward}',
+    'it': 'Premio sbloccato: {reward}',
+    'pt': 'Recompensa desbloqueada: {reward}',
+    'es': '¡Recompensa desbloqueada: {reward}!',
+    'id': 'Hadiah dibuka: {reward}',
+    'hi': 'पुरस्कार मिला: {reward}',
+    'ja': '報酬獲得: {reward}',
+    'ko': '보상 획득: {reward}',
+  },
+
+  // Бонус при покупке Premium (+2 заморозки).
+  'streak.freeze_purchase_bonus': {
+    'en': '+2 bonus freezes for going Premium!',
+    'ru': '+2 заморозки в подарок за Premium!',
+    'de': '+2 Bonus-Einfrierungen fürs Premium!',
+    'fr': '+2 gels bonus pour être passé Premium !',
+    'it': '+2 blocchi bonus per il Premium!',
+    'pt': '+2 congelamentos de bônus pelo Premium!',
+    'es': '+2 congelaciones de bonificación por Premium!',
+    'id': '+2 pembekuan bonus untuk Premium!',
+    'hi': 'Premium लेने पर +2 बोनस फ्रीज़!',
+    'ja': 'プレミアム登録で+2フリーズボーナス！',
+    'ko': 'Premium 전환 보너스 +2 동결!',
+  },
 };
