@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'custom_theme_provider.dart';
+import '../mood/mood_provider.dart';
 
 const _kThemePrefsKey = 'app_theme_key';
 
@@ -54,9 +55,13 @@ final themeNotifierProvider =
     NotifierProvider<ThemeNotifier, AppThemeKey>(ThemeNotifier.new);
 
 /// Удобный провайдер ThemeData — используется в MaterialApp.router.
-/// Поддерживает custom-тему: наблюдает за обоими провайдерами.
+/// Поддерживает custom-тему и реактивное настроение (mood harshness).
+/// При дефолтных настройках harshness=0.0 → цвета без изменений.
 final themeDataProvider = Provider<ThemeData>((ref) {
   final key = ref.watch(themeNotifierProvider);
   final customConfig = ref.watch(customThemeNotifierProvider);
-  return AppTheme.forKeyWithCustom(key, customConfig);
+  // Наблюдаем за harshness из effectiveMoodProvider.
+  // При дефолте (intensity=off, tone=gentle) harshness=0 → тема не меняется.
+  final mood = ref.watch(effectiveMoodProvider);
+  return AppTheme.forKeyWithCustom(key, customConfig, harshness: mood.harshness);
 });

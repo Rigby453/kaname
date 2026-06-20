@@ -13,6 +13,7 @@ import '../../core/animations/constants.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/mood/mood_provider.dart';
 import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -71,10 +72,13 @@ class TodayScreen extends ConsumerWidget {
     // Приоритет проверок (сверху вниз — первое совпавшее побеждает):
     //   1. success  — все главные задачи закрыты.
     //   2. away     — ничего не запланировано на сегодня (empty day, пустой список).
-    //   3. anxious  — есть просроченные pending main/important задачи СЕГОДНЯ.
-    //   4. thinking — показан утренний/вечерний разбор.
-    //   5. neutral  — иначе.
+    //   3. angry    — MoodLevel.angry → harsh (строгий режим полностью включён)
+    //   4. stern    — MoodLevel.stern → anxious (слегка обеспокоенный)
+    //   5. anxious  — есть просроченные pending main/important задачи СЕГОДНЯ.
+    //   6. thinking — показан утренний/вечерний разбор.
+    //   7. neutral  — иначе.
     final showKai = ref.watch(showKaiProvider);
+    final moodLevel = ref.watch(effectiveMoodProvider).level;
     final overdueItems = ref.watch(overduePendingProvider).valueOrNull ??
         const <ItemsTableData>[];
     // Переиспользуем уже отслеживаемый itemsAsync — не добавляем лишних подписок.
@@ -100,6 +104,12 @@ class TodayScreen extends ConsumerWidget {
     } else if (isEmptyDay) {
       // away = «давно не заходил» / «день пуст» — глаза-нитки (MASCOT.md §6)
       kaiEmotion = KaiEmotion.away;
+    } else if (moodLevel == MoodLevel.angry) {
+      // Реактивное настроение: полностью сердитый режим → harsh
+      kaiEmotion = KaiEmotion.harsh;
+    } else if (moodLevel == MoodLevel.stern) {
+      // Реактивное настроение: строгий режим → anxious
+      kaiEmotion = KaiEmotion.anxious;
     } else if (overdueToday.isNotEmpty) {
       kaiEmotion = KaiEmotion.anxious;
     } else if (morningReviewVisible ||

@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../mascot/kai_mascot.dart';
 import '../../core/settings/food_preferences_provider.dart';
 import '../../core/settings/health_profile_provider.dart';
 import '../../core/settings/mascot_provider.dart';
@@ -22,6 +23,7 @@ import '../../core/utils/id.dart';
 import 'shared_plan.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/l10n/locale_provider.dart';
+import '../../core/mood/mood_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../services/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -287,7 +289,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           },
         ),
 
-        const _ToneSetting(),
+        const _MoodKaiSection(),
         const SizedBox(height: 16),
         const _TextSizeSetting(),
         const SizedBox(height: 8),
@@ -1247,32 +1249,297 @@ class _PremiumCard extends ConsumerWidget {
   }
 }
 
-/// Тон по умолчанию (gentle/harsh) — тот же toneProvider, что и тумблер на Today.
-class _ToneSetting extends ConsumerWidget {
-  const _ToneSetting();
+// ---------------------------------------------------------------------------
+// Пульт управления настроем «Настрой и Kai»
+// ---------------------------------------------------------------------------
+
+/// Секция «Настрой и Kai» в Профиле.
+/// 3 кнопки-пресета + раскрываемая тонкая настройка (тон + интенсивность + превью).
+class _MoodKaiSection extends ConsumerStatefulWidget {
+  const _MoodKaiSection();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tone = ref.watch(toneProvider);
+  ConsumerState<_MoodKaiSection> createState() => _MoodKaiSectionState();
+}
+
+class _MoodKaiSectionState extends ConsumerState<_MoodKaiSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final mood = ref.watch(effectiveMoodProvider);
+    final intensity = ref.watch(reactiveIntensityProvider);
+    final tone = ref.watch(toneProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(context.s('profile.default_tone'), style: textTheme.bodyLarge),
-        ),
-        const SizedBox(width: 12),
-        SegmentedButton<AppTone>(
-          segments: [
-            ButtonSegment(value: AppTone.gentle, label: Text(context.s('settings.gentle'))),
-            ButtonSegment(value: AppTone.harsh, label: Text(context.s('settings.harsh'))),
+        // Заголовок секции
+        Text(context.s('profile.section_mood_kai'), style: textTheme.titleMedium),
+        const SizedBox(height: 12),
+
+        // 3 кнопки-пресета
+        Row(
+          children: [
+            _PresetChip(
+              emoji: '🌿',
+              label: context.s('mood.preset_calm'),
+              subtitle: context.s('mood.preset_calm_subtitle'),
+              isActive: tone == AppTone.gentle && intensity == ReactiveIntensity.off,
+              onTap: () => applyMoodPreset(ref, MoodPreset.calm),
+            ),
+            const SizedBox(width: 8),
+            _PresetChip(
+              emoji: '⚖️',
+              label: context.s('mood.preset_normal'),
+              subtitle: context.s('mood.preset_normal_subtitle'),
+              isActive: tone == AppTone.gentle && intensity == ReactiveIntensity.slight,
+              onTap: () => applyMoodPreset(ref, MoodPreset.normal),
+            ),
+            const SizedBox(width: 8),
+            _PresetChip(
+              emoji: '🔥',
+              label: context.s('mood.preset_coach'),
+              subtitle: context.s('mood.preset_coach_subtitle'),
+              isActive: tone == AppTone.harsh && intensity == ReactiveIntensity.full,
+              onTap: () => applyMoodPreset(ref, MoodPreset.coach),
+            ),
           ],
-          selected: {tone},
-          showSelectedIcon: false,
-          onSelectionChanged: (s) =>
-              ref.read(toneProvider.notifier).set(s.first),
         ),
+
+        const SizedBox(height: 12),
+
+        // Раскрывающаяся тонкая настройка
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Text(
+                  context.s('mood.fine_tuning'),
+                  style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 18,
+                  color: ext.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        if (_expanded) ...[
+          const SizedBox(height: 12),
+
+          // Тумблер тона (переиспользуем логику _ToneSetting)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  context.s('profile.default_tone'),
+                  style: textTheme.bodyMedium,
+                ),
+              ),
+              const SizedBox(width: 12),
+              SegmentedButton<AppTone>(
+                segments: [
+                  ButtonSegment(
+                    value: AppTone.gentle,
+                    label: Text(context.s('settings.gentle')),
+                  ),
+                  ButtonSegment(
+                    value: AppTone.harsh,
+                    label: Text(context.s('settings.harsh')),
+                  ),
+                ],
+                selected: {tone},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) =>
+                    ref.read(toneProvider.notifier).set(s.first),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Интенсивность реакции
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  context.s('mood.reaction_to_laziness'),
+                  style: textTheme.bodyMedium,
+                ),
+              ),
+              const SizedBox(width: 12),
+              SegmentedButton<ReactiveIntensity>(
+                segments: [
+                  ButtonSegment(
+                    value: ReactiveIntensity.off,
+                    label: Text(context.s('mood.intensity_off')),
+                  ),
+                  ButtonSegment(
+                    value: ReactiveIntensity.slight,
+                    label: Text(context.s('mood.intensity_slight')),
+                  ),
+                  ButtonSegment(
+                    value: ReactiveIntensity.full,
+                    label: Text(context.s('mood.intensity_full')),
+                  ),
+                ],
+                selected: {intensity},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) =>
+                    ref.read(reactiveIntensityProvider.notifier).set(s.first),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Мини-превью: маленький Kai + свотчи акцента
+          _MoodPreview(mood: mood),
+        ],
       ],
+    );
+  }
+}
+
+/// Одна кнопка-пресет настроя.
+class _PresetChip extends StatelessWidget {
+  const _PresetChip({
+    required this.emoji,
+    required this.label,
+    required this.subtitle,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final String emoji;
+  final String label;
+  final String subtitle;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive
+                ? colorScheme.primary.withValues(alpha: 0.12)
+                : colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive ? colorScheme.primary : ext.border,
+              width: isActive ? 1.5 : 0.5,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: textTheme.labelSmall?.copyWith(
+                  color: isActive ? colorScheme.primary : null,
+                  fontWeight: isActive ? FontWeight.w700 : null,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Мини-превью настроя: маленький Kai + два свотча акцента.
+class _MoodPreview extends StatelessWidget {
+  const _MoodPreview({required this.mood});
+
+  final EffectiveMood mood;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Kai-эмоция для превью
+    final previewEmotion = switch (mood.level) {
+      MoodLevel.angry => KaiEmotion.harsh,
+      MoodLevel.stern => KaiEmotion.anxious,
+      MoodLevel.neutral => KaiEmotion.neutral,
+      MoodLevel.calm => KaiEmotion.neutral,
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ext.border, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          // Маленький Kai
+          KaiMascot(
+            size: 48,
+            emotion: previewEmotion,
+            isHarsh: mood.level == MoodLevel.angry,
+          ),
+          const SizedBox(width: 12),
+          // Два свотча акцента
+          Expanded(
+            child: Row(
+              children: [
+                _ColorSwatch(color: colorScheme.primary),
+                const SizedBox(width: 8),
+                _ColorSwatch(color: ext.ember),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Маленький квадратный свотч цвета.
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
     );
   }
 }
