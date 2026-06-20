@@ -40,8 +40,8 @@ class ToneCopy {
   static String morningReview(AppTone tone, int count) {
     if (tone == AppTone.harsh) {
       return count == 1
-          ? '1 task ghosted you. Sort it before it piles up.'
-          : '$count tasks ghosted you. I lined them up — don\'t ghost them again.';
+          ? 'Yesterday you bailed on 1 task. Today — no excuses.'
+          : 'Yesterday you quit on $count tasks. Get it together — close them today.';
     }
     return count == 1
         ? 'Yesterday left 1 loose end — let\'s tuck it into today.'
@@ -49,15 +49,15 @@ class ToneCopy {
   }
 
   static String allDone(AppTone tone) => tone == AppTone.harsh
-      ? 'Everything done. Don\'t get cocky.'
+      ? 'Done. Now keep that standard — no slipping.'
       : 'Everything that mattered — done. Proud of you.';
 
   /// Вечерний разбор завтрашнего дня (SPEC B6).
   static String eveningReview(AppTone tone, int pending) {
     if (tone == AppTone.harsh) {
       return pending == 0
-          ? 'Plan tomorrow now, or wing it and panic. Your call.'
-          : '$pending left over today. Plan tomorrow now or wing it and panic.';
+          ? 'Plan tomorrow now. A clear head tomorrow starts with a plan tonight.'
+          : '$pending unfinished. You\'re slipping — plan tomorrow and close the gap.';
     }
     return pending == 0
         ? 'Want tomorrow handled? I\'ve got a plan ready.'
