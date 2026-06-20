@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/notifications/notification_service.dart';
@@ -158,7 +159,7 @@ class _ExerciseTile extends StatelessWidget {
         title: Text(exercise.name, style: textTheme.titleSmall),
         // Длительность — bodySmall + textFaint (мета-данные)
         trailing: Text(
-          exercise.durationLabel,
+          plPostureDuration(context, exercise.seconds),
           style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),

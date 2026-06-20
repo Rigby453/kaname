@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 
@@ -165,7 +166,7 @@ class _WorkoutCard extends ConsumerWidget {
         ref.watch(workoutExercisesProvider(workout.id)).valueOrNull ??
             const <WorkoutExercisesTableData>[];
     final count = exercises.length;
-    final subtitle = '$count exercise${count == 1 ? '' : 's'}';
+    final subtitle = plExercises(context, count);
 
     return Card(
       child: InkWell(
@@ -233,7 +234,7 @@ class _HistorySection extends ConsumerWidget {
           ? 0
           : s.finishedAt!.difference(s.startedAt).inMinutes;
       return '${s.workoutName} · ${weekdays[d.weekday - 1]}, '
-          '${months[d.month - 1]} ${d.day} · $mins min';
+          '${months[d.month - 1]} ${d.day} · ${plMinutes(context, mins)}';
     }
 
     return Padding(

@@ -89,8 +89,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   /// Тап на кнопку языка: выставляет locale LIVE и переходит к следующей странице.
-  void _selectLocale(String code) {
-    ref.read(localeNotifierProvider.notifier).setLocale(Locale(code));
+  void _selectLocale(Locale locale) {
+    ref.read(localeNotifierProvider.notifier).setLocale(locale);
     _next();
   }
 
@@ -223,11 +223,12 @@ class _LanguageSlide extends ConsumerWidget {
   final FocusThemeExtension ext;
   final TextTheme textTheme;
   final ColorScheme colorScheme;
-  final void Function(String code) onSelect;
+  final void Function(Locale locale) onSelect;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeNotifierProvider);
+    final currentTag = localeTag(locale);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -243,44 +244,35 @@ class _LanguageSlide extends ConsumerWidget {
               color: ext.textMuted,
             ),
           ),
-          const SizedBox(height: 48),
+          const SizedBox(height: 32),
 
           Text(
             context.s('onboarding_quiz.s4_title'),
             style: textTheme.headlineLarge,
             textAlign: TextAlign.left,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
-          // Три большие кнопки языка — тап выставляет locale + переходит дальше
-          _LangButton(
-            label: 'Русский',
-            code: 'ru',
-            selected: locale.languageCode == 'ru',
-            colorScheme: colorScheme,
-            ext: ext,
-            textTheme: textTheme,
-            onTap: () => onSelect('ru'),
-          ),
-          const SizedBox(height: 12),
-          _LangButton(
-            label: 'English',
-            code: 'en',
-            selected: locale.languageCode == 'en',
-            colorScheme: colorScheme,
-            ext: ext,
-            textTheme: textTheme,
-            onTap: () => onSelect('en'),
-          ),
-          const SizedBox(height: 12),
-          _LangButton(
-            label: 'Deutsch',
-            code: 'de',
-            selected: locale.languageCode == 'de',
-            colorScheme: colorScheme,
-            ext: ext,
-            textTheme: textTheme,
-            onTap: () => onSelect('de'),
+          // Список всех 12 языков — скролл-список внутри Expanded
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              itemCount: localeEntries.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
+              itemBuilder: (context, i) {
+                final entry = localeEntries[i];
+                final tag = localeTag(entry.locale);
+                return _LangButton(
+                  label: entry.displayName,
+                  tag: tag,
+                  selected: currentTag == tag,
+                  colorScheme: colorScheme,
+                  ext: ext,
+                  textTheme: textTheme,
+                  onTap: () => onSelect(entry.locale),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -291,7 +283,7 @@ class _LanguageSlide extends ConsumerWidget {
 class _LangButton extends StatelessWidget {
   const _LangButton({
     required this.label,
-    required this.code,
+    required this.tag,
     required this.selected,
     required this.colorScheme,
     required this.ext,
@@ -300,7 +292,7 @@ class _LangButton extends StatelessWidget {
   });
 
   final String label;
-  final String code;
+  final String tag;
   final bool selected;
   final ColorScheme colorScheme;
   final FocusThemeExtension ext;

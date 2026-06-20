@@ -230,25 +230,32 @@ class ProfileScreen extends ConsumerWidget {
         Consumer(
           builder: (context, ref, _) {
             final locale = ref.watch(localeNotifierProvider);
+            // Канонический тег текущей локали: 'en', 'ru', 'pt-BR', 'es-ES' и т.д.
+            final currentTag = localeTag(locale);
             return ListTile(
               contentPadding: EdgeInsets.zero,
               // Иконки настроек нейтральные (textMuted) — не accent (03-components §19)
               leading: Icon(Icons.language, color: ext.textMuted),
               title: Text(context.s('profile.language')),
               trailing: DropdownButton<String>(
-                value: locale.languageCode,
+                value: currentTag,
                 underline: const SizedBox.shrink(),
-                items: localeNames.entries
+                items: localeEntries
                     .map((e) => DropdownMenuItem(
-                          value: e.key,
-                          child: Text(e.value),
+                          value: localeTag(e.locale),
+                          child: Text(e.displayName),
                         ))
                     .toList(),
-                onChanged: (code) {
-                  if (code != null) {
+                onChanged: (tag) {
+                  if (tag != null) {
+                    // Найти Locale в localeEntries по тегу
+                    final entry = localeEntries.firstWhere(
+                      (e) => localeTag(e.locale) == tag,
+                      orElse: () => const LocaleEntry(Locale('en'), 'English'),
+                    );
                     ref
                         .read(localeNotifierProvider.notifier)
-                        .setLocale(Locale(code));
+                        .setLocale(entry.locale);
                   }
                 },
               ),

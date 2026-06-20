@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import 'recipe_nutrition.dart';
 
@@ -136,7 +137,7 @@ class _RecipeTile extends ConsumerWidget {
     final kcal100 = per100?.calories?.round();
 
     final subtitle = [
-      '${ingredients.length} ingredient${ingredients.length == 1 ? '' : 's'}',
+      plIngredients(context, ingredients.length),
       if (kcal100 != null) '$kcal100 kcal / 100 g',
     ].join(' · ');
 

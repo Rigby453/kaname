@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -309,7 +310,7 @@ class _SessionCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     // Мета-строка: длительность + шаги — bodySmall + textFaint
                     Text(
-                      '${session.duration} min · ${session.steps.length} steps',
+                      '${plMinutes(context, session.duration)} · ${plSteps(context, session.steps.length)}',
                       style: textTheme.bodySmall?.copyWith(
                         color: ext.textFaint,
                       ),

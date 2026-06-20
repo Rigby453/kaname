@@ -18,10 +18,15 @@ import 'strings/onboarding_quiz.dart';
 ///
 /// Использование в UI: `context.s('today.main_tasks')`.
 /// Если ключа нет в активном языке → откат на en → на сам ключ (никогда не падает).
+///
+/// Поддержка региональных тегов:
+///   - 'pt-BR' → ищет 'pt-BR', затем 'pt', затем 'en'
+///   - 'es-ES' → ищет 'es-ES', затем 'es', затем 'en'
+///   - Прочие ('fr', 'it', 'hi', 'ja', 'ko', 'id') → ищет по languageCode напрямую
 class S {
   S._();
 
-  // Объединённая карта всех фрагментов: key -> { langCode -> текст }.
+  // Объединённая карта всех фрагментов: key -> { langTag -> текст }.
   static final Map<String, Map<String, String>> _all = {
     ...commonStrings,
     ...todayStrings,
@@ -35,9 +40,20 @@ class S {
   };
 
   static String of(BuildContext context, String key) {
-    final lang = Localizations.localeOf(context).languageCode;
+    final locale = Localizations.localeOf(context);
     final entry = _all[key];
-    return entry?[lang] ?? entry?['en'] ?? key;
+    if (entry == null) return key;
+
+    // Строим тег с countryCode если есть: 'pt-BR', 'es-ES'
+    final tag = (locale.countryCode != null && locale.countryCode!.isNotEmpty)
+        ? '${locale.languageCode}-${locale.countryCode}'
+        : locale.languageCode;
+
+    // Резолвинг: точный тег → languageCode → en → key
+    return entry[tag] ??
+        entry[locale.languageCode] ??
+        entry['en'] ??
+        key;
   }
 }
 

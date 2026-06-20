@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
@@ -165,8 +166,11 @@ class _CoStudyScreenState extends ConsumerState<CoStudyScreen> {
         builder: (ctx) => AlertDialog(
           title: Text(ctx.s('costudy.study_together')),
           content: Text(
-            // Интерполяция с числом минут — оставляем английский вариант
-            '${info['user_email']} has been studying for ${info['elapsed_minutes']} min.\nJoin their session?',
+            plCoStudyJoin(
+              ctx,
+              '${info['user_email']}',
+              (info['elapsed_minutes'] as num?)?.toInt() ?? 0,
+            ),
           ),
           actions: [
             TextButton(

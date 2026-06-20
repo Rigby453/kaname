@@ -261,121 +261,135 @@ class AppTheme {
     const double bodyLetterSpacing = 0.0;
     final double contrastBodyLetterSpacing = isContrast ? 0.2 : bodyLetterSpacing;
 
+    // Фолбэк-шрифты для хинди (деванагари), японского и корейского.
+    // GoogleFonts тянет шрифты рантаймом — на устройствах hi/ja/ko надо проверить глазами.
+    final List<String> scriptFallbacks = [
+      GoogleFonts.notoSansDevanagari().fontFamily!,
+      GoogleFonts.notoSansJp().fontFamily!,
+      GoogleFonts.notoSansKr().fontFamily!,
+    ];
+
+    // Вспомогательная функция: добавляет fontFamilyFallback к TextStyle.
+    TextStyle? withFallback(TextStyle? style) {
+      if (style == null) return null;
+      return style.copyWith(fontFamilyFallback: scriptFallbacks);
+    }
+
     final TextTheme mergedTextTheme = baseTextTheme.copyWith(
       // --- display (BOLD RESTYLE: 48→56, tight -0.8 tracking) ---
-      displayLarge: display(baseTextTheme.displayLarge)?.copyWith(
+      displayLarge: withFallback(display(baseTextTheme.displayLarge)?.copyWith(
         fontSize: 56,
         fontWeight: displayWeight,
         height: 1.00,
         letterSpacing: -0.8,
         color: p.text,
-      ),
+      )),
       // displayMedium / displaySmall — промежуточные ступени дисплея
-      displayMedium: display(baseTextTheme.displayMedium)?.copyWith(
+      displayMedium: withFallback(display(baseTextTheme.displayMedium)?.copyWith(
         fontSize: 40,
         fontWeight: displayWeight,
         height: 1.05,
         letterSpacing: -0.5,
         color: p.text,
-      ),
-      displaySmall: display(baseTextTheme.displaySmall)?.copyWith(
+      )),
+      displaySmall: withFallback(display(baseTextTheme.displaySmall)?.copyWith(
         fontSize: 32,
         fontWeight: displayWeight,
         height: 1.08,
         letterSpacing: -0.3,
         color: p.text,
-      ),
+      )),
       // --- headline slots — display font, BOLD RESTYLE ---
       // headlineLarge 34→40 (экранные заголовки — Today greeting, Plan month header)
-      headlineLarge: display(baseTextTheme.headlineLarge)?.copyWith(
+      headlineLarge: withFallback(display(baseTextTheme.headlineLarge)?.copyWith(
         fontSize: 40,
         fontWeight: displayWeight,
         height: 1.05,
         letterSpacing: -0.5,
         color: p.text,
-      ),
+      )),
       // headlineMedium 28→32 (секционные заголовки, заголовки модалок)
-      headlineMedium: display(baseTextTheme.headlineMedium)?.copyWith(
+      headlineMedium: withFallback(display(baseTextTheme.headlineMedium)?.copyWith(
         fontSize: 32,
         fontWeight: displayWeight,
         height: 1.08,
         letterSpacing: -0.3,
         color: p.text,
-      ),
+      )),
       // headlineSmall 22 → остаётся, но тоже display font
-      headlineSmall: display(baseTextTheme.headlineSmall)?.copyWith(
+      headlineSmall: withFallback(display(baseTextTheme.headlineSmall)?.copyWith(
         fontSize: 22,
         fontWeight: headlineSmallWeight,
         height: 1.15,
         letterSpacing: -0.1,
         color: p.text,
-      ),
+      )),
       // --- title roles — body font (без изменений в размерах) ---
-      titleLarge: baseTextTheme.titleLarge?.copyWith(
+      titleLarge: withFallback(baseTextTheme.titleLarge?.copyWith(
         fontSize: 18,
         fontWeight: FontWeight.w600,
         height: 1.20,
         letterSpacing: 0.0,
         color: p.text,
-      ),
-      titleMedium: baseTextTheme.titleMedium?.copyWith(
+      )),
+      titleMedium: withFallback(baseTextTheme.titleMedium?.copyWith(
         fontSize: 16,
         fontWeight: FontWeight.w600,
         height: 1.25,
         letterSpacing: 0.0,
         color: p.text,
-      ),
-      titleSmall: baseTextTheme.titleSmall?.copyWith(
+      )),
+      titleSmall: withFallback(baseTextTheme.titleSmall?.copyWith(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         height: 1.25,
         letterSpacing: 0.1,
         color: p.text,
-      ),
+      )),
       // --- body roles — body font (без изменений) ---
-      bodyLarge: baseTextTheme.bodyLarge?.copyWith(
+      bodyLarge: withFallback(baseTextTheme.bodyLarge?.copyWith(
         fontSize: 16,
         fontWeight: FontWeight.w400,
         height: contrastBodyHeight,
         letterSpacing: contrastBodyLetterSpacing,
         color: p.text,
-      ),
-      bodyMedium: baseTextTheme.bodyMedium?.copyWith(
+      )),
+      bodyMedium: withFallback(baseTextTheme.bodyMedium?.copyWith(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         height: contrastBodyHeight,
         letterSpacing: contrastBodyLetterSpacing,
         color: p.text,
-      ),
-      bodySmall: baseTextTheme.bodySmall?.copyWith(
+      )),
+      bodySmall: withFallback(baseTextTheme.bodySmall?.copyWith(
         fontSize: 12,
         fontWeight: FontWeight.w400,
         height: 1.45,
         letterSpacing: isContrast ? 0.3 : 0.1,
         color: p.textMuted,
-      ),
+      )),
       // --- label roles — body font; labelLarge w500→w600 для кнопок ---
-      labelLarge: baseTextTheme.labelLarge?.copyWith(
+      labelLarge: withFallback(baseTextTheme.labelLarge?.copyWith(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         height: 1.20,
         letterSpacing: 0.4,
         color: p.text,
-      ),
-      labelMedium: baseTextTheme.labelMedium?.copyWith(
+      )),
+      labelMedium: withFallback(baseTextTheme.labelMedium?.copyWith(
         fontSize: 12,
         fontWeight: FontWeight.w500,
         height: 1.20,
         letterSpacing: 0.4,
         color: p.textMuted,
-      ),
-      labelSmall: baseTextTheme.labelSmall?.copyWith(
+      )),
+      labelSmall: withFallback(baseTextTheme.labelSmall?.copyWith(
         fontSize: 10,
         fontWeight: FontWeight.w500,
         height: 1.20,
         letterSpacing: 0.6,
         color: p.textMuted,
-      ),
+      )),
     );
 
     final ColorScheme base = p.brightness == Brightness.dark

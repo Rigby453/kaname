@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/animations/constants.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import 'breathing_engine.dart';
 
@@ -502,7 +503,7 @@ class _BreathingScreenState extends State<BreathingScreen>
         const SizedBox(height: 24),
         Center(
           child: Text(
-            '${context.s('breathing.session_complete')} · $_durationMinutes min',
+            '${context.s('breathing.session_complete')} · ${plMinutes(context, _durationMinutes)}',
             style: textTheme.headlineSmall,
             textAlign: TextAlign.center,
           ),

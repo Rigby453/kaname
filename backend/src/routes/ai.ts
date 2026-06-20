@@ -26,6 +26,14 @@ function langName(header: string | string[] | undefined): string {
     en: "English",
     ru: "Russian",
     de: "German",
+    fr: "French",
+    it: "Italian",
+    pt: "Portuguese",
+    id: "Indonesian",
+    hi: "Hindi",
+    ja: "Japanese",
+    ko: "Korean",
+    es: "Spanish",
   };
   return map[tag] ?? "English";
 }

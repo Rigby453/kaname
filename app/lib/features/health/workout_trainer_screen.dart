@@ -13,6 +13,7 @@ import '../../core/animations/constants.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import 'workouts_screen.dart' show workoutExercisesProvider, workoutProvider;
@@ -487,9 +488,9 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              // «N min» — titleLarge + textMuted (вторичная метрика)
+              // «N мин» — titleLarge + textMuted (вторичная метрика)
               Text(
-                '$mins min',
+                plMinutes(context, mins),
                 style: textTheme.titleLarge?.copyWith(color: ext.textMuted),
                 textAlign: TextAlign.center,
               ),

@@ -1249,7 +1249,14 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
 
     // Язык
     final locale = ref.watch(localeNotifierProvider);
-    final langName = localeNames[locale.languageCode] ?? locale.languageCode;
+    final langName = localeEntries
+            .cast<LocaleEntry?>()
+            .firstWhere(
+              (e) => localeTag(e!.locale) == localeTag(locale),
+              orElse: () => null,
+            )
+            ?.displayName ??
+        locale.languageCode;
 
     // Первая цель (если есть)
     final firstGoalId = _selectedGoals.isNotEmpty
