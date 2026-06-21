@@ -37,15 +37,35 @@ export async function buildServer(): Promise<FastifyInstance> {
     maxParamLength: 1000,
   });
 
-  // Регистрируем CORS — разрешаем localhost в dev
+  // Разбираем ALLOWED_ORIGINS один раз при старте сервера.
+  // Формат: строка через запятую, напр. "https://rigby453.github.io,https://example.com"
+  const allowedOrigins: Set<string> = new Set(
+    (process.env["ALLOWED_ORIGINS"] ?? "")
+      .split(",")
+      .map((o) => o.trim())
+      .filter((o) => o.length > 0),
+  );
+
+  // Регистрируем CORS
   await fastify.register(cors, {
     origin: (origin, cb) => {
-      // Разрешаем запросы без origin (curl, мобильные) и localhost
-      if (!origin || origin.startsWith("http://localhost")) {
+      // Разрешаем запросы без origin (curl, мобильные нативные клиенты)
+      if (!origin) {
         cb(null, true);
         return;
       }
+      // Всегда разрешаем localhost (dev + тесты)
+      if (origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {
+        cb(null, true);
+        return;
+      }
+      // В не-production разрешаем всё остальное
       if (process.env["NODE_ENV"] !== "production") {
+        cb(null, true);
+        return;
+      }
+      // Production: разрешаем только origin из ALLOWED_ORIGINS
+      if (allowedOrigins.has(origin)) {
         cb(null, true);
         return;
       }

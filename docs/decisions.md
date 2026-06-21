@@ -5,6 +5,18 @@
 
 ---
 
+## ADR-045: CORS allowlist через ALLOWED_ORIGINS + Render Blueprint
+**Date:** 2026-06-21
+**Decision:** В production (`NODE_ENV=production`) CORS разрешает только origin'ы, перечисленные
+в env-переменной `ALLOWED_ORIGINS` (строка через запятую, точное совпадение). Без origin и
+`localhost`/`127.0.0.1` — всегда разрешено (мобильные нативные клиенты, curl). В dev/test —
+разрешено всё (поведение не изменилось). `Set<string>` вычисляется один раз при старте.
+Создан `render.yaml` в корне репозитория (`rootDir: backend`) с полным списком env-переменных;
+`postinstall: prisma generate` добавлен в `package.json` для надёжной генерации Prisma Client
+в чистом CI-окружении.
+**Reason:** Деплой на Render Free Tier; Flutter Web на GitHub Pages (origin `https://rigby453.github.io`)
+должен доходить до API в production без открытия CORS для всего интернета.
+
 ## ADR-044: Серверная синхронизация заморозок стрика через /sync, LWW по last_freeze_accrual_at
 **Date:** 2026-06-21
 **Decision:** Поле `lastFreezeAccrualAt DateTime?` добавлено в модель `Streak`. `/sync` принимает

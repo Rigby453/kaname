@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "test": "jest --runInBand",
     "test:coverage": "jest --runInBand --coverage"
   },

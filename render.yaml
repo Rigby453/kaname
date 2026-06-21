@@ -1,0 +1,70 @@
+# Render Blueprint — Kaizen backend
+# Документация: https://render.com/docs/blueprint-spec
+#
+# Деплой: Connect repo → Render Dashboard → "New → Blueprint" → выбрать этот файл.
+# Все секреты (sync: false) задаются вручную в дашборде после создания сервиса.
+
+services:
+  - type: web
+    name: kaizen-backend
+    runtime: node
+    plan: free
+    region: frankfurt          # ближайший к EU; можно сменить на oregon/singapore
+    rootDir: backend           # npm install/build запускаются внутри backend/
+
+    # Сборка: устанавливаем зависимости, компилируем TS, генерируем Prisma Client
+    buildCommand: npm install && npm run build && npx prisma generate
+
+    # Старт: применяем миграции БД (idempotent), потом поднимаем сервер
+    startCommand: npx prisma migrate deploy && node dist/index.js
+
+    # Путь для health-check (Render опрашивает каждые 30 с; 3 провала = restart)
+    healthCheckPath: /health
+
+    envVars:
+      # ── Значение задаётся в дашборде Render (sync: false = секрет) ──────────
+
+      # Строка подключения к PostgreSQL (Neon или другой провайдер)
+      # Формат: postgresql://user:password@host/dbname?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+
+      # Секрет для подписи JWT-токенов (минимум 32 символа, случайная строка)
+      - key: JWT_SECRET
+        sync: false
+
+      # Gemini API key (если задан — AI использует Gemini; иначе — Claude)
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # Название модели Gemini (напр. gemini-2.0-flash-lite)
+      - key: GEMINI_MODEL
+        sync: false
+
+      # Anthropic API key (резервный провайдер, если GEMINI_API_KEY не задан)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # Список разрешённых CORS-origin в production (через запятую, без пробелов)
+      # Пример: https://rigby453.github.io,https://yourdomain.com
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # Список разрешённых email-доменов при регистрации (406-ФЗ)
+      # Пример: mail.ru,yandex.ru,gmail.com
+      - key: ALLOWED_EMAIL_DOMAINS
+        sync: false
+
+      # Секрет для верификации вебхуков биллинга (RevenueCat / Stripe)
+      - key: BILLING_WEBHOOK_SECRET
+        sync: false
+
+      # Публичный базовый URL этого бэкенда (без trailing slash)
+      # Пример: https://kaizen-backend.onrender.com
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+      # ── Фиксированные значения (не секреты) ─────────────────────────────────
+
+      - key: NODE_ENV
+        value: production

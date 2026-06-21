@@ -1,0 +1,113 @@
+# Deploy Kaizen to GitHub Pages
+# -----------------------------------------------------------------------------
+# Что делает этот workflow:
+#   1. Собирает Flutter web-приложение из каталога app/.
+#   2. Складывает в каталог публикации public/:
+#        - содержимое лендинга landing/  →  public/         (откроется на /glavnoe/)
+#        - собранный веб-апп app/build/web/ →  public/app/   (откроется на /glavnoe/app/)
+#   3. Публикует public/ на GitHub Pages официальным flow (configure → upload → deploy).
+#
+# Результат:
+#   Лендинг:  https://rigby453.github.io/glavnoe/
+#   Веб-апп:  https://rigby453.github.io/glavnoe/app/
+# -----------------------------------------------------------------------------
+
+name: Deploy web (landing + Flutter app) to GitHub Pages
+
+# Триггеры: автоматически при push в main + кнопка ручного запуска в Actions.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Права, необходимые официальному flow GitHub Pages.
+permissions:
+  contents: read      # читать код репозитория
+  pages: write        # публиковать на Pages
+  id-token: write     # OIDC-токен для deploy-pages
+
+# Не запускать два деплоя Pages одновременно; новый push НЕ отменяет идущий деплой
+# (cancel-in-progress: false), чтобы не оставить Pages в недособранном состоянии.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build landing + Flutter web
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Забираем код.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Ставим Flutter (stable канал).
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # 3. Вычисляем адрес бэкенда (API_BASE_URL).
+      #    Берём из repo Variable vars.API_BASE_URL; если она пустая —
+      #    подставляем фолбэк http://localhost:3000 (пустой --dart-define недопустим).
+      - name: Resolve API base URL
+        id: api
+        run: |
+          API_BASE="${{ vars.API_BASE_URL }}"
+          if [ -z "$API_BASE" ]; then
+            API_BASE="http://localhost:3000"
+            echo "vars.API_BASE_URL не задана — использую фолбэк $API_BASE"
+          else
+            echo "Использую vars.API_BASE_URL = $API_BASE"
+          fi
+          echo "base=$API_BASE" >> "$GITHUB_OUTPUT"
+
+      # 4. Подтягиваем зависимости Flutter.
+      - name: Flutter pub get
+        working-directory: app
+        run: flutter pub get
+
+      # 5. Собираем веб-апп.
+      #    base-href = /glavnoe/app/ — так как приложение лежит в под-папке Pages.
+      #    API_BASE_URL пробрасываем в клиент через --dart-define.
+      - name: Build Flutter web
+        working-directory: app
+        run: |
+          flutter build web --release \
+            --base-href /glavnoe/app/ \
+            --dart-define=API_BASE_URL=${{ steps.api.outputs.base }}
+
+      # 6. Собираем каталог публикации public/.
+      #    - всё из landing/ (index.html, privacy.html, terms.html и любые ассеты) → public/
+      #    - собранный веб-апп → public/app/
+      - name: Assemble public/ directory
+        run: |
+          rm -rf public
+          mkdir -p public
+          cp -r landing/. public/
+          mkdir -p public/app
+          cp -r app/build/web/. public/app/
+
+      # 7. Настраиваем Pages (официальный flow).
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # 8. Загружаем артефакт public/ для деплоя.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    # Окружение github-pages — куда публикуется сайт; url виден в логах деплоя.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # 9. Публикуем загруженный артефакт.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

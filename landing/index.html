@@ -130,7 +130,7 @@
   class="font-body antialiased"
   x-data="{
     downloadLabel: 'Download',
-    downloadHref: '#webapp',
+    downloadHref: 'app/',
     init() {
       const ua = navigator.userAgent;
       if (/iPad|iPhone|iPod/.test(ua)) {
@@ -141,7 +141,7 @@
         this.downloadHref  = '#googleplay'; /* TODO: replace with real Google Play URL */
       } else {
         this.downloadLabel = 'Open the Web App';
-        this.downloadHref  = '#webapp';     /* TODO: replace with real web app URL */
+        this.downloadHref  = 'app/';        /* relative → resolves to /glavnoe/app/ on GitHub Pages */
       }
     }
   }"
@@ -611,7 +611,7 @@
       <nav class="flex flex-wrap justify-center md:justify-end gap-x-6 gap-y-3 text-sm text-muted" aria-label="Footer navigation">
         <a href="#appstore"   class="hover:text-text transition-colors duration-150">App Store</a>      <!-- TODO: real URL -->
         <a href="#googleplay" class="hover:text-text transition-colors duration-150">Google Play</a>   <!-- TODO: real URL -->
-        <a href="#webapp"     class="hover:text-text transition-colors duration-150">Web App</a>        <!-- TODO: real URL -->
+        <a href="app/"        class="hover:text-text transition-colors duration-150">Web App</a>        <!-- relative → /glavnoe/app/ -->
         <span class="hidden md:inline text-border" aria-hidden="true">|</span>
         <a href="privacy.html" class="hover:text-text transition-colors duration-150">Privacy</a>
         <a href="terms.html"  class="hover:text-text transition-colors duration-150">Terms</a>
