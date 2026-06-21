@@ -136,6 +136,17 @@ class KaiMascot extends StatefulWidget {
 
 class _KaiMascotState extends State<KaiMascot>
     with TickerProviderStateMixin {
+  // --- Tap → neutral ---
+  // По тапу Kai ненадолго «успокаивается» к нейтральному выражению
+  // (override поверх widget.emotion), затем возвращается к исходной эмоции.
+  // _tapNeutralToken — маркер последнего тапа, чтобы отложенный сброс
+  // не сработал, если за это время был ещё один тап.
+  bool _tapNeutral = false;
+  Object? _tapNeutralToken;
+  // Длительность «нейтральной паузы» по тапу — нормальная анимация (280мс)
+  // даёт время морфингу доехать до neutral, затем ещё короткая задержка.
+  static const Duration _tapNeutralHold = Duration(milliseconds: 1200);
+
   // --- Дыхание (idle, бесконечный цикл) ---
   late final AnimationController _breathCtrl;
   late final Animation<double> _breathAnim;
@@ -234,24 +245,61 @@ class _KaiMascotState extends State<KaiMascot>
     _startLoops();
   }
 
+  /// Эффективная эмоция: пока активен tap-override — neutral, иначе widget.emotion.
+  KaiEmotion get _effectiveEmotion =>
+      _tapNeutral ? KaiEmotion.neutral : widget.emotion;
+
+  /// Запускает морфинг к текущей [_effectiveEmotion] от текущего кадра.
+  /// Используется и при смене widget.emotion, и при tap-override.
+  void _morphToEffective() {
+    final currentT = _morphAnim.value;
+    _from = _lerpState(_from, _to, currentT);
+    _to = _stateFor(_effectiveEmotion, widget.isHarsh);
+
+    final curve =
+        _effectiveEmotion == KaiEmotion.success ? kCurveSpring : kCurveLift;
+    _morphAnim = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _morphCtrl, curve: curve),
+    );
+    _morphCtrl
+      ..reset()
+      ..forward();
+  }
+
+  /// Обработчик тапа: успокаиваем Kai к neutral на короткое время, затем
+  /// возвращаемся к исходной эмоции. Внешний widget.onTap вызывается всегда.
+  /// При reduce-motion морфинг не нужен — сразу зовём onTap (без джиттера).
+  void _handleTap() {
+    widget.onTap?.call();
+
+    if (reduceMotionOf(context)) return;
+
+    final token = Object();
+    _tapNeutralToken = token;
+    if (!_tapNeutral) {
+      setState(() => _tapNeutral = true);
+      _morphToEffective();
+      _startLoops();
+    }
+
+    Future.delayed(_tapNeutralHold, () {
+      if (!mounted) return;
+      if (_tapNeutralToken != token) return; // был ещё один тап позже
+      setState(() => _tapNeutral = false);
+      _morphToEffective();
+      _startLoops();
+    });
+  }
+
   @override
   void didUpdateWidget(KaiMascot old) {
     super.didUpdateWidget(old);
 
     if (old.emotion != widget.emotion || old.isHarsh != widget.isHarsh) {
-      final currentT = _morphAnim.value;
-      _from = _lerpState(_from, _to, currentT);
-      _to = _stateFor(widget.emotion, widget.isHarsh);
-
-      final curve = widget.emotion == KaiEmotion.success
-          ? kCurveSpring
-          : kCurveLift;
-      _morphAnim = Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: _morphCtrl, curve: curve),
-      );
-      _morphCtrl
-        ..reset()
-        ..forward();
+      // Смена входной эмоции снимает tap-override (приоритет у нового состояния).
+      _tapNeutral = false;
+      _tapNeutralToken = null;
+      _morphToEffective();
     }
 
     _startLoops();
@@ -306,7 +354,7 @@ class _KaiMascotState extends State<KaiMascot>
     }
 
     // Тревожное дёргание только для anxious
-    if (widget.emotion == KaiEmotion.anxious) {
+    if (_effectiveEmotion == KaiEmotion.anxious) {
       if (!_jitterCtrl.isAnimating) {
         _jitterCtrl.repeat(reverse: true);
       }
@@ -326,7 +374,7 @@ class _KaiMascotState extends State<KaiMascot>
     }
 
     // Thinking-pulse: только для thinking
-    if (widget.emotion == KaiEmotion.thinking) {
+    if (_effectiveEmotion == KaiEmotion.thinking) {
       if (!_thinkPulseCtrl.isAnimating) {
         _thinkPulseCtrl.repeat(reverse: true);
       }
@@ -353,8 +401,8 @@ class _KaiMascotState extends State<KaiMascot>
   ///   harsh              → 0.01 (половина: напряжённое)
   ///   всё остальное      → 0.02 (±2%)
   double get _breathAmplitude {
-    if (widget.emotion == KaiEmotion.anxious) return 0;
-    if (widget.emotion == KaiEmotion.thinking) return 0;
+    if (_effectiveEmotion == KaiEmotion.anxious) return 0;
+    if (_effectiveEmotion == KaiEmotion.thinking) return 0;
     if (widget.isHarsh) return 0.01;
     return 0.02;
   }
@@ -372,7 +420,8 @@ class _KaiMascotState extends State<KaiMascot>
     final borderColor = colorScheme.onSurface.withAlpha(18);
 
     return GestureDetector(
-      onTap: widget.onTap,
+      // По тапу Kai успокаивается к neutral; внешний onTap всё равно вызывается.
+      onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: widget.size,
@@ -391,7 +440,7 @@ class _KaiMascotState extends State<KaiMascot>
             if (reduce) {
               return CustomPaint(
                 painter: _KaiPainter(
-                  state: _stateFor(widget.emotion, widget.isHarsh),
+                  state: _stateFor(_effectiveEmotion, widget.isHarsh),
                   eyeColor: eyeColor,
                   bodyColor: bodyColor,
                   borderColor: borderColor,
@@ -419,7 +468,7 @@ class _KaiMascotState extends State<KaiMascot>
 
             // Micro-look: тихое горизонтальное смещение (±1.5 px при size=56)
             // Не для anxious/thinking — там другие акценты
-            final doMicroLook = widget.emotion != KaiEmotion.anxious;
+            final doMicroLook = _effectiveEmotion != KaiEmotion.anxious;
             final microShiftX = doMicroLook
                 ? _lookAnim.value * (widget.size * 0.027)
                 : 0.0;

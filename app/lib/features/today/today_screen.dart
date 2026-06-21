@@ -18,7 +18,6 @@ import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/breakpoints.dart';
-import '../../core/widgets/collapsing_fab.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../features/mascot/kai_mascot.dart';
 import '../../features/mascot/kai_speech_bubble.dart';
@@ -155,11 +154,14 @@ class TodayScreen extends ConsumerWidget {
     return Stack(
       children: [
         Scaffold(
-          // CollapsingFab: развёрнут «+ Add» в покое, сворачивается при скролле вниз.
-          floatingActionButton: CollapsingFab(
+          // Простой круглый FAB — только плюс-иконка, без текстовой подписи.
+          // Текст-метка убрана (она сама начиналась с «+», давая двойной плюс).
+          // tooltip обеспечивает доступность вместо видимой подписи.
+          // Оставлен одиночной кнопкой, чтобы рядом мог встать Row (undo слева).
+          floatingActionButton: FloatingActionButton(
             onPressed: () => showAddTaskSheet(context, day: now),
-            icon: const Icon(Icons.add),
-            label: Text(context.s('today.fab_add')),
+            tooltip: context.s('today.add_task_btn'),
+            child: const Icon(Icons.add),
           ),
           body: itemsAsync.when(
             // Заменяем стандартный спиннер на KaiLoader (BOLD design system)
@@ -474,7 +476,8 @@ class _ToneToggle extends ConsumerWidget {
 /// небольшой bounce (вертикальный сдвиг −8px + обратно, 400мс, elasticOut).
 /// Reduce-motion: attention bounce пропускается.
 ///
-/// Tap micro-interaction: cycle neutral → success → thinking → сброс через 3 с.
+/// Tap micro-interaction: тап успокаивает Kai к neutral — это поведение
+/// реализовано внутри самого KaiMascot, отдельный override здесь не нужен.
 class _KaiHeader extends StatefulWidget {
   const _KaiHeader({
     required this.emotion,
@@ -490,22 +493,10 @@ class _KaiHeader extends StatefulWidget {
 
 class _KaiHeaderState extends State<_KaiHeader>
     with SingleTickerProviderStateMixin {
-  // --- Tap-override (cycle by tap) ---
-  KaiEmotion? _tapOverride;
-  int _tapCycleIndex = 0;
-  Object? _resetToken; // маркер последнего тапа для сброса
-
   // --- Attention bounce ---
   late final AnimationController _attentionCtrl;
   late final Animation<double> _attentionY; // значение смещения Y (px)
   Timer? _attentionTimer;
-
-  // Порядок цикла (MASCOT.md §5: тапабельно для смены выражений)
-  static const _tapCycle = [
-    KaiEmotion.neutral,
-    KaiEmotion.success,
-    KaiEmotion.thinking,
-  ];
 
   // Размер маскота в шапке — видный, выраженный
   static const double _kaiSize = 104;
@@ -558,25 +549,6 @@ class _KaiHeaderState extends State<_KaiHeader>
     if (mounted) _scheduleAttention();
   }
 
-  void _handleTap() {
-    final token = Object();
-    _resetToken = token;
-
-    setState(() {
-      _tapOverride = _tapCycle[_tapCycleIndex % _tapCycle.length];
-      _tapCycleIndex++;
-    });
-
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      if (_resetToken != token) return; // был ещё один тап
-      setState(() {
-        _tapOverride = null;
-        _tapCycleIndex = 0;
-      });
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -587,11 +559,11 @@ class _KaiHeaderState extends State<_KaiHeader>
           child: child,
         );
       },
+      // Тап по Kai успокаивает его к neutral — логика внутри KaiMascot.
       child: KaiMascot(
         size: _kaiSize,
-        emotion: _tapOverride ?? widget.emotion,
+        emotion: widget.emotion,
         isHarsh: widget.isHarsh,
-        onTap: _handleTap,
       ),
     );
   }
