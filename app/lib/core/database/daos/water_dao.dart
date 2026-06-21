@@ -14,7 +14,10 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
 
   /// Сумма выпитого за календарный день (мл), реактивно.
   Stream<int> watchTodayTotalMl(DateTime day) {
-    final start = DateTime.utc(day.year, day.month, day.day);
+    // День считаем по локальному времени: addWater пишет DateTime.now() (локальное),
+    // поэтому границы дня тоже должны быть локальными (иначе в UTC+N записи у границы
+    // выпадают из «сегодня» и сумма читается как 0).
+    final start = DateTime(day.year, day.month, day.day);
     final end = start.add(const Duration(days: 1));
     final sumExpr = waterLogsTable.amountMl.sum();
 
@@ -44,7 +47,8 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
   /// Суммы по дням за последние [days] дней, включая [day].
   /// Индекс 0 — самый старый день, последний — сегодня. Реактивно.
   Stream<List<int>> watchDailyTotals(DateTime day, int days) {
-    final todayStart = DateTime.utc(day.year, day.month, day.day);
+    // Локальные границы дня — консистентно с watchTodayTotalMl и addWater.
+    final todayStart = DateTime(day.year, day.month, day.day);
     final start = todayStart.subtract(Duration(days: days - 1));
     final end = todayStart.add(const Duration(days: 1));
     return (select(waterLogsTable)..where(
@@ -56,8 +60,8 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
         .map((rows) {
           final totals = List<int>.filled(days, 0);
           for (final r in rows) {
-            // Бакет дня — по тем же полям даты, что и в watchTodayTotalMl
-            final bucket = DateTime.utc(
+            // Бакет дня — по локальным полям даты, как в watchTodayTotalMl
+            final bucket = DateTime(
               r.loggedAt.year,
               r.loggedAt.month,
               r.loggedAt.day,
@@ -82,7 +86,7 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
 
   /// Отменить последнюю запись за день.
   Future<void> undoLast(DateTime day) async {
-    final start = DateTime.utc(day.year, day.month, day.day);
+    final start = DateTime(day.year, day.month, day.day);
     final end = start.add(const Duration(days: 1));
     final last =
         await (select(waterLogsTable)
@@ -101,7 +105,7 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
 
   /// Все записи воды за последние дни. Для полного отчёта.
   Stream<List<WaterLogsTableData>> watchAllWaterLogs(int days) {
-    final todayStart = DateTime.utc(
+    final todayStart = DateTime(
       DateTime.now().year,
       DateTime.now().month,
       DateTime.now().day,
@@ -115,7 +119,7 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
 
   /// Все записи воды за конкретный календарный день.
   Stream<List<WaterLogsTableData>> watchWaterForDate(DateTime date) {
-    final start = DateTime.utc(date.year, date.month, date.day);
+    final start = DateTime(date.year, date.month, date.day);
     final end = start.add(const Duration(days: 1));
     return (select(waterLogsTable)
           ..where(
@@ -129,7 +133,7 @@ class WaterDao extends DatabaseAccessor<AppDatabase> with _$WaterDaoMixin {
 
   /// Сумма выпитого за конкретный календарный день (мл).
   Stream<int> watchTotalForDate(DateTime date) {
-    final start = DateTime.utc(date.year, date.month, date.day);
+    final start = DateTime(date.year, date.month, date.day);
     final end = start.add(const Duration(days: 1));
     final sumExpr = waterLogsTable.amountMl.sum();
     final query = selectOnly(waterLogsTable)
