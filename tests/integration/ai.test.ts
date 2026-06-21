@@ -37,6 +37,8 @@ jest.mock('../../backend/src/ai/menuBuild', () => ({
   buildMenu: jest.fn().mockResolvedValue({
     meals: [{ meal: 'breakfast', items: [{ name: 'Oatmeal', grams: 60 }] }],
     note: 'Solid day.',
+    totals: { calories: 2000, protein: 75, fat: 65, carbs: 250, sugar: 30, fiber: 28 },
+    offTarget: false,
   }),
 }));
 jest.mock('../../backend/src/ai/foodRecognize', () => ({
@@ -192,8 +194,48 @@ test('menu-build: 403 free / 200 premium with meals shape', async () => {
       const items = meals[0]?.['items'] as Array<Record<string, unknown>>;
       expect(typeof items[0]?.['grams']).toBe('number'); // только name+grams, числа КБЖУ считает клиент
       expect(typeof b['note']).toBe('string');
+      // ADR-046: ответ несёт машинно-читаемый флаг и посчитанные КОДОМ итоги.
+      expect(typeof b['off_target']).toBe('boolean');
+      const totals = b['totals'] as Record<string, unknown>;
+      expect(typeof totals?.['calories']).toBe('number');
     }
   );
+});
+
+test('menu-build: full macro targets are accepted and forwarded to buildMenu', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { buildMenu } = require('../../backend/src/ai/menuBuild') as {
+    buildMenu: jest.Mock;
+  };
+  buildMenu.mockClear();
+
+  const prem = await registerUser(app);
+  userIds.push(prem.userId);
+  await makePremium(prem.userId);
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/ai/menu-build',
+    headers: { Authorization: `Bearer ${prem.token}` },
+    payload: {
+      candidates: _menuCandidates,
+      calorie_goal: 2000,
+      protein_goal_g: 75,
+      fat_goal_g: 65,
+      carbs_goal_g: 250,
+      sugar_max_g: 40,
+      fiber_min_g: 25,
+      meals: ['breakfast', 'lunch', 'dinner'],
+      tone: 'gentle',
+    },
+  });
+  expect(res.statusCode).toBe(200);
+  expect(buildMenu).toHaveBeenCalledTimes(1);
+  const arg = buildMenu.mock.calls[0]![0] as Record<string, unknown>;
+  expect(arg['fatGoalG']).toBe(65);
+  expect(arg['carbsGoalG']).toBe(250);
+  expect(arg['sugarMaxG']).toBe(40);
+  expect(arg['fiberMinG']).toBe(25);
 });
 
 test('menu-build: fewer than 5 candidates → 400', async () => {

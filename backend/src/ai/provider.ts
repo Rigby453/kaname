@@ -76,19 +76,29 @@ interface GeminiResponse {
   promptFeedback?: { blockReason?: string };
 }
 
+function geminiModel(tier: ModelTier): string {
+  return tier === "smart"
+    ? (process.env["GEMINI_MODEL_SMART"] ?? "gemini-2.5-flash")
+    : (process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite");
+}
+
 async function geminiGenerate({
   system,
   user,
   maxTokens,
+  tier,
   json,
   image,
 }: GenerateParams): Promise<string> {
   const apiKey = process.env["GEMINI_API_KEY"];
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set.");
-  // Самая дешёвая модель по умолчанию; меняется через .env без правки кода.
+  // Модель по тиру (меняется через .env без правки кода):
+  //   fast  → GEMINI_MODEL (дешёвая, default gemini-2.5-flash-lite)
+  //   smart → GEMINI_MODEL_SMART (сильнее, default gemini-2.5-flash) — для
+  //           menu-build, где нужно попадать во ВСЕ макро-цели (ADR-046).
   // 2.0-flash-lite отдаёт 429 quota=0 для новых ключей (модель выведена) —
   // дефолт обновлён на 2.5 (проверено живым вызовом 2026-06-10).
-  const model = process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite";
+  const model = geminiModel(tier ?? "fast");
 
   // Gemini REST API v1beta использует snake_case для всех полей.
   // Для multimodal-запросов изображение должно идти ПЕРЕД текстом-промптом.

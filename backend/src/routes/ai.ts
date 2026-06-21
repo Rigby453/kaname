@@ -97,6 +97,13 @@ const menuBuildSchema = z.object({
   candidates: z.array(menuCandidateSchema).min(5).max(40),
   calorie_goal: z.number().min(800).max(6000),
   protein_goal_g: z.number().min(10).max(400),
+  // Полный набор макро-целей (ADR-046). Опциональны для обратной совместимости:
+  // если поле отсутствует — соответствующая цель просто не упоминается в промпте
+  // и не проверяется валидационным циклом.
+  fat_goal_g: z.number().min(0).max(400).optional(),
+  carbs_goal_g: z.number().min(0).max(1000).optional(),
+  sugar_max_g: z.number().min(0).max(500).optional(),
+  fiber_min_g: z.number().min(0).max(200).optional(),
   meals: z
     .array(z.string().min(1))
     .min(1)
@@ -328,6 +335,10 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           meals: parsed.data.meals,
           tone: parsed.data.tone,
           language: langName(request.headers["accept-language"]),
+          ...(parsed.data.fat_goal_g !== undefined ? { fatGoalG: parsed.data.fat_goal_g } : {}),
+          ...(parsed.data.carbs_goal_g !== undefined ? { carbsGoalG: parsed.data.carbs_goal_g } : {}),
+          ...(parsed.data.sugar_max_g !== undefined ? { sugarMaxG: parsed.data.sugar_max_g } : {}),
+          ...(parsed.data.fiber_min_g !== undefined ? { fiberMinG: parsed.data.fiber_min_g } : {}),
           ...(parsed.data.health_profile !== undefined
             ? { healthProfile: parsed.data.health_profile }
             : {}),
@@ -346,6 +357,8 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(200).send({
           meals: result.meals,
           note: result.note,
+          off_target: result.offTarget,
+          totals: result.totals,
         });
       } catch (err) {
         return aiError(fastify, reply, err, "menu-build");
