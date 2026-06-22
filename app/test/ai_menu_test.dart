@@ -3,8 +3,8 @@
 
 import 'package:app/core/database/database.dart';
 import 'package:app/features/food/ai_menu.dart';
-import 'package:app/features/food/ai_menu_sheet.dart';
 import 'package:app/features/food/food_nutrition.dart';
+import 'package:app/features/food/meal_slots.dart';
 import 'package:app/features/food/whole_food_staples.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -136,12 +136,13 @@ void main() {
     expect(parsed.offTarget, isFalse);
   });
 
-  test('mealsForCount строит массив приёмов нужной длины', () {
+  test('mealsForCount строит массив приёмов нужной длины (классика)', () {
     expect(mealsForCount(3), ['breakfast', 'lunch', 'dinner']);
     expect(mealsForCount(1), ['breakfast']);
-    expect(mealsForCount(4), ['breakfast', 'lunch', 'dinner', 'snack']);
+    expect(mealsForCount(4),
+        ['breakfast', 'lunch', 'afternoon_snack', 'dinner']);
     expect(mealsForCount(5),
-        ['breakfast', 'lunch', 'dinner', 'snack', 'snack2']);
+        ['breakfast', 'second_breakfast', 'lunch', 'afternoon_snack', 'dinner']);
     // Уникальность ключей (важно для группировки по слотам в UI).
     final five = mealsForCount(5);
     expect(five.toSet(), hasLength(five.length));

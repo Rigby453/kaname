@@ -22,6 +22,7 @@ import '../auth/auth_controller.dart';
 import '../paywall/paywall_screen.dart';
 import 'ai_menu.dart';
 import 'food_nutrition.dart';
+import 'meal_slots.dart';
 import 'recipe_nutrition.dart';
 
 /// Точка входа с Food-экрана. Сама проверяет premium и наличие кандидатов.
@@ -79,22 +80,8 @@ class _AiMenuSheet extends ConsumerStatefulWidget {
   ConsumerState<_AiMenuSheet> createState() => _AiMenuSheetState();
 }
 
-/// Строит массив названий приёмов пищи нужной длины для запроса /ai/menu-build.
-/// Бэкенд читает meals как источник истины по числу и названиям слотов, поэтому
-/// от mealsPerDay (foodPrefs, по умолчанию 3) зависит, сколько приёмов соберёт ИИ.
-List<String> mealsForCount(int mealsPerDay) {
-  // Базовые слоты в логичном порядке; перекусы добавляем при необходимости.
-  const base = ['breakfast', 'lunch', 'dinner'];
-  final n = mealsPerDay.clamp(1, 6);
-  if (n <= base.length) return base.sublist(0, n);
-  // 4-й и далее — перекусы (snack), уникальные ключи snack/snack2/...
-  final result = <String>[...base];
-  for (var i = base.length; i < n; i++) {
-    final idx = i - base.length; // 0,1,2...
-    result.add(idx == 0 ? 'snack' : 'snack${idx + 1}');
-  }
-  return result;
-}
+// mealsForCount живёт в meal_slots.dart (классическая схема слотов).
+// Бэкенд читает meals как источник истины по числу и названиям слотов.
 
 class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
   bool _loading = true;
@@ -367,21 +354,13 @@ class _OffTargetWarning extends StatelessWidget {
 /// Маппинг ключа приёма пищи (backend) → ключ локализации для ОТОБРАЖЕНИЯ.
 /// Бэкенду всегда отправляем оригинальный английский ключ (breakfast/lunch/...).
 String _mealL10nKey(String meal) {
-  switch (meal) {
-    case 'breakfast':
-      return 'food.meal_breakfast';
-    case 'lunch':
-      return 'food.meal_lunch';
-    case 'dinner':
-      return 'food.meal_dinner';
-    case 'snack':
-      return 'food.meal_snack';
-    default:
-      // Дополнительные перекусы (snack2, snack3…) показываем как «перекус».
-      if (meal.startsWith('snack')) return 'food.meal_snack';
-      // Неизвестный приём — показываем ключ через S (откат на en → на сам ключ)
-      return meal;
-  }
+  // Классические слоты (breakfast/second_breakfast/lunch/afternoon_snack/
+  // dinner/snack) имеют свой ключ food.meal_<slot>.
+  if (kMealSlotOrder.contains(meal)) return 'food.meal_$meal';
+  // Легаси-перекусы (snack2, snack3…) показываем как «перекус».
+  if (meal.startsWith('snack')) return 'food.meal_snack';
+  // Неизвестный приём — показываем ключ через S (откат на en → на сам ключ).
+  return meal;
 }
 
 class _MealBlock extends StatelessWidget {

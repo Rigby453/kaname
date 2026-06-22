@@ -34,8 +34,8 @@ import 'barcode_scanner_screen.dart';
 import 'food_balance.dart';
 import 'food_icons.dart';
 import 'food_nutrition.dart';
-
-const List<String> _meals = ['breakfast', 'lunch', 'dinner', 'snack'];
+import 'meal_slots.dart';
+import '../../core/settings/food_preferences_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Вспомогательные таблицы для локализованных названий дней недели.
@@ -220,8 +220,70 @@ class FoodScreen extends ConsumerWidget {
               ),
             )
           else
-            ...logs.map((l) => _FoodRow(log: l)),
+            ..._buildMealSections(context, logs),
         ],
+      ),
+    );
+  }
+
+  /// Группирует дневной лог по слотам приёмов пищи и рендерит секции в
+  /// каноническом порядке (kMealSlotOrder). Пустые группы пропускаются.
+  /// Записи с meal, которого нет в kMealSlotOrder, собираются в «прочее»
+  /// и показываются в конце под лейблом food.meal_snack (ничего не теряем).
+  List<Widget> _buildMealSections(
+    BuildContext context,
+    List<FoodLogsTableData> logs,
+  ) {
+    // Группируем сохраняя порядок вставки внутри каждой группы.
+    final grouped = <String, List<FoodLogsTableData>>{};
+    final other = <FoodLogsTableData>[];
+    for (final l in logs) {
+      if (kMealSlotOrder.contains(l.meal)) {
+        grouped.putIfAbsent(l.meal, () => []).add(l);
+      } else {
+        other.add(l);
+      }
+    }
+
+    final sections = <Widget>[];
+    for (final slot in kMealSlotOrder) {
+      final group = grouped[slot];
+      if (group == null || group.isEmpty) continue;
+      sections.add(_MealSectionHeader(slot: slot));
+      sections.addAll(group.map((l) => _FoodRow(log: l)));
+    }
+    // «Прочее» — записи с неизвестным/легаси-приёмом — в конец под «перекус».
+    if (other.isNotEmpty) {
+      sections.add(const _MealSectionHeader(slot: 'snack'));
+      sections.addAll(other.map((l) => _FoodRow(log: l)));
+    }
+    return sections;
+  }
+}
+
+/// Маленький заголовок-секция приёма пищи над группой записей.
+/// Лейбл локализуется через `food.meal_<slot>`; первая буква — в верхний регистр.
+class _MealSectionHeader extends StatelessWidget {
+  const _MealSectionHeader({required this.slot});
+  final String slot;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ??
+        Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
+    final label = context.s('food.meal_$slot');
+    final display = label.isNotEmpty
+        ? label[0].toUpperCase() + label.substring(1)
+        : slot;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 6, left: 4),
+      child: Text(
+        display,
+        style: textTheme.titleSmall?.copyWith(color: mutedColor),
       ),
     );
   }
@@ -487,7 +549,8 @@ class _FoodRow extends ConsumerWidget {
           // Название продукта — bodyLarge из темы (titleText style уже задан в ListTileTheme)
           title: Text(log.name),
           subtitle: Text(
-            '${log.grams.round()} g · ${log.meal} · $kcal',
+            // Приём пищи показан в заголовке секции — здесь только граммы и ккал.
+            '${log.grams.round()} g · $kcal',
             style: textTheme.bodySmall?.copyWith(color: mutedColor),
           ),
           trailing: IconButton(
@@ -1062,16 +1125,27 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
 }
 
 /// Диалог выбора граммов и приёма пищи.
-class _PortionDialog extends StatefulWidget {
+class _PortionDialog extends ConsumerStatefulWidget {
   const _PortionDialog({required this.name});
   final String name;
   @override
-  State<_PortionDialog> createState() => _PortionDialogState();
+  ConsumerState<_PortionDialog> createState() => _PortionDialogState();
 }
 
-class _PortionDialogState extends State<_PortionDialog> {
+class _PortionDialogState extends ConsumerState<_PortionDialog> {
   final _grams = TextEditingController(text: '100');
-  String _meal = 'snack';
+  // Слоты приёмов пищи зависят от mealsPerDay (классическая схема).
+  late final List<String> _meals;
+  // По умолчанию — первый слот (обычно breakfast).
+  late String _meal;
+
+  @override
+  void initState() {
+    super.initState();
+    final mealsPerDay = ref.read(foodPreferencesProvider).mealsPerDay;
+    _meals = mealsForCount(mealsPerDay);
+    _meal = _meals.isNotEmpty ? _meals.first : 'breakfast';
+  }
 
   @override
   void dispose() {
