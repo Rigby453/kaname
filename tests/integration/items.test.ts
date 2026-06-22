@@ -3,7 +3,19 @@
  */
 import { buildServer } from '../../backend/src/app';
 import type { FastifyInstance } from 'fastify';
+import prisma from '../../backend/src/models/prisma';
 import { registerUser, createItem, cleanupUser } from '../helpers';
+
+interface SubtaskShape {
+  id: string;
+  title: string;
+  done: boolean;
+  sort_order: number;
+}
+interface ItemWithSubtasks {
+  id: string;
+  subtasks: SubtaskShape[];
+}
 
 let app: FastifyInstance;
 const userIds: string[] = [];
@@ -139,6 +151,199 @@ describe('PATCH /api/v1/items/:id', () => {
       payload: { title: 'hacked' },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('Subtasks (Items)', () => {
+  test('POST with subtasks → 201, returned sorted by sort_order (snake_case)', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        title: 'Project',
+        type: 'task',
+        scheduled_at: new Date().toISOString(),
+        subtasks: [
+          { title: 'Second', done: false, sort_order: 1 },
+          { title: 'First', done: true, sort_order: 0 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const item = res.json<ItemWithSubtasks>();
+    expect(item.subtasks).toHaveLength(2);
+    // Отсортированы по sort_order
+    expect(item.subtasks[0].title).toBe('First');
+    expect(item.subtasks[0].done).toBe(true);
+    expect(item.subtasks[0].sort_order).toBe(0);
+    expect(item.subtasks[1].title).toBe('Second');
+    expect(item.subtasks[1].sort_order).toBe(1);
+    // Каждая подзадача получила id
+    expect(item.subtasks[0].id).toBeDefined();
+  });
+
+  test('POST without subtasks → subtasks is empty array', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    const item = (await createItem(app, user.token, {
+      title: 'No subs',
+    })) as unknown as ItemWithSubtasks;
+    expect(item.subtasks).toEqual([]);
+  });
+
+  test('GET /items includes subtasks', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        title: 'With subs',
+        type: 'task',
+        scheduled_at: new Date().toISOString(),
+        subtasks: [{ title: 'A', sort_order: 0 }],
+      },
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const items = res.json<ItemWithSubtasks[]>();
+    const withSubs = items.find((i) => i.subtasks.length > 0);
+    expect(withSubs).toBeDefined();
+    expect(withSubs!.subtasks[0].title).toBe('A');
+  });
+
+  test('PATCH upserts: updates existing, adds new, deletes missing', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        title: 'Checklist',
+        type: 'task',
+        scheduled_at: new Date().toISOString(),
+        subtasks: [
+          { title: 'Keep', done: false, sort_order: 0 },
+          { title: 'Remove', done: false, sort_order: 1 },
+        ],
+      },
+    });
+    const item = created.json<ItemWithSubtasks>();
+    const keepId = item.subtasks.find((s) => s.title === 'Keep')!.id;
+
+    // Обновляем 'Keep' (done=true), удаляем 'Remove' (не присылаем), добавляем новую
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/items/${item.id}`,
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        subtasks: [
+          { id: keepId, title: 'Keep', done: true, sort_order: 0 },
+          { title: 'Added', done: false, sort_order: 1 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const updated = res.json<ItemWithSubtasks>();
+    expect(updated.subtasks).toHaveLength(2);
+    const keep = updated.subtasks.find((s) => s.id === keepId);
+    expect(keep).toBeDefined();
+    expect(keep!.done).toBe(true); // обновилось
+    expect(updated.subtasks.some((s) => s.title === 'Added')).toBe(true);
+    expect(updated.subtasks.some((s) => s.title === 'Remove')).toBe(false); // удалено
+  });
+
+  test('PATCH with empty subtasks array → removes all subtasks', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        title: 'Clearable',
+        type: 'task',
+        scheduled_at: new Date().toISOString(),
+        subtasks: [{ title: 'X', sort_order: 0 }],
+      },
+    });
+    const item = created.json<ItemWithSubtasks>();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/items/${item.id}`,
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: { subtasks: [] },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<ItemWithSubtasks>().subtasks).toEqual([]);
+  });
+
+  test('PATCH without subtasks key → subtasks untouched', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        title: 'Untouched',
+        type: 'task',
+        scheduled_at: new Date().toISOString(),
+        subtasks: [{ title: 'Stays', sort_order: 0 }],
+      },
+    });
+    const item = created.json<ItemWithSubtasks>();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/items/${item.id}`,
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: { title: 'Renamed' },
+    });
+    expect(res.statusCode).toBe(200);
+    const updated = res.json<ItemWithSubtasks>();
+    expect(updated.subtasks).toHaveLength(1);
+    expect(updated.subtasks[0].title).toBe('Stays');
+  });
+
+  test('deleting item cascades subtasks (no orphan rows)', async () => {
+    const user = await registerUser(app);
+    userIds.push(user.userId);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/items',
+      headers: { Authorization: `Bearer ${user.token}` },
+      payload: {
+        title: 'Cascade',
+        type: 'task',
+        scheduled_at: new Date().toISOString(),
+        subtasks: [
+          { title: 'one', sort_order: 0 },
+          { title: 'two', sort_order: 1 },
+        ],
+      },
+    });
+    const item = created.json<ItemWithSubtasks>();
+    const before = await prisma.subtask.count({ where: { itemId: item.id } });
+    expect(before).toBe(2);
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/items/${item.id}`,
+      headers: { Authorization: `Bearer ${user.token}` },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const after = await prisma.subtask.count({ where: { itemId: item.id } });
+    expect(after).toBe(0); // каскадно удалены
   });
 });
 

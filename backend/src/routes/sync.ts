@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import prisma from "../models/prisma.js";
-import { serializeItem } from "../models/item.js";
+import { serializeItem, syncSubtasks } from "../models/item.js";
 import { serializeWaterLog } from "../models/waterLog.js";
 import { serializeFoodLog } from "../models/foodLog.js";
 import { serializeDayLog } from "../models/dayLog.js";
@@ -24,6 +24,17 @@ const syncItemSchema = z.object({
   duration_minutes: z.number().int().optional(),
   is_protected: z.boolean().optional(),
   recurrence_rule: z.string().nullable().optional(),
+  // Подзадачи (snake_case). Если массив прислан — заменяем набор целиком (LWW на наборе).
+  subtasks: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        title: z.string().min(1),
+        done: z.boolean().default(false),
+        sort_order: z.number().int().default(0),
+      })
+    )
+    .optional(),
   created_at: z.string().datetime({ offset: true }).optional(),
   updated_at: z.string().datetime({ offset: true }).optional(),
 });
@@ -175,6 +186,12 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                   },
                 });
 
+                // Подзадачи: если массив прислан — синхронизируем набор (LWW на наборе).
+                // Привязываем к окну updated_at: подзадачи едут вместе с обновлением задачи.
+                if (incoming.subtasks !== undefined) {
+                  await syncSubtasks(tx, incoming.id, incoming.subtasks);
+                }
+
                 // Переход main-задачи в 'done' → запоминаем день для пересчёта серии.
                 // Эффективные значения: если поле не пришло — берём серверное.
                 const effPriority = incoming.priority ?? existing.priority;
@@ -219,6 +236,11 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                   recurrenceRule: incoming.recurrence_rule ?? null,
                 },
               });
+
+              // Подзадачи новой задачи (если присланы).
+              if (incoming.subtasks !== undefined) {
+                await syncSubtasks(tx, incoming.id, incoming.subtasks);
+              }
 
               // Новая main-задача, созданная сразу как 'done' → день для пересчёта серии.
               if (incoming.status === "done" && incoming.priority === "main") {
@@ -399,6 +421,7 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
           updatedAt: { gt: lastSyncDate },
         },
         orderBy: { scheduledAt: "asc" },
+        include: { subtasks: true },
       });
 
       // WaterLog созданные после last_sync_at (loggedAt ≈ время создания)

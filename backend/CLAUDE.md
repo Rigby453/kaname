@@ -98,8 +98,11 @@ On item status change to "done":
 ---
 
 ## Environment variables (from `.env`)
+> Neon: `DATABASE_URL` — pooled-строка (хост с `-pooler`, `?pgbouncer=true&connection_limit=...`), её использует рантайм.
+> `DIRECT_URL` — прямая строка (без pooler), Prisma берёт её только для миграций (`prisma migrate`). См. `.env.example`.
 ```
 DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...   # прямая строка Neon (без -pooler) — только для миграций
 # AI provider is chosen by whichever key is set (see src/ai/provider.ts):
 #   GEMINI_API_KEY present → Gemini (GEMINI_MODEL, default gemini-2.5-flash-lite)
 #   else ANTHROPIC_API_KEY → Claude (haiku/sonnet)

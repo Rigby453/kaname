@@ -1,9 +1,17 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import prisma from "../models/prisma.js";
-import { serializeItem } from "../models/item.js";
+import { serializeItem, syncSubtasks } from "../models/item.js";
 import { requireAuth } from "./middleware/auth.js";
 import { checkAndUpdateStreak } from "../engine/streaks.js";
+
+// Zod-схема для подзадачи на входе (snake_case). id опционален для новых.
+const subtaskInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().min(1),
+  done: z.boolean().default(false),
+  sort_order: z.number().int().default(0),
+});
 
 // Zod-схема для создания Item (ITEMS-01)
 const createItemSchema = z.object({
@@ -14,6 +22,7 @@ const createItemSchema = z.object({
   duration_minutes: z.number().int().default(30),
   is_protected: z.boolean().optional(),
   recurrence_rule: z.string().nullable().optional(),
+  subtasks: z.array(subtaskInputSchema).optional(),
 });
 
 // Zod-схема для обновления Item (ITEMS-03) — все поля опциональные
@@ -26,6 +35,7 @@ const updateItemSchema = z.object({
   duration_minutes: z.number().int().optional(),
   is_protected: z.boolean().optional(),
   recurrence_rule: z.string().nullable().optional(),
+  subtasks: z.array(subtaskInputSchema).optional(),
 });
 
 // Zod-схема для query-параметров (ITEMS-02)
@@ -54,17 +64,29 @@ const itemsRoutes: FastifyPluginAsync = async (fastify) => {
       const isProtected =
         data.priority === "main" ? true : (data.is_protected ?? false);
 
-      const item = await prisma.item.create({
-        data: {
-          userId,
-          title: data.title,
-          type: data.type,
-          priority: data.priority,
-          scheduledAt: new Date(data.scheduled_at),
-          durationMinutes: data.duration_minutes,
-          isProtected,
-          recurrenceRule: data.recurrence_rule ?? null,
-        },
+      const item = await prisma.$transaction(async (tx) => {
+        const created = await tx.item.create({
+          data: {
+            userId,
+            title: data.title,
+            type: data.type,
+            priority: data.priority,
+            scheduledAt: new Date(data.scheduled_at),
+            durationMinutes: data.duration_minutes,
+            isProtected,
+            recurrenceRule: data.recurrence_rule ?? null,
+          },
+        });
+
+        if (data.subtasks !== undefined) {
+          await syncSubtasks(tx, created.id, data.subtasks);
+        }
+
+        // Перечитываем с подзадачами для ответа (snake_case, отсортированы по sortOrder)
+        return tx.item.findUniqueOrThrow({
+          where: { id: created.id },
+          include: { subtasks: true },
+        });
       });
 
       return reply.status(201).send(serializeItem(item));
@@ -100,6 +122,7 @@ const itemsRoutes: FastifyPluginAsync = async (fastify) => {
             : {}),
         },
         orderBy: { scheduledAt: "asc" },
+        include: { subtasks: true },
       });
 
       return reply.status(200).send(items.map(serializeItem));
@@ -162,9 +185,22 @@ const itemsRoutes: FastifyPluginAsync = async (fastify) => {
       if ("recurrence_rule" in data)
         updateData.recurrenceRule = data.recurrence_rule ?? null;
 
-      const updated = await prisma.item.update({
-        where: { id },
-        data: updateData,
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.item.update({
+          where: { id },
+          data: updateData,
+        });
+
+        // Подзадачи: если присланы — синхронизируем набор (upsert + удаление отсутствующих).
+        if (data.subtasks !== undefined) {
+          await syncSubtasks(tx, id, data.subtasks);
+        }
+
+        // Перечитываем с подзадачами для ответа
+        return tx.item.findUniqueOrThrow({
+          where: { id },
+          include: { subtasks: true },
+        });
       });
 
       // Если status изменился на 'done' — обновляем серию (детерминированно, до ответа)
