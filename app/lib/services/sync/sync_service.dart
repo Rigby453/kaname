@@ -72,7 +72,15 @@ class SyncService {
         _db.itemsTable,
       )..where((t) => t.updatedAt.isBiggerThanValue(lastSyncDate))).get();
 
-      final outgoing = localItems.map(_itemToSnakeCase).toList();
+      // Каждой исходящей задаче прикрепляем её подзадачи вложенным массивом
+      // `subtasks` (snake_case, schemaVersion 14). Last-write-wins на уровне
+      // задачи: сервер хранит присланный набор целиком.
+      final outgoing = <Map<String, dynamic>>[];
+      for (final item in localItems) {
+        final map = _itemToSnakeCase(item);
+        map['subtasks'] = await _subtasksForItem(item.id);
+        outgoing.add(map);
+      }
 
       // Исходящие записи воды (append-only): добавленные после lastSyncAt
       final localWater = await (_db.select(
@@ -151,6 +159,15 @@ class SyncService {
             if (raw is! Map<String, dynamic>) continue;
             final companion = _snakeCaseToCompanion(raw);
             await _db.into(_db.itemsTable).insertOnConflictUpdate(companion);
+            // Подзадачи задачи: если сервер прислал массив `subtasks` —
+            // заменяем локальный набор целиком (LWW на уровне задачи).
+            // Отсутствие ключа = сервер не управляет подзадачами этой задачи →
+            // локальные подзадачи не трогаем.
+            final itemId = raw['id'] as String?;
+            final subtasksRaw = raw['subtasks'];
+            if (itemId != null && subtasksRaw is List) {
+              await _replaceSubtasks(itemId, subtasksRaw);
+            }
           }
         });
         debugPrint('[SyncService] Merged ${updatedItems.length} server items');
@@ -339,6 +356,50 @@ class SyncService {
       createdAt: Value(DateTime.parse(m['created_at'] as String)),
       updatedAt: Value(DateTime.parse(m['updated_at'] as String)),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Subtasks: Drift ↔ snake_case (вложены в задачу, schemaVersion 14)
+  // ---------------------------------------------------------------------------
+
+  /// Подзадачи задачи [itemId] → массив snake_case для отправки.
+  /// Контракт: { id, title, done, sort_order } (item_id подразумевается родителем).
+  Future<List<Map<String, dynamic>>> _subtasksForItem(String itemId) async {
+    final rows = await (_db.select(_db.subtasksTable)
+          ..where((t) => t.itemId.equals(itemId))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .get();
+    return rows
+        .map((s) => <String, dynamic>{
+              'id': s.id,
+              'title': s.title,
+              'done': s.done,
+              'sort_order': s.sortOrder,
+            })
+        .toList();
+  }
+
+  /// Заменяет локальные подзадачи задачи [itemId] присланным сервером набором
+  /// (LWW на уровне задачи). Должен вызываться внутри транзакции.
+  Future<void> _replaceSubtasks(String itemId, List<dynamic> raw) async {
+    await (_db.delete(_db.subtasksTable)
+          ..where((t) => t.itemId.equals(itemId)))
+        .go();
+    for (final s in raw) {
+      if (s is! Map<String, dynamic>) continue;
+      final id = s['id'] as String?;
+      final title = s['title'] as String?;
+      if (id == null || title == null) continue;
+      await _db.into(_db.subtasksTable).insert(
+            SubtasksTableCompanion(
+              id: Value(id),
+              itemId: Value(itemId),
+              title: Value(title),
+              done: Value((s['done'] as bool?) ?? false),
+              sortOrder: Value((s['sort_order'] as num?)?.toInt() ?? 0),
+            ),
+          );
+    }
   }
 
   // ---------------------------------------------------------------------------

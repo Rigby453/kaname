@@ -17,6 +17,7 @@ import 'daos/workouts_dao.dart';
 import 'daos/goals_dao.dart';
 import 'daos/habits_dao.dart';
 import 'daos/item_attachments_dao.dart';
+import 'daos/subtasks_dao.dart';
 
 /// Единственный экземпляр базы данных
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -95,4 +96,10 @@ final habitsDaoProvider = Provider<HabitsDao>((ref) {
 final itemAttachmentsDaoProvider = Provider<ItemAttachmentsDao>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return ItemAttachmentsDao(db);
+});
+
+/// DAO для подзадач (чеклист задач, schemaVersion 14)
+final subtasksDaoProvider = Provider<SubtasksDao>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return SubtasksDao(db);
 });

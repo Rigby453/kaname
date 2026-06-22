@@ -7698,6 +7698,356 @@ class ItemAttachmentsTableCompanion
   }
 }
 
+class $SubtasksTableTable extends SubtasksTable
+    with TableInfo<$SubtasksTableTable, SubtasksTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SubtasksTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _itemIdMeta = const VerificationMeta('itemId');
+  @override
+  late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
+    'item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _doneMeta = const VerificationMeta('done');
+  @override
+  late final GeneratedColumn<bool> done = GeneratedColumn<bool>(
+    'done',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("done" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, itemId, title, done, sortOrder];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'subtasks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SubtasksTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('item_id')) {
+      context.handle(
+        _itemIdMeta,
+        itemId.isAcceptableOrUnknown(data['item_id']!, _itemIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('done')) {
+      context.handle(
+        _doneMeta,
+        done.isAcceptableOrUnknown(data['done']!, _doneMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SubtasksTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SubtasksTableData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      itemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      done: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}done'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+    );
+  }
+
+  @override
+  $SubtasksTableTable createAlias(String alias) {
+    return $SubtasksTableTable(attachedDatabase, alias);
+  }
+}
+
+class SubtasksTableData extends DataClass
+    implements Insertable<SubtasksTableData> {
+  final String id;
+  final String itemId;
+  final String title;
+  final bool done;
+  final int sortOrder;
+  const SubtasksTableData({
+    required this.id,
+    required this.itemId,
+    required this.title,
+    required this.done,
+    required this.sortOrder,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['item_id'] = Variable<String>(itemId);
+    map['title'] = Variable<String>(title);
+    map['done'] = Variable<bool>(done);
+    map['sort_order'] = Variable<int>(sortOrder);
+    return map;
+  }
+
+  SubtasksTableCompanion toCompanion(bool nullToAbsent) {
+    return SubtasksTableCompanion(
+      id: Value(id),
+      itemId: Value(itemId),
+      title: Value(title),
+      done: Value(done),
+      sortOrder: Value(sortOrder),
+    );
+  }
+
+  factory SubtasksTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SubtasksTableData(
+      id: serializer.fromJson<String>(json['id']),
+      itemId: serializer.fromJson<String>(json['itemId']),
+      title: serializer.fromJson<String>(json['title']),
+      done: serializer.fromJson<bool>(json['done']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'itemId': serializer.toJson<String>(itemId),
+      'title': serializer.toJson<String>(title),
+      'done': serializer.toJson<bool>(done),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+    };
+  }
+
+  SubtasksTableData copyWith({
+    String? id,
+    String? itemId,
+    String? title,
+    bool? done,
+    int? sortOrder,
+  }) => SubtasksTableData(
+    id: id ?? this.id,
+    itemId: itemId ?? this.itemId,
+    title: title ?? this.title,
+    done: done ?? this.done,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
+  SubtasksTableData copyWithCompanion(SubtasksTableCompanion data) {
+    return SubtasksTableData(
+      id: data.id.present ? data.id.value : this.id,
+      itemId: data.itemId.present ? data.itemId.value : this.itemId,
+      title: data.title.present ? data.title.value : this.title,
+      done: data.done.present ? data.done.value : this.done,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SubtasksTableData(')
+          ..write('id: $id, ')
+          ..write('itemId: $itemId, ')
+          ..write('title: $title, ')
+          ..write('done: $done, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, itemId, title, done, sortOrder);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SubtasksTableData &&
+          other.id == this.id &&
+          other.itemId == this.itemId &&
+          other.title == this.title &&
+          other.done == this.done &&
+          other.sortOrder == this.sortOrder);
+}
+
+class SubtasksTableCompanion extends UpdateCompanion<SubtasksTableData> {
+  final Value<String> id;
+  final Value<String> itemId;
+  final Value<String> title;
+  final Value<bool> done;
+  final Value<int> sortOrder;
+  final Value<int> rowid;
+  const SubtasksTableCompanion({
+    this.id = const Value.absent(),
+    this.itemId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.done = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SubtasksTableCompanion.insert({
+    required String id,
+    required String itemId,
+    required String title,
+    this.done = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       itemId = Value(itemId),
+       title = Value(title);
+  static Insertable<SubtasksTableData> custom({
+    Expression<String>? id,
+    Expression<String>? itemId,
+    Expression<String>? title,
+    Expression<bool>? done,
+    Expression<int>? sortOrder,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (itemId != null) 'item_id': itemId,
+      if (title != null) 'title': title,
+      if (done != null) 'done': done,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SubtasksTableCompanion copyWith({
+    Value<String>? id,
+    Value<String>? itemId,
+    Value<String>? title,
+    Value<bool>? done,
+    Value<int>? sortOrder,
+    Value<int>? rowid,
+  }) {
+    return SubtasksTableCompanion(
+      id: id ?? this.id,
+      itemId: itemId ?? this.itemId,
+      title: title ?? this.title,
+      done: done ?? this.done,
+      sortOrder: sortOrder ?? this.sortOrder,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (itemId.present) {
+      map['item_id'] = Variable<String>(itemId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (done.present) {
+      map['done'] = Variable<bool>(done.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SubtasksTableCompanion(')
+          ..write('id: $id, ')
+          ..write('itemId: $itemId, ')
+          ..write('title: $title, ')
+          ..write('done: $done, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -7724,6 +8074,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $HabitLogsTableTable habitLogsTable = $HabitLogsTableTable(this);
   late final $ItemAttachmentsTableTable itemAttachmentsTable =
       $ItemAttachmentsTableTable(this);
+  late final $SubtasksTableTable subtasksTable = $SubtasksTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7747,6 +8098,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     habitsTable,
     habitLogsTable,
     itemAttachmentsTable,
+    subtasksTable,
   ];
 }
 
@@ -12195,6 +12547,210 @@ typedef $$ItemAttachmentsTableTableProcessedTableManager =
       ItemAttachmentsTableData,
       PrefetchHooks Function()
     >;
+typedef $$SubtasksTableTableCreateCompanionBuilder =
+    SubtasksTableCompanion Function({
+      required String id,
+      required String itemId,
+      required String title,
+      Value<bool> done,
+      Value<int> sortOrder,
+      Value<int> rowid,
+    });
+typedef $$SubtasksTableTableUpdateCompanionBuilder =
+    SubtasksTableCompanion Function({
+      Value<String> id,
+      Value<String> itemId,
+      Value<String> title,
+      Value<bool> done,
+      Value<int> sortOrder,
+      Value<int> rowid,
+    });
+
+class $$SubtasksTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SubtasksTableTable> {
+  $$SubtasksTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get done => $composableBuilder(
+    column: $table.done,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SubtasksTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SubtasksTableTable> {
+  $$SubtasksTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get done => $composableBuilder(
+    column: $table.done,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SubtasksTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SubtasksTableTable> {
+  $$SubtasksTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get itemId =>
+      $composableBuilder(column: $table.itemId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<bool> get done =>
+      $composableBuilder(column: $table.done, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+}
+
+class $$SubtasksTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SubtasksTableTable,
+          SubtasksTableData,
+          $$SubtasksTableTableFilterComposer,
+          $$SubtasksTableTableOrderingComposer,
+          $$SubtasksTableTableAnnotationComposer,
+          $$SubtasksTableTableCreateCompanionBuilder,
+          $$SubtasksTableTableUpdateCompanionBuilder,
+          (
+            SubtasksTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $SubtasksTableTable,
+              SubtasksTableData
+            >,
+          ),
+          SubtasksTableData,
+          PrefetchHooks Function()
+        > {
+  $$SubtasksTableTableTableManager(_$AppDatabase db, $SubtasksTableTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SubtasksTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SubtasksTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SubtasksTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> itemId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<bool> done = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SubtasksTableCompanion(
+                id: id,
+                itemId: itemId,
+                title: title,
+                done: done,
+                sortOrder: sortOrder,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String itemId,
+                required String title,
+                Value<bool> done = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SubtasksTableCompanion.insert(
+                id: id,
+                itemId: itemId,
+                title: title,
+                done: done,
+                sortOrder: sortOrder,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SubtasksTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SubtasksTableTable,
+      SubtasksTableData,
+      $$SubtasksTableTableFilterComposer,
+      $$SubtasksTableTableOrderingComposer,
+      $$SubtasksTableTableAnnotationComposer,
+      $$SubtasksTableTableCreateCompanionBuilder,
+      $$SubtasksTableTableUpdateCompanionBuilder,
+      (
+        SubtasksTableData,
+        BaseReferences<_$AppDatabase, $SubtasksTableTable, SubtasksTableData>,
+      ),
+      SubtasksTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -12238,4 +12794,6 @@ class $AppDatabaseManager {
       $$HabitLogsTableTableTableManager(_db, _db.habitLogsTable);
   $$ItemAttachmentsTableTableTableManager get itemAttachmentsTable =>
       $$ItemAttachmentsTableTableTableManager(_db, _db.itemAttachmentsTable);
+  $$SubtasksTableTableTableManager get subtasksTable =>
+      $$SubtasksTableTableTableManager(_db, _db.subtasksTable);
 }

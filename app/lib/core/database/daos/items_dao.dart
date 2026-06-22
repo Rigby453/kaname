@@ -13,7 +13,7 @@ import '../../../services/sound/completion_sound_service.dart';
 
 part 'items_dao.g.dart';
 
-@DriftAccessor(tables: [ItemsTable])
+@DriftAccessor(tables: [ItemsTable, SubtasksTable])
 class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
   ItemsDao(super.db);
 
@@ -225,6 +225,9 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
   /// обратно из ответа /sync). Запись в sync_queue идёт через attachedDatabase,
   /// поэтому таблица не нужна в @DriftAccessor этого DAO.
   Future<bool> deleteItem(String id) async {
+    // Каскад: удаляем подзадачи задачи (schemaVersion 14). Делаем до удаления
+    // строки, чтобы не оставить «осиротевшие» подзадачи в чеклисте.
+    await (delete(subtasksTable)..where((t) => t.itemId.equals(id))).go();
     final rowsAffected = await (delete(itemsTable)
           ..where((t) => t.id.equals(id)))
         .go();
@@ -365,6 +368,27 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
         updatedAt: Value(now),
       ),
     );
+
+    // Копируем подзадачи-ШАБЛОН с якоря в новую concrete-строку (schemaVersion 14).
+    // Каждая получает НОВЫЙ uuid и itemId = newId, поэтому материализованный день
+    // имеет собственную копию чеклиста и может быть переопределён независимо от
+    // серии (отметка done / удаление / добавление не влияют на якорь и другие дни).
+    final templateSubtasks = await (select(subtasksTable)
+          ..where((t) => t.itemId.equals(anchorId))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .get();
+    for (final st in templateSubtasks) {
+      await into(subtasksTable).insert(
+        SubtasksTableCompanion(
+          id: Value(uuidV4()),
+          itemId: Value(newId),
+          title: Value(st.title),
+          // Шаблон материализуется как ещё-не-выполненный чеклист на день.
+          done: const Value(false),
+          sortOrder: Value(st.sortOrder),
+        ),
+      );
+    }
 
     // Исключаем этот день из генерации виртуальных повторов.
     final updatedRule = addExDateToRule(anchor.recurrenceRule, date);

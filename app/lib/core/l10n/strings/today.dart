@@ -1612,4 +1612,15 @@ const Map<String, Map<String, String>> todayStrings = {
     'ja': '毎日繰り返し',
     'ko': '매일 반복',
   },
+  // --- Подзадачи (чеклист, schemaVersion 14) ---
+  'today.subtasks_label': {
+    'en': 'Subtasks',
+    'ru': 'Подзадачи',
+    'de': 'Teilaufgaben',
+  },
+  'today.subtask_hint': {
+    'en': 'Add a subtask…',
+    'ru': 'Добавить подзадачу…',
+    'de': 'Teilaufgabe hinzufügen…',
+  },
 };

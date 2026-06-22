@@ -3,6 +3,7 @@
 
 import 'package:app/core/database/database.dart';
 import 'package:app/core/database/daos/items_dao.dart';
+import 'package:app/core/database/daos/subtasks_dao.dart';
 import 'package:app/features/plan/recurrence.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -11,10 +12,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   late AppDatabase db;
   late ItemsDao dao;
+  late SubtasksDao subtasksDao;
 
   setUp(() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     dao = ItemsDao(db);
+    subtasksDao = SubtasksDao(db);
   });
 
   tearDown(() async {
@@ -121,6 +124,49 @@ void main() {
     ));
     final res = await dao.materializeOccurrence('plain', now);
     expect(res, isNull);
+  });
+
+  test(
+      'materializeOccurrence копирует подзадачи-шаблон якоря в новый день; '
+      'копии независимы от якоря', () async {
+    final anchorId = await insertAnchor(
+      scheduledAt: DateTime(2026, 6, 22, 9, 0),
+      rule: 'FREQ=DAILY',
+    );
+    // Шаблон серии: две подзадачи на якоре.
+    final tplA = await subtasksDao.addSubtask(anchorId, 'Warm up');
+    await subtasksDao.addSubtask(anchorId, 'Cool down');
+    // Помечаем одну в шаблоне done — материализация должна сбросить в false.
+    await subtasksDao.setDone(tplA, true);
+
+    final newId = await dao.materializeOccurrence(
+      anchorId,
+      DateTime(2026, 6, 23),
+    );
+    expect(newId, isNotNull);
+
+    // У concrete-строки своя копия: те же тексты/порядок, но новые id и done=false.
+    final copied = await subtasksDao.getSubtasks(newId!);
+    expect(copied.map((s) => s.title).toList(), ['Warm up', 'Cool down']);
+    expect(copied.every((s) => !s.done), isTrue,
+        reason: 'материализованный день начинается с невыполненного чеклиста');
+    final anchorSubs = await subtasksDao.getSubtasks(anchorId);
+    final anchorIds = anchorSubs.map((s) => s.id).toSet();
+    for (final c in copied) {
+      expect(anchorIds.contains(c.id), isFalse,
+          reason: 'копия должна иметь новый uuid, не совпадающий с шаблоном');
+      expect(c.itemId, newId, reason: 'itemId копии = id concrete-строки');
+    }
+
+    // Переопределение дня не влияет на шаблон якоря и наоборот.
+    await subtasksDao.setDone(copied.first.id, true);
+    await subtasksDao.removeSubtask(copied.last.id);
+
+    final anchorAfter = await subtasksDao.getSubtasks(anchorId);
+    expect(anchorAfter, hasLength(2),
+        reason: 'шаблон якоря не изменился после правки дня');
+    expect(anchorAfter.firstWhere((s) => s.id == tplA).done, isTrue,
+        reason: 'done якоря не затронут');
   });
 
   test('stopSeries sets UNTIL to day before given day', () async {

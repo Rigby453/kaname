@@ -1,9 +1,8 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'items_dao.dart';
+part of 'subtasks_dao.dart';
 
 // ignore_for_file: type=lint
-mixin _$ItemsDaoMixin on DatabaseAccessor<AppDatabase> {
-  $ItemsTableTable get itemsTable => attachedDatabase.itemsTable;
+mixin _$SubtasksDaoMixin on DatabaseAccessor<AppDatabase> {
   $SubtasksTableTable get subtasksTable => attachedDatabase.subtasksTable;
 }

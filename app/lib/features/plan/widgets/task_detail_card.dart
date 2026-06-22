@@ -236,6 +236,17 @@ class TaskDetailCard extends ConsumerWidget {
                 color: textMuted,
               ),
             ],
+
+            // Чеклист подзадач с инлайн-отметкой + прогресс (schemaVersion 14).
+            // Для виртуального повтора серии показываем шаблон с якоря (read-only
+            // превью); инлайн-тогл доступен только для concrete-строк.
+            _SubtaskChecklist(
+              sourceItemId:
+                  _isVirtual ? anchorIdFromVirtual(item.id) : item.id,
+              editable: !_isVirtual,
+              textMuted: textMuted,
+            ),
+
             const SizedBox(height: 20),
 
             // Действия: Done / Skip.
@@ -309,6 +320,92 @@ class TaskDetailCard extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Чеклист подзадач задачи с инлайн-отметкой done и счётчиком прогресса «N/M».
+/// Реактивно слушает SubtasksDao.watchSubtasks. Если подзадач нет — ничего
+/// не рисует (SizedBox.shrink), чтобы не захламлять карточку.
+class _SubtaskChecklist extends ConsumerWidget {
+  const _SubtaskChecklist({
+    required this.sourceItemId,
+    required this.editable,
+    required this.textMuted,
+  });
+
+  /// id задачи, чьи подзадачи показываем (для виртуала — id якоря/шаблона).
+  final String sourceItemId;
+
+  /// Можно ли менять done инлайн (false для виртуального повтора-превью).
+  final bool editable;
+
+  final Color textMuted;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dao = ref.watch(subtasksDaoProvider);
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return StreamBuilder<List<SubtasksTableData>>(
+      stream: dao.watchSubtasks(sourceItemId),
+      builder: (ctx, snapshot) {
+        final subtasks = snapshot.data ?? const [];
+        if (subtasks.isEmpty) return const SizedBox.shrink();
+        final doneCount = subtasks.where((s) => s.done).length;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 14),
+            // Заголовок с прогрессом «N/M».
+            Row(
+              children: [
+                Icon(Icons.checklist_outlined, size: 16, color: textMuted),
+                const SizedBox(width: 8),
+                Text(
+                  context.s('today.subtasks_label'),
+                  style: textTheme.bodyMedium?.copyWith(color: textMuted),
+                ),
+                const Spacer(),
+                Text(
+                  '$doneCount/${subtasks.length}',
+                  style: textTheme.bodySmall?.copyWith(color: textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            for (final s in subtasks)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Checkbox(
+                      value: s.done,
+                      onChanged: editable
+                          ? (v) => dao.setDone(s.id, v ?? false)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      s.title,
+                      style: textTheme.bodyMedium?.copyWith(
+                        decoration: s.done
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        color: s.done ? textMuted : colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        );
+      },
     );
   }
 }

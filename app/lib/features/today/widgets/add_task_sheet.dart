@@ -156,6 +156,12 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   // Вложения (фото/видео) — загружаются из Drift при открытии в режиме редактирования.
   List<ItemAttachmentsTableData> _attachments = [];
 
+  // Подзадачи (чеклист) — черновик в памяти, сохраняется при _save (schemaVersion 14).
+  // Для редактирования загружаются из Drift; для виртуального повтора серии —
+  // это будущая копия дня (материализуется при сохранении).
+  final List<_SubtaskDraft> _subtasks = [];
+  final TextEditingController _subtaskController = TextEditingController();
+
   final _imagePicker = ImagePicker();
 
   // --- NL datetime ---
@@ -199,6 +205,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _loadMainCount();
     // Загружаем вложения (только в режиме редактирования — у новой задачи нет id).
     if (_isEditing) _loadAttachments();
+    // Загружаем подзадачи (чеклист) для редактируемой задачи / шаблона серии.
+    if (_isEditing) _loadSubtasks();
     // Слушаем изменения заголовка для NL-парсинга.
     _titleController.addListener(_onTitleChanged);
   }
@@ -290,6 +298,35 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (mounted) setState(() => _attachments = list);
   }
 
+  /// Загружает подзадачи (чеклист) текущей задачи.
+  /// Для виртуального повтора серии берём шаблон с якоря — пользователь видит
+  /// общий чеклист серии (правка одного дня его материализует и переопределит).
+  Future<void> _loadSubtasks() async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    final dao = ref.read(subtasksDaoProvider);
+    final sourceId =
+        _isVirtualOccurrence ? anchorIdFromVirtual(existing.id) : existing.id;
+    final list = await dao.getSubtasks(sourceId);
+    if (!mounted) return;
+    setState(() {
+      _subtasks
+        ..clear()
+        ..addAll(list.map((s) =>
+            _SubtaskDraft(id: s.id, title: s.title, done: s.done)));
+    });
+  }
+
+  /// Добавить подзадачу из поля ввода в черновик (сохранится при _save).
+  void _addSubtask() {
+    final title = _subtaskController.text.trim();
+    if (title.isEmpty) return;
+    setState(() {
+      _subtasks.add(_SubtaskDraft(id: uuidV4(), title: title, done: false));
+      _subtaskController.clear();
+    });
+  }
+
   Future<void> _loadMainCount() async {
     final dao = ref.read(itemsDaoProvider);
     final count = await dao.countMainItems(widget.day);
@@ -338,6 +375,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _titleController.removeListener(_onTitleChanged);
     _titleController.dispose();
     _customMinutesController.dispose();
+    _subtaskController.dispose();
     if (_listening) _speech.stop();
     super.dispose();
   }
@@ -589,7 +627,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (_isVirtualOccurrence) {
       // Редактирование одного дня серии: материализуем его в реальную строку
       // с применёнными правками (анкер получает EXDATE на эту дату).
-      await dao.materializeOccurrence(
+      // materializeOccurrence уже скопировал подзадачи-шаблон с якоря; затем
+      // переопределяем их черновиком этого дня (replaceForItem).
+      final concreteId = await dao.materializeOccurrence(
         anchorIdFromVirtual(widget.existing!.id),
         dateFromVirtual(widget.existing!.id) ?? widget.existing!.scheduledAt,
         title: title,
@@ -600,6 +640,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         isProtected: isProtected,
         color: _color,
       );
+      if (concreteId != null) await _persistSubtasks(concreteId);
     } else if (_isEditing) {
       // Обычное редактирование / редактирование якоря серии. Для якоря
       // сохраняем (возможно обновлённую через UNTIL) строку правила; для
@@ -625,6 +666,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           updatedAt: Value(now),
         ),
       );
+      await _persistSubtasks(widget.existing!.id);
     } else {
       final newId = uuidV4();
       await dao.insertItem(
@@ -645,11 +687,30 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           updatedAt: Value(now),
         ),
       );
+      await _persistSubtasks(newId);
       // Записываем «добавлено» для одноуровневой отмены (кнопка ↩ на Today).
       ref.read(lastUndoableActionProvider.notifier).recordAdd(newId);
     }
 
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Сохраняет черновик подзадач в Drift, привязывая их к задаче [itemId].
+  /// Заменяет весь набор (replaceForItem) — last-write-wins на уровне задачи.
+  Future<void> _persistSubtasks(String itemId) async {
+    final dao = ref.read(subtasksDaoProvider);
+    final companions = <SubtasksTableCompanion>[];
+    for (var i = 0; i < _subtasks.length; i++) {
+      final s = _subtasks[i];
+      companions.add(SubtasksTableCompanion(
+        id: Value(s.id),
+        itemId: Value(itemId),
+        title: Value(s.title),
+        done: Value(s.done),
+        sortOrder: Value(i),
+      ));
+    }
+    await dao.replaceForItem(itemId, companions);
   }
 
   /// Выбор даты окончания повтора (UNTIL). Чистит при отмене не выполняется —
@@ -1123,6 +1184,25 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             _ColorPicker(
               value: _color,
               onChanged: (v) => setState(() => _color = v),
+            ),
+            const SizedBox(height: 16),
+
+            // Подзадачи (чеклист). Для виртуального повтора серии — общий шаблон;
+            // правка дня материализует его в отдельную копию (см. _save).
+            Text(context.s('today.subtasks_label'), style: textTheme.labelMedium),
+            const SizedBox(height: 8),
+            _SubtasksEditor(
+              subtasks: _subtasks,
+              controller: _subtaskController,
+              hintText: context.s('today.subtask_hint'),
+              onAdd: _addSubtask,
+              onToggle: (i, v) => setState(() => _subtasks[i].done = v),
+              onRemove: (i) => setState(() => _subtasks.removeAt(i)),
+              // onReorderItem: newIndex уже скорректирован под удалённый элемент.
+              onReorder: (oldIndex, newIndex) => setState(() {
+                final moved = _subtasks.removeAt(oldIndex);
+                _subtasks.insert(newIndex, moved);
+              }),
             ),
             const SizedBox(height: 16),
 
@@ -1618,6 +1698,132 @@ class _ColorSwatch extends StatelessWidget {
           child: child,
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Подзадачи (чеклист) — черновик и редактор.
+// ---------------------------------------------------------------------------
+
+/// Черновик одной подзадачи в форме (до сохранения в Drift).
+/// id фиксируется при создании, чтобы переживать reorder/replaceForItem.
+class _SubtaskDraft {
+  _SubtaskDraft({required this.id, required this.title, required this.done});
+
+  final String id;
+  final String title;
+  bool done;
+}
+
+/// Редактор чеклиста подзадач: поле ввода + «+», список с чекбоксом,
+/// удалением и drag-переупорядочиванием (ReorderableListView, как в проекте).
+class _SubtasksEditor extends StatelessWidget {
+  const _SubtasksEditor({
+    required this.subtasks,
+    required this.controller,
+    required this.hintText,
+    required this.onAdd,
+    required this.onToggle,
+    required this.onRemove,
+    required this.onReorder,
+  });
+
+  final List<_SubtaskDraft> subtasks;
+  final TextEditingController controller;
+  final String hintText;
+  final VoidCallback onAdd;
+  final void Function(int index, bool value) onToggle;
+  final void Function(int index) onRemove;
+  final void Function(int oldIndex, int newIndex) onReorder;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final muted = ext?.textMuted ?? colorScheme.onSurface.withAlpha(160);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (subtasks.isNotEmpty)
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: subtasks.length,
+            onReorderItem: onReorder,
+            itemBuilder: (ctx, i) {
+              final s = subtasks[i];
+              return Padding(
+                key: ValueKey(s.id),
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Checkbox(
+                        value: s.done,
+                        onChanged: (v) => onToggle(i, v ?? false),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        s.title,
+                        style: textTheme.bodyMedium?.copyWith(
+                          decoration: s.done
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                          color: s.done ? muted : colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      color: muted,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onRemove(i),
+                    ),
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: Icon(Icons.drag_handle, size: 20, color: muted),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        // Поле добавления новой подзадачи + кнопка «+».
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: hintText,
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onSubmitted: (_) => onAdd(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: context.s('btn.add'),
+              onPressed: onAdd,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

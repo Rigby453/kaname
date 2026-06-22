@@ -394,6 +394,50 @@ class _TaskListState extends ConsumerState<TaskList>
   }
 }
 
+/// Маленький индикатор прогресса подзадач на плашке задачи: «◷ N/M».
+/// Скрыт, если у задачи нет подзадач. Для виртуального повтора серии берёт
+/// шаблон с якоря (превью прогресса дня до материализации).
+class _SubtaskProgressBadge extends ConsumerWidget {
+  const _SubtaskProgressBadge({required this.item});
+
+  final ItemsTableData item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sourceId = isVirtualOccurrenceId(item.id)
+        ? anchorIdFromVirtual(item.id)
+        : item.id;
+    final dao = ref.watch(subtasksDaoProvider);
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textTheme = Theme.of(context).textTheme;
+    final color = ext?.textMuted ??
+        Theme.of(context).colorScheme.onSurface.withAlpha(160);
+
+    return StreamBuilder<List<SubtasksTableData>>(
+      stream: dao.watchSubtasks(sourceId),
+      builder: (ctx, snapshot) {
+        final subtasks = snapshot.data ?? const [];
+        if (subtasks.isEmpty) return const SizedBox.shrink();
+        final doneCount = subtasks.where((s) => s.done).length;
+        return Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.checklist_outlined, size: 12, color: color),
+              const SizedBox(width: 2),
+              Text(
+                '$doneCount/${subtasks.length}',
+                style: textTheme.labelSmall?.copyWith(color: color),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
 
@@ -512,9 +556,18 @@ class _TaskCardState extends State<_TaskCard> {
             curve: kCurveSnap,
             child: Text(widget.item.title),
           ),
-          subtitle: Text(
-            widget.item.type,
-            style: textTheme.bodySmall?.copyWith(color: ext?.textFaint),
+          subtitle: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  widget.item.type,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall?.copyWith(color: ext?.textFaint),
+                ),
+              ),
+              // Маленький индикатор прогресса подзадач (◷ N/M), если они есть.
+              _SubtaskProgressBadge(item: widget.item),
+            ],
           ),
           trailing: _trailing(context, colorScheme, ext, isDone),
         ),

@@ -442,6 +442,35 @@ class ItemAttachmentsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Подзадачи (чеклист) обычной задачи. Добавлено в schemaVersion 14.
+/// На ЯКОРЕ серии (recurrenceRule != null) подзадачи играют роль ШАБЛОНА —
+/// при материализации дня (materializeOccurrence) они копируются в новую
+/// concrete-строку (новые uuid, itemId = новой строки), чтобы каждый
+/// материализованный день можно было переопределить независимо от серии.
+/// Едут в sync-пейлоаде задачи вложенным массивом `subtasks` (snake_case).
+class SubtasksTable extends Table {
+  @override
+  String get tableName => 'subtasks';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Ссылка на задачу (items.id)
+  TextColumn get itemId => text()();
+
+  // Текст подзадачи
+  TextColumn get title => text()();
+
+  // Выполнена ли подзадача
+  BoolColumn get done => boolean().withDefault(const Constant(false))();
+
+  // Порядок отображения в чеклисте
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Очередь синхронизации: записи, ожидающие отправки на сервер
 /// id — autoincrement int (локальный, не синхронизируется)
 class SyncQueueTable extends Table {
@@ -489,6 +518,7 @@ class SyncQueueTable extends Table {
     HabitsTable,
     HabitLogsTable,
     ItemAttachmentsTable,
+    SubtasksTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -501,7 +531,7 @@ class AppDatabase extends _$AppDatabase {
   HabitsDao get habitsDao => HabitsDao(this);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -558,6 +588,10 @@ class AppDatabase extends _$AppDatabase {
           // v13: добавлена колонка color в items (локальный цвет-метка задачи).
           if (from < 13) {
             await m.addColumn(itemsTable, itemsTable.color);
+          }
+          // v14: добавлена таблица subtasks (чеклист подзадач у задач).
+          if (from < 14) {
+            await m.createTable(subtasksTable);
           }
         },
       );
