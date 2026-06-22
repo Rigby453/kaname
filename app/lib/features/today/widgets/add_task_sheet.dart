@@ -121,10 +121,18 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   String? _color;
 
   // --- Повтор (серия) ---
-  // Включён ли ежедневный повтор для НОВОЙ задачи (None по умолчанию).
-  bool _repeatDaily = false;
+  // Выбранная частота повтора. null = без повтора (None по умолчанию).
+  RecurFreq? _repeatFreq;
+  // Выбранные дни недели для WEEKLY (чипы Пн..Вс). Пусто при выборе weekly =>
+  // используем день недели даты задачи (effectiveByDays в правиле).
+  final Set<RecurWeekday> _repeatWeekdays = {};
+  // Число месяца для MONTHLY. null => день месяца даты задачи (по умолчанию).
+  int? _repeatMonthDay;
   // Необязательная дата окончания повтора (UNTIL). null = бессрочно.
   DateTime? _repeatUntil;
+
+  /// Есть ли активный повтор (любая частота).
+  bool get _repeatEnabled => _repeatFreq != null;
 
   bool get _isEditing => widget.existing != null;
 
@@ -192,8 +200,12 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     // контрол повтора не показываем, поэтому состояние остаётся дефолтным.
     final existingRule = RecurrenceRule.parse(existing?.recurrenceRule);
     if (existingRule != null) {
-      _repeatDaily = true;
+      _repeatFreq = existingRule.freq;
       _repeatUntil = existingRule.until;
+      _repeatWeekdays
+        ..clear()
+        ..addAll(existingRule.byDays);
+      _repeatMonthDay = existingRule.byMonthDay;
     }
     // Инициализируем поле ручного ввода текущим значением, если оно не входит
     // в стандартный список пресетов — тогда пользователь сразу видит своё число.
@@ -615,14 +627,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       await ref.read(recentSubjectsProvider).add(title);
     }
 
-    // Строка правила повтора для НОВОЙ задачи: None → null, Every day → FREQ=DAILY
-    // (+UNTIL если выбрана дата окончания).
-    String? newRuleString;
-    if (_repeatDaily) {
-      var rule = RecurrenceRule(freq: RecurFreq.daily);
-      if (_repeatUntil != null) rule = rule.copyWith(until: _repeatUntil);
-      newRuleString = rule.toRuleString();
-    }
+    // Строка правила повтора для серии. None → null; иначе собираем правило по
+    // выбранной частоте (+UNTIL если задана дата окончания). Для weekly/monthly
+    // пустой выбор дней/числа => используем день недели/число даты задачи.
+    final newRuleString = _buildRuleString();
 
     if (_isVirtualOccurrence) {
       // Редактирование одного дня серии: материализуем его в реальную строку
@@ -648,7 +656,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       // пользователь включил повтор — превращаем её в серию.
       final ruleValue = _isSeriesAnchor
           ? Value(newRuleString) // якорь: новое правило (None уберёт серию)
-          : (_repeatDaily
+          : (_repeatEnabled
               ? Value(newRuleString) // обычную задачу делаем серией
               : const Value<String?>.absent()); // не трогаем
       await dao.updateItem(
@@ -711,6 +719,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       ));
     }
     await dao.replaceForItem(itemId, companions);
+  }
+
+  /// Собирает строку правила повтора из выбранных контролов. null = без повтора.
+  /// • daily   → FREQ=DAILY
+  /// • weekly  → FREQ=WEEKLY;BYDAY=… (пустой выбор => день недели даты задачи)
+  /// • monthly → FREQ=MONTHLY;BYMONTHDAY=N (null => день месяца даты задачи)
+  /// UNTIL добавляется, если выбрана дата окончания.
+  String? _buildRuleString() {
+    final freq = _repeatFreq;
+    if (freq == null) return null;
+    final RecurrenceRule rule;
+    switch (freq) {
+      case RecurFreq.daily:
+        rule = dailyRule(until: _repeatUntil);
+      case RecurFreq.weekly:
+        // Пустой выбор => effectiveByDays возьмёт день недели даты задачи; но
+        // чтобы правило было самодостаточным, материализуем выбранный день.
+        final days = _repeatWeekdays.isNotEmpty
+            ? _repeatWeekdays
+            : {RecurWeekday.fromDartWeekday(_scheduledAt.weekday)};
+        rule = weeklyRule(days, until: _repeatUntil);
+      case RecurFreq.monthly:
+        rule = monthlyRule(
+          monthDay: _repeatMonthDay ?? _scheduledAt.day,
+          until: _repeatUntil,
+        );
+    }
+    return rule.toRuleString();
   }
 
   /// Выбор даты окончания повтора (UNTIL). Чистит при отмене не выполняется —
@@ -1105,18 +1141,54 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 children: [
                   ChoiceChip(
                     label: Text(context.s('addtask.repeat_none')),
-                    selected: !_repeatDaily,
-                    onSelected: (_) => setState(() => _repeatDaily = false),
+                    selected: _repeatFreq == null,
+                    onSelected: (_) => setState(() => _repeatFreq = null),
                   ),
                   ChoiceChip(
                     label: Text(context.s('addtask.repeat_daily')),
-                    selected: _repeatDaily,
-                    onSelected: (_) => setState(() => _repeatDaily = true),
+                    selected: _repeatFreq == RecurFreq.daily,
+                    onSelected: (_) =>
+                        setState(() => _repeatFreq = RecurFreq.daily),
+                  ),
+                  ChoiceChip(
+                    label: Text(context.s('addtask.repeat_weekly')),
+                    selected: _repeatFreq == RecurFreq.weekly,
+                    onSelected: (_) =>
+                        setState(() => _repeatFreq = RecurFreq.weekly),
+                  ),
+                  ChoiceChip(
+                    label: Text(context.s('addtask.repeat_monthly')),
+                    selected: _repeatFreq == RecurFreq.monthly,
+                    onSelected: (_) =>
+                        setState(() => _repeatFreq = RecurFreq.monthly),
                   ),
                 ],
               ),
+              // WEEKLY: выбор дней недели чипами Пн..Вс.
+              if (_repeatFreq == RecurFreq.weekly) ...[
+                const SizedBox(height: 8),
+                _WeekdayPicker(
+                  selected: _repeatWeekdays,
+                  onToggle: (wd) => setState(() {
+                    if (_repeatWeekdays.contains(wd)) {
+                      _repeatWeekdays.remove(wd);
+                    } else {
+                      _repeatWeekdays.add(wd);
+                    }
+                  }),
+                ),
+              ],
+              // MONTHLY: выбор числа месяца (1..31). По умолчанию — день даты.
+              if (_repeatFreq == RecurFreq.monthly) ...[
+                const SizedBox(height: 8),
+                _MonthDayPicker(
+                  value: _repeatMonthDay ?? _scheduledAt.day,
+                  label: context.s('addtask.repeat_monthday'),
+                  onChanged: (d) => setState(() => _repeatMonthDay = d),
+                ),
+              ],
               // Дата окончания повтора (UNTIL) — показывается при включённом повторе.
-              if (_repeatDaily) ...[
+              if (_repeatEnabled) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -1822,6 +1894,83 @@ class _SubtasksEditor extends StatelessWidget {
               onPressed: onAdd,
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Выбор дней недели для WEEKLY-повтора — чипы Пн..Вс (мультивыбор).
+// Использует существующие локализованные ярлыки plan.weekday_*.
+// ---------------------------------------------------------------------------
+
+class _WeekdayPicker extends StatelessWidget {
+  const _WeekdayPicker({
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final Set<RecurWeekday> selected;
+  final ValueChanged<RecurWeekday> onToggle;
+
+  static const _labelKeys = {
+    RecurWeekday.mo: 'plan.weekday_mon',
+    RecurWeekday.tu: 'plan.weekday_tue',
+    RecurWeekday.we: 'plan.weekday_wed',
+    RecurWeekday.th: 'plan.weekday_thu',
+    RecurWeekday.fr: 'plan.weekday_fri',
+    RecurWeekday.sa: 'plan.weekday_sat',
+    RecurWeekday.su: 'plan.weekday_sun',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: RecurWeekday.values.map((wd) {
+        return FilterChip(
+          label: Text(context.s(_labelKeys[wd]!)),
+          selected: selected.contains(wd),
+          onSelected: (_) => onToggle(wd),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Выбор числа месяца для MONTHLY-повтора (1..31) — компактный DropdownButton.
+// ---------------------------------------------------------------------------
+
+class _MonthDayPicker extends StatelessWidget {
+  const _MonthDayPicker({
+    required this.value,
+    required this.label,
+    required this.onChanged,
+  });
+
+  final int value;
+  final String label;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Text(label, style: textTheme.bodyMedium),
+        const SizedBox(width: 12),
+        DropdownButton<int>(
+          value: value,
+          items: [
+            for (var d = 1; d <= 31; d++)
+              DropdownMenuItem(value: d, child: Text('$d')),
+          ],
+          onChanged: (d) {
+            if (d != null) onChanged(d);
+          },
         ),
       ],
     );

@@ -70,6 +70,18 @@ class TaskDetailCard extends ConsumerWidget {
     return null;
   }
 
+  /// Ключ подписи повтора по частоте. Для виртуального повтора правило не лежит
+  /// на самой строке (recurrenceRule=null) — показываем нейтральное «Repeats».
+  String get _repeatLabelKey {
+    final rule = RecurrenceRule.parse(item.recurrenceRule);
+    return switch (rule?.freq) {
+      RecurFreq.daily => 'recur.repeats_daily',
+      RecurFreq.weekly => 'recur.repeats_weekly',
+      RecurFreq.monthly => 'recur.repeats_monthly',
+      null => 'recur.repeats',
+    };
+  }
+
   // --- Действия (зеркалят Today / add_task_sheet) ---
 
   Future<void> _markStatus(
@@ -227,12 +239,12 @@ class TaskDetailCard extends ConsumerWidget {
               text: '$typeLabel · $priorityLabel',
               color: textMuted,
             ),
-            // Повтор серии.
+            // Повтор серии — подпись по частоте (для виртуала берём правило якоря).
             if (_isSeriesItem) ...[
               const SizedBox(height: 6),
               _DetailRow(
                 icon: Icons.event_repeat_outlined,
-                text: context.s('recur.repeats_daily'),
+                text: context.s(_repeatLabelKey),
                 color: textMuted,
               ),
             ],

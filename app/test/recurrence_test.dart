@@ -67,8 +67,8 @@ void main() {
       expect(RecurrenceRule.parse(null), isNull);
       expect(RecurrenceRule.parse(''), isNull);
       expect(RecurrenceRule.parse('   '), isNull);
-      // Без FREQ=DAILY — не серия (например, чужой/неподдерживаемый формат).
-      expect(RecurrenceRule.parse('FREQ=WEEKLY'), isNull);
+      // Без распознанной FREQ — не серия (например, неподдерживаемый формат).
+      expect(RecurrenceRule.parse('FREQ=YEARLY'), isNull);
       expect(RecurrenceRule.parse('UNTIL=2026-07-01'), isNull);
     });
 
@@ -185,8 +185,9 @@ void main() {
 
     test('addExDateToRule on non-series returns input unchanged', () {
       expect(addExDateToRule(null, DateTime(2026, 6, 24)), isNull);
-      expect(addExDateToRule('FREQ=WEEKLY', DateTime(2026, 6, 24)),
-          'FREQ=WEEKLY');
+      // Неподдерживаемая частота (не серия) — строка возвращается как есть.
+      expect(addExDateToRule('FREQ=YEARLY', DateTime(2026, 6, 24)),
+          'FREQ=YEARLY');
     });
 
     test('setUntilOnRule sets/replaces UNTIL', () {
@@ -292,6 +293,166 @@ void main() {
       final merged =
           mergeOccurrencesForDay([], [notSeries], DateTime(2026, 6, 23));
       expect(merged, isEmpty);
+    });
+  });
+
+  group('WEEKLY parse / serialize / occursOn', () {
+    test('parse BYDAY round-trip, sorted by weekday', () {
+      // На входе перемешанные дни — на выходе отсортированы Пн..Вс.
+      final r = RecurrenceRule.parse('FREQ=WEEKLY;BYDAY=FR,MO,WE');
+      expect(r, isNotNull);
+      expect(r!.freq, RecurFreq.weekly);
+      expect(r.byDays,
+          {RecurWeekday.mo, RecurWeekday.we, RecurWeekday.fr});
+      expect(r.toRuleString(), 'FREQ=WEEKLY;BYDAY=MO,WE,FR');
+    });
+
+    test('FREQ=WEEKLY without BYDAY parses (uses anchor weekday)', () {
+      final r = RecurrenceRule.parse('FREQ=WEEKLY')!;
+      expect(r.byDays, isEmpty);
+      // 2026-06-22 — понедельник → effectiveByDays = {MO}.
+      final anchor = DateTime(2026, 6, 22, 9, 0);
+      expect(r.effectiveByDays(anchor), {RecurWeekday.mo});
+      expect(r.toRuleString(), 'FREQ=WEEKLY');
+    });
+
+    test('occursOn matches только указанные дни недели', () {
+      // BYDAY = MO,WE,FR. Anchor = понедельник 2026-06-22.
+      final r = RecurrenceRule.parse('FREQ=WEEKLY;BYDAY=MO,WE,FR')!;
+      final anchor = DateTime(2026, 6, 22, 9, 0); // Mon
+      expect(occursOn(r, anchor, DateTime(2026, 6, 22)), isTrue); // Mon
+      expect(occursOn(r, anchor, DateTime(2026, 6, 23)), isFalse); // Tue
+      expect(occursOn(r, anchor, DateTime(2026, 6, 24)), isTrue); // Wed
+      expect(occursOn(r, anchor, DateTime(2026, 6, 25)), isFalse); // Thu
+      expect(occursOn(r, anchor, DateTime(2026, 6, 26)), isTrue); // Fri
+      expect(occursOn(r, anchor, DateTime(2026, 6, 27)), isFalse); // Sat
+    });
+
+    test('weekly respects anchor start (before start → false)', () {
+      final r = RecurrenceRule.parse('FREQ=WEEKLY;BYDAY=MO,FR')!;
+      final anchor = DateTime(2026, 6, 22, 9, 0); // Mon
+      // Пятница ДО якоря (2026-06-19) не должна сработать.
+      expect(occursOn(r, anchor, DateTime(2026, 6, 19)), isFalse);
+    });
+
+    test('weekly UNTIL boundary inclusive', () {
+      final r = RecurrenceRule.parse('FREQ=WEEKLY;BYDAY=MO;UNTIL=2026-07-06')!;
+      final anchor = DateTime(2026, 6, 22, 9, 0);
+      expect(occursOn(r, anchor, DateTime(2026, 7, 6)), isTrue); // Mon, = UNTIL
+      expect(occursOn(r, anchor, DateTime(2026, 7, 13)), isFalse); // после UNTIL
+    });
+
+    test('weekly EXDATE excludes specific day', () {
+      final r =
+          RecurrenceRule.parse('FREQ=WEEKLY;BYDAY=MO;EXDATE=20260629')!;
+      final anchor = DateTime(2026, 6, 22, 9, 0);
+      expect(occursOn(r, anchor, DateTime(2026, 6, 29)), isFalse);
+      expect(occursOn(r, anchor, DateTime(2026, 7, 6)), isTrue);
+    });
+
+    test('occurrenceDatesInRange weekly multi-day, sorted', () {
+      final r = RecurrenceRule.parse('FREQ=WEEKLY;BYDAY=MO,WE,FR')!;
+      final anchor = DateTime(2026, 6, 22, 9, 0); // Mon
+      final dates = occurrenceDatesInRange(
+        anchor,
+        r,
+        DateTime(2026, 6, 22),
+        DateTime(2026, 6, 30),
+      );
+      expect(dates, [
+        DateTime(2026, 6, 22), // Mon
+        DateTime(2026, 6, 24), // Wed
+        DateTime(2026, 6, 26), // Fri
+        DateTime(2026, 6, 29), // Mon
+      ]);
+    });
+
+    test('weeklyRule helper builds expected string', () {
+      final r = weeklyRule({RecurWeekday.tu, RecurWeekday.th});
+      expect(r.toRuleString(), 'FREQ=WEEKLY;BYDAY=TU,TH');
+    });
+  });
+
+  group('MONTHLY parse / serialize / occursOn', () {
+    test('parse BYMONTHDAY round-trip', () {
+      final r = RecurrenceRule.parse('FREQ=MONTHLY;BYMONTHDAY=15');
+      expect(r!.freq, RecurFreq.monthly);
+      expect(r.byMonthDay, 15);
+      expect(r.toRuleString(), 'FREQ=MONTHLY;BYMONTHDAY=15');
+    });
+
+    test('FREQ=MONTHLY without BYMONTHDAY uses anchor day', () {
+      final r = RecurrenceRule.parse('FREQ=MONTHLY')!;
+      expect(r.byMonthDay, isNull);
+      final anchor = DateTime(2026, 6, 9, 9, 0);
+      expect(r.effectiveMonthDay(anchor), 9);
+      expect(r.toRuleString(), 'FREQ=MONTHLY');
+    });
+
+    test('occursOn matches only the target day-of-month', () {
+      final r = RecurrenceRule.parse('FREQ=MONTHLY;BYMONTHDAY=15')!;
+      final anchor = DateTime(2026, 6, 15, 9, 0);
+      expect(occursOn(r, anchor, DateTime(2026, 6, 15)), isTrue);
+      expect(occursOn(r, anchor, DateTime(2026, 7, 15)), isTrue);
+      expect(occursOn(r, anchor, DateTime(2026, 7, 16)), isFalse);
+    });
+
+    test('BYMONTHDAY=31 пропускает месяцы без 31-го числа (без клампа)', () {
+      final r = RecurrenceRule.parse('FREQ=MONTHLY;BYMONTHDAY=31')!;
+      final anchor = DateTime(2026, 1, 31, 9, 0);
+      final dates = occurrenceDatesInRange(
+        anchor,
+        r,
+        DateTime(2026, 1, 1),
+        DateTime(2026, 5, 31),
+      );
+      // Январь(31), Март(31), Май(31) есть; Февраль/Апрель пропущены.
+      expect(dates, [
+        DateTime(2026, 1, 31),
+        DateTime(2026, 3, 31),
+        DateTime(2026, 5, 31),
+      ]);
+    });
+
+    test('monthly UNTIL + EXDATE within range', () {
+      final r = RecurrenceRule.parse(
+          'FREQ=MONTHLY;BYMONTHDAY=15;UNTIL=2026-09-15;EXDATE=20260715')!;
+      final anchor = DateTime(2026, 6, 15, 9, 0);
+      final dates = occurrenceDatesInRange(
+        anchor,
+        r,
+        DateTime(2026, 6, 1),
+        DateTime(2026, 12, 31),
+      );
+      // Июнь(15), [Июль исключён EXDATE], Август(15), Сентябрь(15 = UNTIL).
+      expect(dates, [
+        DateTime(2026, 6, 15),
+        DateTime(2026, 8, 15),
+        DateTime(2026, 9, 15),
+      ]);
+    });
+
+    test('monthlyRule helper builds expected string', () {
+      expect(monthlyRule(monthDay: 1).toRuleString(),
+          'FREQ=MONTHLY;BYMONTHDAY=1');
+    });
+  });
+
+  group('DAILY backward compatibility', () {
+    test('legacy FREQ=DAILY still parses and behaves as before', () {
+      final r = RecurrenceRule.parse('FREQ=DAILY')!;
+      expect(r.freq, RecurFreq.daily);
+      final anchor = DateTime(2026, 6, 22, 9, 0);
+      expect(occursOn(r, anchor, DateTime(2026, 6, 22)), isTrue);
+      expect(occursOn(r, anchor, DateTime(2026, 6, 23)), isTrue);
+      expect(occursOn(r, anchor, DateTime(2026, 6, 21)), isFalse);
+      expect(r.toRuleString(), 'FREQ=DAILY');
+    });
+
+    test('dailyRule helper', () {
+      expect(dailyRule().toRuleString(), 'FREQ=DAILY');
+      expect(dailyRule(until: DateTime(2026, 7, 1)).toRuleString(),
+          'FREQ=DAILY;UNTIL=2026-07-01');
     });
   });
 
