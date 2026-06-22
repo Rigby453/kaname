@@ -17,6 +17,8 @@ import 'package:app/features/diary/diary_screen.dart';
 import 'package:app/features/food/food_screen.dart';
 import 'package:app/features/health/health_screen.dart';
 import 'package:app/features/plan/plan_screen.dart';
+import 'package:app/features/plan/widgets/plan_providers.dart'
+    show PlanLayout, PlanLayoutNotifier, planLayoutProvider;
 import 'package:app/features/plan/widgets/week_strip.dart' show selectedDayProvider;
 import 'package:app/features/today/today_screen.dart';
 import 'package:drift/native.dart';
@@ -95,6 +97,13 @@ class _OverflowHarness {
       ),
     );
   }
+}
+
+/// Тестовый нотифер раскладки: всегда стартует в grid (без SharedPreferences).
+/// Нужен, чтобы тумблер раскладки в тулбаре отрисовался в grid-состоянии.
+class _GridLayoutNotifier extends PlanLayoutNotifier {
+  @override
+  PlanLayout build() => PlanLayout.grid;
 }
 
 /// Размонтирует дерево и прокачивает один кадр, чтобы Drift-таймеры
@@ -185,8 +194,9 @@ void main() {
       await _unmount(tester);
     });
 
-    // Худший случай тулбара: выбран НЕ сегодня → видна кнопка «Today» вдобавок
-    // к дате, поиску и overflow-меню. Проверяем, что всё помещается на 320px.
+    // Худший случай тулбара (строка 2): выбран НЕ сегодня → видна кнопка «Today»
+    // вдобавок к дате, поиску и overflow-меню. Двухстрочный тулбар должен
+    // помещаться на 320px без переполнения.
     testWidgets('narrow 320px with non-today (Today button visible): no overflow',
         (tester) async {
       await _setSize(tester, _narrowSize);
@@ -195,6 +205,23 @@ void main() {
         harness.build(
           const PlanScreen(),
           extraOverrides: [selectedDayProvider.overrideWith((ref) => past)],
+        ),
+      );
+      await _settle(tester);
+      await _unmount(tester);
+    });
+
+    // Вариант с раскладкой grid: тумблер раскладки в строке 1 в grid-состоянии.
+    // Проверяем, что первая строка (сегмент + тумблер) помещается на 320px.
+    testWidgets('narrow 320px grid layout (toggle in grid state): no overflow',
+        (tester) async {
+      await _setSize(tester, _narrowSize);
+      await tester.pumpWidget(
+        harness.build(
+          const PlanScreen(),
+          extraOverrides: [
+            planLayoutProvider.overrideWith(() => _GridLayoutNotifier()),
+          ],
         ),
       );
       await _settle(tester);
