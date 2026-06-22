@@ -393,15 +393,28 @@ class _DayCell extends StatelessWidget {
                 ? Border.all(color: colorScheme.primary, width: 1.0)
                 : null,
           ),
+          // mainAxisSize.min + Flexible/FittedBox: при крупном тексте (scale 1.5+)
+          // число дня масштабируется внутрь фиксированной 40px-окружности, а не
+          // выталкивает колонку за её пределы (иначе RenderFlex overflow).
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                '${day.day}',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: textColor,
-                  fontWeight:
-                      isSelected || isToday ? FontWeight.w700 : FontWeight.w400,
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${day.day}',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: textColor,
+                      fontWeight: isSelected || isToday
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 2),
