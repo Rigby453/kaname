@@ -1,6 +1,7 @@
-// Экран Screen Time — ежедневные лимиты для отвлекающих категорий приложений.
-// Хранение: SharedPreferences, ключ 'screen_time_limits' (JSON).
-// Нет интеграции с платформой — только пользовательские лимиты.
+// Экран Screen Time — ежедневные лимиты + реальный трекинг использования (Android).
+// Лимиты: SharedPreferences, ключ 'screen_time_limits' (JSON).
+// Использование: плагин usage_stats (спец-разрешение PACKAGE_USAGE_STATS),
+//   агрегируется по категориям. Блокировки приложений НЕТ — только предупреждения.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import 'screen_time_provider.dart';
+import 'screen_time_usage_provider.dart';
 
 /// Иконки для категорий — нейтральные (textMuted), не accent (03-components §1).
 const _categoryIcons = <String, IconData>{
@@ -18,21 +20,61 @@ const _categoryIcons = <String, IconData>{
   'messaging': Icons.chat_bubble_outline,
 };
 
-class ScreenTimeScreen extends ConsumerWidget {
+class ScreenTimeScreen extends ConsumerStatefulWidget {
   const ScreenTimeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ScreenTimeScreen> createState() => _ScreenTimeScreenState();
+}
+
+class _ScreenTimeScreenState extends ConsumerState<ScreenTimeScreen>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Возврат из системных настроек (после выдачи разрешения) → перепроверяем.
+    if (state == AppLifecycleState.resumed) {
+      ref.read(screenTimeUsageProvider.notifier).refresh();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final limits = ref.watch(screenTimeLimitsProvider);
+    final usage = ref.watch(screenTimeUsageProvider);
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     return Scaffold(
-      appBar: AppBar(title: Text(context.s('screentime.title'))),
-      body: ListView(
-        // 24dp screen margin — spec §4.1
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
-        children: [
+      appBar: AppBar(
+        title: Text(context.s('screentime.title')),
+        actions: [
+          IconButton(
+            tooltip: context.s('screentime.refresh'),
+            icon: const Icon(Icons.refresh),
+            onPressed: () =>
+                ref.read(screenTimeUsageProvider.notifier).refresh(),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(screenTimeUsageProvider.notifier).refresh(),
+        child: ListView(
+          // 24dp screen margin — spec §4.1
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
+          children: [
           // Заголовок экрана — headlineMedium, display font (серифный), 32sp w700
           Text(
             context.s('screentime.title'),
@@ -68,34 +110,10 @@ class ScreenTimeScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
-          // --- Section 2: Usage data (stub) ---
+          // --- Section 2: Usage data (real, Android) ---
           Text(context.s('screentime.usage_data'), style: textTheme.titleMedium),
           const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Иконка — textFaint (третичная, информационная)
-                  Icon(
-                    Icons.info_outline,
-                    color: ext.textFaint,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      context.s('screentime.usage_coming_soon'),
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: ext.textMuted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _UsageSection(usage: usage, limits: limits),
 
           const SizedBox(height: 24),
 
@@ -134,6 +152,218 @@ class ScreenTimeScreen extends ConsumerWidget {
           ),
 
           const SizedBox(height: 24),
+        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Секция реального использования: состояние разрешения / гранта / over-limit.
+/// Иконки нейтральные (textMuted); ember только для over-limit (§1 ACCENT DISCIPLINE).
+class _UsageSection extends ConsumerWidget {
+  const _UsageSection({required this.usage, required this.limits});
+
+  final ScreenTimeUsageState usage;
+  final Map<String, int> limits;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // 1) Нет разрешения → карточка с объяснением и кнопкой «Дать доступ».
+    if (!usage.isGranted) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.insights_outlined, color: ext.textMuted, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      context.s('screentime.grant_access_title'),
+                      style: textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                context.s('screentime.grant_access_body'),
+                style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () async {
+                  await ref
+                      .read(screenTimeUsageProvider.notifier)
+                      .requestPermission();
+                  // Перепроверка также произойдёт по resume, но дублируем явно.
+                  await ref.read(screenTimeUsageProvider.notifier).refresh();
+                },
+                child: Text(context.s('screentime.grant_access_btn')),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 2) Ошибка чтения данных.
+    if (usage.hasError) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.error_outline, color: ext.ember, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  context.s('screentime.usage_error'),
+                  style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 3) Разрешение есть. Если совсем нет данных — мягкий пустой стейт.
+    final totalUsed =
+        usage.usedMinutes.values.fold<int>(0, (a, b) => a + b);
+    if (totalUsed == 0 && !usage.isLoading) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.check_circle_outline, color: ext.textMuted, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  context.s('screentime.no_usage_yet'),
+                  style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 4) Список категорий с прогрессом / over-limit.
+    return Card(
+      child: Column(
+        children: screenTimeCategories.entries
+            .map(
+              (entry) => _UsageTile(
+                categoryKey: entry.key,
+                categoryName: entry.value,
+                icon: _categoryIcons[entry.key] ?? Icons.apps_outlined,
+                usedMinutes: usage.usedMinutes[entry.key] ?? 0,
+                limitMinutes: limits[entry.key] ?? 0,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+/// Плитка использования одной категории: «used X / limit Y», прогресс-бар,
+/// индикатор превышения (ember + «over by N» / «limit reached»).
+class _UsageTile extends StatelessWidget {
+  const _UsageTile({
+    required this.categoryKey,
+    required this.categoryName,
+    required this.icon,
+    required this.usedMinutes,
+    required this.limitMinutes,
+  });
+
+  final String categoryKey;
+  final String categoryName;
+  final IconData icon;
+  final int usedMinutes;
+  final int limitMinutes;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final primary = Theme.of(context).colorScheme.primary;
+
+    final hasLimit = limitMinutes > 0;
+    final isOver = hasLimit && usedMinutes >= limitMinutes;
+    final overBy = usedMinutes - limitMinutes;
+
+    // Прогресс: used/limit, ограничен [0..1]. Без лимита — индикатор не показываем.
+    final double? progress = hasLimit
+        ? (usedMinutes / limitMinutes).clamp(0.0, 1.0).toDouble()
+        : null;
+
+    // Подпись: «used X / limit Y min» или просто «used X min» без лимита.
+    final usedLabel = '${context.s('screentime.used_today')}: '
+        '$usedMinutes ${context.s('screentime.min_per_day')}';
+    final subtitle = hasLimit
+        ? '$usedMinutes / $limitMinutes ${context.s('screentime.min_per_day')}'
+        : usedLabel;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: isOver ? ext.ember : ext.textMuted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(categoryName, style: textTheme.bodyLarge),
+              ),
+              Text(
+                subtitle,
+                style: textTheme.bodySmall?.copyWith(
+                  color: isOver ? ext.ember : ext.textMuted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          if (hasLimit) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: ext.border,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  isOver ? ext.ember : primary,
+                ),
+              ),
+            ),
+            if (isOver) ...[
+              const SizedBox(height: 6),
+              Text(
+                overBy > 0
+                    ? '${context.s('screentime.over_limit')} '
+                        '$overBy ${context.s('screentime.min_per_day')}'
+                    : context.s('screentime.limit_reached'),
+                style: textTheme.bodySmall?.copyWith(color: ext.ember),
+              ),
+            ],
+          ],
         ],
       ),
     );

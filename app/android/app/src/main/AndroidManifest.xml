@@ -1,6 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Локальные уведомления (напоминания о разборе). Android 13+ требует runtime-разрешение. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Доступ к статистике использования (Screen Time, реальный трекинг). Спец-разрешение,
+         выдаётся пользователем в системных настройках «Доступ к данным об использовании». -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions"/>
     <!-- Голосовой ввод еды (speech_to_text, SPEC C5) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- Сканер штрихкодов и фото еды (mobile_scanner / image_picker) -->
