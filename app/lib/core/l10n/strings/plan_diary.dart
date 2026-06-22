@@ -1423,4 +1423,32 @@ const Map<String, Map<String, String>> planDiaryStrings = {
     'ja': 'AIインサイト',
     'ko': 'AI 인사이트',
   },
+
+  // Plan — тумблер раскладки (список ↔ сетка времени)
+  'plan.layout_grid_tooltip': {
+    'en': 'Calendar grid',
+    'ru': 'Сетка-календарь',
+    'de': 'Kalenderraster',
+    'fr': 'Grille calendrier',
+    'it': 'Griglia calendario',
+    'pt': 'Grade do calendário',
+    'es': 'Cuadrícula de calendario',
+    'id': 'Kisi kalender',
+    'hi': 'कैलेंडर ग्रिड',
+    'ja': 'カレンダー表示',
+    'ko': '캘린더 그리드',
+  },
+  'plan.layout_list_tooltip': {
+    'en': 'List view',
+    'ru': 'Список',
+    'de': 'Listenansicht',
+    'fr': 'Vue liste',
+    'it': 'Vista elenco',
+    'pt': 'Visualização em lista',
+    'es': 'Vista de lista',
+    'id': 'Tampilan daftar',
+    'hi': 'सूची दृश्य',
+    'ja': 'リスト表示',
+    'ko': '목록 보기',
+  },
 };

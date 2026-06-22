@@ -20,6 +20,7 @@ import 'widgets/day_timeline.dart';
 import 'widgets/month_view.dart';
 import 'widgets/pinned_exam_card.dart';
 import 'widgets/plan_providers.dart';
+import 'widgets/time_grid.dart';
 import 'widgets/week_agenda.dart';
 import 'widgets/week_strip.dart';
 
@@ -63,6 +64,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final selectedDay = ref.watch(selectedDayProvider);
     final view = ref.watch(planViewProvider);
     final searchVisible = ref.watch(planSearchVisibleProvider);
+    final layout = ref.watch(planLayoutProvider);
 
     final isTablet = MediaQuery.sizeOf(context).width >= Breakpoints.tablet;
     // На планшете — две колонки прокручиваются независимо; CollapsingFab
@@ -87,8 +89,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               label: Text(context.s('today.fab_add')),
             ),
       body: isTablet
-          ? _buildTabletLayout(context, selectedDay, view, searchVisible)
-          : _buildMobileLayout(context, selectedDay, view, searchVisible),
+          ? _buildTabletLayout(context, selectedDay, view, searchVisible, layout)
+          : _buildMobileLayout(context, selectedDay, view, searchVisible, layout),
     );
   }
 
@@ -98,14 +100,15 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     DateTime selectedDay,
     PlanView view,
     bool searchVisible,
+    PlanLayout layout,
   ) {
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final border = ext?.border ?? Theme.of(context).colorScheme.outline;
 
     return Column(
       children: [
-        // Переключатель вида + поиск + импорт
-        _buildToolbar(context, selectedDay, view, searchVisible),
+        // Переключатель вида + раскладка + поиск + импорт
+        _buildToolbar(context, selectedDay, view, searchVisible, layout),
         // Строка поиска (разворачивается при searchVisible в режиме Day)
         if (view == PlanView.day && searchVisible)
           Padding(
@@ -118,7 +121,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ),
         // Тонкий разделитель (hairline 0.5dp, убираем лишнюю высоту)
         Divider(height: 0.5, thickness: 0.5, color: border),
-        Expanded(child: _bodyContent(view)),
+        Expanded(child: _bodyContent(view, layout)),
       ],
     );
   }
@@ -131,6 +134,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     DateTime selectedDay,
     PlanView view,
     bool searchVisible,
+    PlanLayout layout,
   ) {
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final border = ext?.border ?? Theme.of(context).colorScheme.outline;
@@ -161,6 +165,14 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                   onSelectionChanged: (s) =>
                       ref.read(planViewProvider.notifier).state = s.first,
                 ),
+                // Тумблер раскладки (список ↔ сетка времени) — только Day/Week
+                if (view != PlanView.month) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _LayoutToggleButton(layout: layout),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 // Выбор даты + Today
                 Row(
@@ -270,7 +282,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         // --- Правая колонка: содержимое ---
         Expanded(
           flex: 2,
-          child: _bodyContentTablet(view),
+          child: _bodyContentTablet(view, layout),
         ),
       ],
     );
@@ -282,6 +294,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     DateTime selectedDay,
     PlanView view,
     bool searchVisible,
+    PlanLayout layout,
   ) {
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
@@ -363,6 +376,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               ),
             ),
           ),
+          // Тумблер раскладки (список ↔ сетка времени) — только Day/Week.
+          // Контекстно важен → встроен inline, но компактный (одна иконка).
+          if (view != PlanView.month) _LayoutToggleButton(layout: layout),
           // Иконка поиска (только в режиме Day) — нейтральный цвет
           if (view == PlanView.day)
             IconButton(
@@ -423,9 +439,12 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   }
 
   /// Содержимое тела в mobile (с WeekStrip внутри для Day/Week).
-  Widget _bodyContent(PlanView view) {
+  /// При [layout] == grid в режимах Day/Week показываем сетку времени
+  /// (Google-Calendar-стиль) вместо списка; Month всегда календарь.
+  Widget _bodyContent(PlanView view, PlanLayout layout) {
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final border = ext?.border ?? Theme.of(context).colorScheme.outline;
+    final isGrid = layout == PlanLayout.grid;
 
     switch (view) {
       case PlanView.month:
@@ -438,7 +457,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
             Divider(height: 0.5, thickness: 0.5, color: border),
             // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
             const PinnedExamCard(),
-            const Expanded(child: WeekAgenda()),
+            Expanded(
+              child: isGrid ? const WeekTimeGrid() : const WeekAgenda(),
+            ),
           ],
         );
       case PlanView.day:
@@ -448,16 +469,19 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
             Divider(height: 0.5, thickness: 0.5, color: border),
             // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
             const PinnedExamCard(),
-            const Expanded(child: DayTimeline()),
+            Expanded(
+              child: isGrid ? const DayTimeGrid() : const DayTimeline(),
+            ),
           ],
         );
     }
   }
 
   /// Содержимое правой колонки на планшете (без WeekStrip — он в левой колонке).
-  Widget _bodyContentTablet(PlanView view) {
+  Widget _bodyContentTablet(PlanView view, PlanLayout layout) {
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final border = ext?.border ?? Theme.of(context).colorScheme.outline;
+    final isGrid = layout == PlanLayout.grid;
 
     switch (view) {
       case PlanView.month:
@@ -468,7 +492,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
             Divider(height: 0.5, thickness: 0.5, color: border),
             // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
             const PinnedExamCard(),
-            const Expanded(child: WeekAgenda()),
+            Expanded(
+              child: isGrid ? const WeekTimeGrid() : const WeekAgenda(),
+            ),
           ],
         );
       case PlanView.day:
@@ -477,10 +503,40 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
             Divider(height: 0.5, thickness: 0.5, color: border),
             // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
             const PinnedExamCard(),
-            const Expanded(child: DayTimeline()),
+            Expanded(
+              child: isGrid ? const DayTimeGrid() : const DayTimeline(),
+            ),
           ],
         );
     }
+  }
+}
+
+/// Компактный тумблер раскладки Day/Week: список ↔ сетка времени.
+/// Нейтральный цвет (accent discipline), с тултипом. Персистирует выбор.
+class _LayoutToggleButton extends ConsumerWidget {
+  const _LayoutToggleButton({required this.layout});
+
+  final PlanLayout layout;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
+    final isGrid = layout == PlanLayout.grid;
+
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        // Показываем иконку ЦЕЛЕВОЙ раскладки (на что переключимся).
+        isGrid ? Icons.view_agenda_outlined : Icons.grid_on,
+        color: textMuted,
+      ),
+      tooltip: isGrid
+          ? context.s('plan.layout_list_tooltip')
+          : context.s('plan.layout_grid_tooltip'),
+      onPressed: () => ref.read(planLayoutProvider.notifier).toggle(),
+    );
   }
 }
 

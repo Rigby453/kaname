@@ -1,16 +1,55 @@
-// Провайдеры экрана Plan: режим вида (День/Неделя/Месяц) и реактивный
-// диапазон задач для месячного календаря.
+// Провайдеры экрана Plan: режим вида (День/Неделя/Месяц), раскладка
+// (список/сетка) и реактивный диапазон задач для месячного календаря.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
+import '../../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
 
 /// Режим отображения плана.
 enum PlanView { day, week, month }
 
+/// Раскладка Day/Week: список (текущее поведение) или сетка времени
+/// в стиле Google Calendar. Month всегда показывается как календарь.
+enum PlanLayout { list, grid }
+
 /// Текущий выбранный режим вида. По умолчанию — День (текущее поведение).
 final planViewProvider = StateProvider<PlanView>((ref) => PlanView.day);
+
+/// Ключ SharedPreferences для раскладки Day/Week.
+const _kPlanLayoutPrefsKey = 'plan_layout';
+
+/// Нотифер раскладки Day/Week: хранит выбор и персистирует его в
+/// SharedPreferences (паттерн идентичен ThemeNotifier/SwipeHintNotifier).
+class PlanLayoutNotifier extends Notifier<PlanLayout> {
+  @override
+  PlanLayout build() {
+    final saved = ref.read(sharedPreferencesProvider).getString(
+          _kPlanLayoutPrefsKey,
+        );
+    // По умолчанию — список (текущее поведение, не ломаем привычку).
+    return saved == 'grid' ? PlanLayout.grid : PlanLayout.list;
+  }
+
+  /// Переключить и сохранить раскладку.
+  Future<void> set(PlanLayout layout) async {
+    await ref.read(sharedPreferencesProvider).setString(
+          _kPlanLayoutPrefsKey,
+          layout == PlanLayout.grid ? 'grid' : 'list',
+        );
+    state = layout;
+  }
+
+  /// Удобный тумблер list ↔ grid.
+  Future<void> toggle() => set(
+        state == PlanLayout.grid ? PlanLayout.list : PlanLayout.grid,
+      );
+}
+
+/// Текущая раскладка Day/Week. По умолчанию — список; персистируется.
+final planLayoutProvider =
+    NotifierProvider<PlanLayoutNotifier, PlanLayout>(PlanLayoutNotifier.new);
 
 /// Задачи в диапазоне [from, to) реактивно. Ключ — запись (from, to)
 /// (записи в Dart 3 имеют value-equality, поэтому годятся как family-ключ).
