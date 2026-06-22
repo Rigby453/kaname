@@ -52,6 +52,12 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
   // Таймер обратного отсчёта (для фазы rest)
   int _restSecondsLeft = 0;
   Timer? _restTimer;
+  bool _restPaused = false; // отдых на паузе → отсчёт заморожен
+
+  // Границы регулировки времени отдыха (±15с)
+  static const int _restAdjustStep = 15;
+  static const int _restMinSeconds = 5;
+  static const int _restMaxSeconds = 600;
 
   // Упражнения — кешируем при первом получении
   List<WorkoutExercisesTableData>? _exercises;
@@ -147,6 +153,7 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
       _animateTransition(() {
         _phase = _TrainerPhase.rest;
         _restSecondsLeft = ex.restSeconds;
+        _restPaused = false; // новый отдых всегда стартует «играющим»
       });
       _startRestTimer();
     } else {
@@ -175,9 +182,12 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
   }
 
   /// Запустить обратный отсчёт отдыха.
+  /// Тик уважает паузу: пока _restPaused — отсчёт заморожен и автоперехода нет.
   void _startRestTimer() {
     _restTimer?.cancel();
     _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // На паузе ничего не делаем — отсчёт стоит, автоперехода нет
+      if (_restPaused) return;
       if (_restSecondsLeft <= 1) {
         _restTimer?.cancel();
         // Автоматический переход к следующему подходу
@@ -188,6 +198,29 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
       } else {
         setState(() => _restSecondsLeft--);
       }
+    });
+  }
+
+  /// Переключить паузу/возобновление обратного отсчёта отдыха.
+  void _toggleRestPause() {
+    if (_restPaused) {
+      // Возобновляем: снимаем паузу и перезапускаем тиканье
+      setState(() => _restPaused = false);
+      _startRestTimer();
+    } else {
+      // Пауза: останавливаем таймер, сохраняя оставшиеся секунды
+      _restTimer?.cancel();
+      setState(() => _restPaused = true);
+    }
+  }
+
+  /// Изменить текущее время отдыха на delta секунд (±15с), с клампом.
+  /// Регулировка не меняет состояние паузы: играющий остаётся играющим,
+  /// на паузе — на паузе (таймер не перезапускаем).
+  void _adjustRest(int delta) {
+    setState(() {
+      _restSecondsLeft =
+          (_restSecondsLeft + delta).clamp(_restMinSeconds, _restMaxSeconds);
     });
   }
 
@@ -410,8 +443,15 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     // Определяем цвет таймера: ember при ≤10с (срочно), иначе нейтральный textMuted
-    // ACCENT DISCIPLINE: отдых — нейтральный; ember только когда срочно
-    final timerColor = _restSecondsLeft <= 10 ? ext.ember : ext.textMuted;
+    // ACCENT DISCIPLINE: отдых — нейтральный; ember только когда срочно.
+    // На паузе отсчёт заморожен → нейтральный textMuted (не «срочный» ember).
+    final timerColor =
+        (!_restPaused && _restSecondsLeft <= 10) ? ext.ember : ext.textMuted;
+
+    // Заголовок: «Rest» или «Paused» — чтобы заморозка таймера была очевидна
+    final restLabel = _restPaused
+        ? context.s('workout.rest_paused')
+        : context.s('workout.rest_phase');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -419,20 +459,56 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Spacer(),
-          // «Rest» — titleLarge + textMuted (информационный заголовок)
-          Text(
-            context.s('workout.rest_phase'),
-            style: textTheme.titleLarge?.copyWith(color: ext.textMuted),
-            textAlign: TextAlign.center,
+          // «Rest» / «Paused» — titleLarge + textMuted (информационный заголовок).
+          // На паузе добавляем иконку паузы, чтобы заморозка читалась с первого взгляда.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_restPaused) ...[
+                Icon(Icons.pause, size: 20, color: ext.textMuted),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                restLabel,
+                style: textTheme.titleLarge?.copyWith(color: ext.textMuted),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          // Обратный отсчёт — displayLarge (56sp, display serif font)
-          // Это главный «дисплейный» элемент экрана
-          // Цвет: ember когда ≤10с (срочно), иначе текст по умолчанию
-          Text(
-            _mmss(_restSecondsLeft),
-            style: textTheme.displayLarge?.copyWith(color: timerColor),
-            textAlign: TextAlign.center,
+          // Ряд: −15с · обратный отсчёт · +15с.
+          // Кнопки ±15с — нейтральные IconButton (вторичные), отсчёт — дисплей.
+          // ACCENT DISCIPLINE: цветной только отсчёт (и то ember лишь когда срочно).
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: _restSecondsLeft <= _restMinSeconds
+                    ? null
+                    : () => _adjustRest(-_restAdjustStep),
+                icon: const Icon(Icons.remove),
+                color: ext.textMuted,
+                tooltip: context.s('workout.subtract_time'),
+              ),
+              const SizedBox(width: 8),
+              // Обратный отсчёт — displayLarge (56sp, display serif font).
+              // Главный «дисплейный» элемент экрана.
+              Text(
+                _mmss(_restSecondsLeft),
+                style: textTheme.displayLarge?.copyWith(color: timerColor),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _restSecondsLeft >= _restMaxSeconds
+                    ? null
+                    : () => _adjustRest(_restAdjustStep),
+                icon: const Icon(Icons.add),
+                color: ext.textMuted,
+                tooltip: context.s('workout.add_time'),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           // «Next: Exercise · Set N of M» — bodyMedium + textFaint
@@ -444,6 +520,18 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
             textAlign: TextAlign.center,
           ),
           const Spacer(),
+          // OutlinedButton — пауза/возобновление (вторичное действие, нейтральное).
+          // ACCENT DISCIPLINE: не первичное действие → не FilledButton/accent.
+          OutlinedButton.icon(
+            onPressed: _toggleRestPause,
+            icon: Icon(_restPaused ? Icons.play_arrow : Icons.pause),
+            label: Text(
+              _restPaused
+                  ? context.s('workout.resume_rest')
+                  : context.s('workout.pause_rest'),
+            ),
+          ),
+          const SizedBox(height: 12),
           // OutlinedButton — «Skip rest» (вторичное действие, не filled)
           // ACCENT DISCIPLINE: не первичное действие → не FilledButton
           OutlinedButton(
