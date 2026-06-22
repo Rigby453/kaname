@@ -12,6 +12,7 @@ import '../../../core/database/database.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/kai_loader.dart';
+import '../../today/task_colors.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import 'plan_providers.dart';
 import 'recurrence_providers.dart';
@@ -104,6 +105,9 @@ class _ItemCard extends StatelessWidget {
     // Иконка модуля (аффорданс) — textMuted, ненавязчиво
     final moduleIcon = _moduleLinkIcon(item.moduleLink, ext, colorScheme);
 
+    // Пользовательский цвет-метка задачи (null = нет).
+    final taskColor = taskColorFromKey(item.color);
+
     return InkWell(
       // Если задача привязана к модулю — тап открывает модуль.
       // Долгий тап — открывает лист редактирования (как обычно).
@@ -124,6 +128,19 @@ class _ItemCard extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // Цветная полоса-метка задачи (когда задан цвет). Для бесцветных —
+            // ничего не добавляем, текущий вид карточки не меняется.
+            if (taskColor != null) ...[
+              Container(
+                width: 4,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: taskColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
             // Время — bodySmall для метаданных (02-type-space §1)
             SizedBox(
               width: 44,

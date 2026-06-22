@@ -34,6 +34,7 @@ import '../../../core/utils/id.dart';
 import '../../../core/utils/nl_datetime.dart';
 import '../../plan/recurrence.dart';
 import '../../plan/widgets/recurrence_providers.dart';
+import '../task_colors.dart';
 import '../undo_provider.dart';
 
 const List<String> _types = ['task', 'event', 'exam', 'deadline'];
@@ -116,6 +117,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   late int _durationMinutes;
   // Ссылка на модуль: null = нет, или одно из значений moduleLink (локальное поле)
   String? _moduleLink;
+  // Цвет-метка задачи: null = нет, или ключ палитры из task_colors.dart (локальное поле)
+  String? _color;
 
   // --- Повтор (серия) ---
   // Включён ли ежедневный повтор для НОВОЙ задачи (None по умолчанию).
@@ -177,6 +180,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _scheduledAt = existing?.scheduledAt ?? _defaultScheduledAt();
     _durationMinutes = existing?.durationMinutes ?? 30;
     _moduleLink = existing?.moduleLink;
+    _color = existing?.color;
     // Инициализируем состояние повтора из существующего правила (режим
     // редактирования якоря серии). Для виртуального повтора и обычной задачи
     // контрол повтора не показываем, поэтому состояние остаётся дефолтным.
@@ -594,6 +598,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         scheduledAt: _scheduledAt,
         durationMinutes: _durationMinutes,
         isProtected: isProtected,
+        color: _color,
       );
     } else if (_isEditing) {
       // Обычное редактирование / редактирование якоря серии. Для якоря
@@ -616,6 +621,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           isProtected: Value(isProtected),
           recurrenceRule: ruleValue,
           moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
+          color: Value(_color), // локальное поле — не попадает в синк
           updatedAt: Value(now),
         ),
       );
@@ -634,6 +640,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           isProtected: Value(isProtected),
           recurrenceRule: Value(newRuleString),
           moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
+          color: Value(_color), // локальное поле — не попадает в синк
           createdAt: Value(now),
           updatedAt: Value(now),
         ),
@@ -1110,6 +1117,15 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 16),
 
+            // Цвет-метка задачи — палитра пресетов + «нет цвета».
+            Text(context.s('today.color_label'), style: textTheme.labelMedium),
+            const SizedBox(height: 8),
+            _ColorPicker(
+              value: _color,
+              onChanged: (v) => setState(() => _color = v),
+            ),
+            const SizedBox(height: 16),
+
             // Вложения (фото / видео)
             Row(
               children: [
@@ -1496,6 +1512,112 @@ class _ModuleLinkPicker extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Выбор цвета-метки задачи — Wrap из кружков-сватчей + опция «нет цвета».
+// Значение — ключ палитры (task_colors.dart) или null. Выбранный сватч
+// получает кольцо-обводку; «нет цвета» — перечёркнутый кружок.
+// ---------------------------------------------------------------------------
+
+class _ColorPicker extends StatelessWidget {
+  const _ColorPicker({
+    required this.value,
+    required this.onChanged,
+  });
+
+  /// Текущий ключ цвета или null (нет цвета).
+  final String? value;
+
+  /// null = снять цвет; иначе ключ выбранного пресета.
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final ringColor = scheme.onSurface;
+    final mutedColor = ext?.textMuted ?? scheme.onSurface.withAlpha(160);
+    final borderColor = ext?.border ?? scheme.outline;
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        // «Нет цвета» — перечёркнутый кружок, очищает выбор.
+        _ColorSwatch(
+          selected: value == null,
+          ringColor: ringColor,
+          tooltip: context.s('today.color_none'),
+          onTap: () => onChanged(null),
+          fill: Colors.transparent,
+          borderColor: borderColor,
+          child: Icon(
+            Icons.format_color_reset_outlined,
+            size: 18,
+            color: mutedColor,
+          ),
+        ),
+        for (final option in kTaskColors)
+          _ColorSwatch(
+            selected: value == option.key,
+            ringColor: ringColor,
+            tooltip: option.key,
+            onTap: () => onChanged(option.key),
+            fill: option.color,
+            borderColor: option.color,
+            child: value == option.key
+                ? const Icon(Icons.check, size: 18, color: Colors.white)
+                : null,
+          ),
+      ],
+    );
+  }
+}
+
+/// Один кружок-сватч палитры. Выбранный получает обводку-кольцо.
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({
+    required this.selected,
+    required this.ringColor,
+    required this.tooltip,
+    required this.onTap,
+    required this.fill,
+    required this.borderColor,
+    this.child,
+  });
+
+  final bool selected;
+  final Color ringColor;
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color fill;
+  final Color borderColor;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: fill,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? ringColor : borderColor,
+              width: selected ? 2.5 : 1,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: child,
+        ),
+      ),
     );
   }
 }

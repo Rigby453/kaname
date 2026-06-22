@@ -19,6 +19,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/kai_loader.dart';
+import '../../today/task_colors.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import 'day_timeline.dart' show dayItemsProvider;
 import 'plan_providers.dart';
@@ -171,6 +172,17 @@ const int _kDefaultScrollHour = 7; // прокрутка по умолчанию
   final accent = scheme.primary;
   final surfaceElevated = ext?.surfaceElevated ?? scheme.surface;
   final onSurface = scheme.onSurface;
+
+  // Пользовательский цвет-метка имеет приоритет над типом/приоритетом:
+  // полупрозрачная заливка + цветная рамка-полоса, текст остаётся читаемым.
+  final userColor = taskColorFromKey(item.color);
+  if (userColor != null) {
+    return (
+      bg: userColor.withValues(alpha: 0.16),
+      fg: onSurface,
+      border: userColor,
+    );
+  }
 
   if (item.type == 'exam' || item.type == 'deadline') {
     return (bg: ember.withValues(alpha: 0.16), fg: ember, border: ember);

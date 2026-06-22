@@ -27,6 +27,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/settings/swipe_hint_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../plan/widgets/recurrence_providers.dart';
+import '../task_colors.dart';
 import 'add_task_sheet.dart';
 
 class TaskList extends ConsumerStatefulWidget {
@@ -379,8 +380,10 @@ class _TaskCardState extends State<_TaskCard> {
     // Иконка модуля — отображается слева когда задача привязана к модулю
     final moduleIcon = _moduleLinkIcon(widget.item.moduleLink, ext, colorScheme);
 
-    return Pressable(
-      child: Card(
+    // Пользовательский цвет-метка задачи (null = нет).
+    final taskColor = taskColorFromKey(widget.item.color);
+
+    final card = Card(
         margin: const EdgeInsets.symmetric(vertical: 4),
         child: ListTile(
           // Если задача привязана к модулю — тап открывает модуль;
@@ -421,8 +424,28 @@ class _TaskCardState extends State<_TaskCard> {
           ),
           trailing: _trailing(context, colorScheme, ext, isDone),
         ),
-      ),
-    );
+      );
+
+    // Цветная полоса-метка слева на скруглённой карточке (когда задан цвет).
+    // Для бесцветных задач — карточка без изменений (не ломаем текущий вид).
+    final content = taskColor == null
+        ? card
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(16), // radius.md (Card shape)
+            child: Stack(
+              children: [
+                card,
+                Positioned(
+                  left: 0,
+                  top: 4,
+                  bottom: 4,
+                  child: Container(width: 4, color: taskColor),
+                ),
+              ],
+            ),
+          );
+
+    return Pressable(child: content);
   }
 
   /// Возвращает иконку модуля для данного значения moduleLink.

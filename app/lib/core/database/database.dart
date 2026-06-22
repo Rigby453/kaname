@@ -52,6 +52,11 @@ class ItemsTable extends Table {
   // 'meal:dinner' | 'sleep'. Локальное поле — НЕ синхронизируется с сервером.
   TextColumn get moduleLink => text().nullable()();
 
+  // Пользовательский цвет-метка задачи: ключ палитры из task_colors.dart
+  // (например 'tomato') или null = нет цвета. Локальная колонка
+  // (не синхронизируется), добавлено в schemaVersion 13. Аналогично moduleLink.
+  TextColumn get color => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -496,7 +501,7 @@ class AppDatabase extends _$AppDatabase {
   HabitsDao get habitsDao => HabitsDao(this);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -549,6 +554,10 @@ class AppDatabase extends _$AppDatabase {
           // v12: добавлена колонка module_link в items (локальная ссылка на модуль).
           if (from < 12) {
             await m.addColumn(itemsTable, itemsTable.moduleLink);
+          }
+          // v13: добавлена колонка color в items (локальный цвет-метка задачи).
+          if (from < 13) {
+            await m.addColumn(itemsTable, itemsTable.color);
           }
         },
       );

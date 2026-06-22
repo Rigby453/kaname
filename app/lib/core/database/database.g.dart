@@ -127,6 +127,15 @@ class $ItemsTableTable extends ItemsTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -162,6 +171,7 @@ class $ItemsTableTable extends ItemsTable
     isProtected,
     recurrenceRule,
     moduleLink,
+    color,
     createdAt,
     updatedAt,
   ];
@@ -262,6 +272,12 @@ class $ItemsTableTable extends ItemsTable
         moduleLink.isAcceptableOrUnknown(data['module_link']!, _moduleLinkMeta),
       );
     }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -331,6 +347,10 @@ class $ItemsTableTable extends ItemsTable
         DriftSqlType.string,
         data['${effectivePrefix}module_link'],
       ),
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -360,6 +380,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
   final bool isProtected;
   final String? recurrenceRule;
   final String? moduleLink;
+  final String? color;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ItemsTableData({
@@ -374,6 +395,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     required this.isProtected,
     this.recurrenceRule,
     this.moduleLink,
+    this.color,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -394,6 +416,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     }
     if (!nullToAbsent || moduleLink != null) {
       map['module_link'] = Variable<String>(moduleLink);
+    }
+    if (!nullToAbsent || color != null) {
+      map['color'] = Variable<String>(color);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -417,6 +442,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       moduleLink: moduleLink == null && nullToAbsent
           ? const Value.absent()
           : Value(moduleLink),
+      color: color == null && nullToAbsent
+          ? const Value.absent()
+          : Value(color),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -439,6 +467,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       isProtected: serializer.fromJson<bool>(json['isProtected']),
       recurrenceRule: serializer.fromJson<String?>(json['recurrenceRule']),
       moduleLink: serializer.fromJson<String?>(json['moduleLink']),
+      color: serializer.fromJson<String?>(json['color']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -458,6 +487,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       'isProtected': serializer.toJson<bool>(isProtected),
       'recurrenceRule': serializer.toJson<String?>(recurrenceRule),
       'moduleLink': serializer.toJson<String?>(moduleLink),
+      'color': serializer.toJson<String?>(color),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -475,6 +505,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     bool? isProtected,
     Value<String?> recurrenceRule = const Value.absent(),
     Value<String?> moduleLink = const Value.absent(),
+    Value<String?> color = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ItemsTableData(
@@ -491,6 +522,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
         ? recurrenceRule.value
         : this.recurrenceRule,
     moduleLink: moduleLink.present ? moduleLink.value : this.moduleLink,
+    color: color.present ? color.value : this.color,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -517,6 +549,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       moduleLink: data.moduleLink.present
           ? data.moduleLink.value
           : this.moduleLink,
+      color: data.color.present ? data.color.value : this.color,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -536,6 +569,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           ..write('isProtected: $isProtected, ')
           ..write('recurrenceRule: $recurrenceRule, ')
           ..write('moduleLink: $moduleLink, ')
+          ..write('color: $color, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -555,6 +589,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     isProtected,
     recurrenceRule,
     moduleLink,
+    color,
     createdAt,
     updatedAt,
   );
@@ -573,6 +608,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           other.isProtected == this.isProtected &&
           other.recurrenceRule == this.recurrenceRule &&
           other.moduleLink == this.moduleLink &&
+          other.color == this.color &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -589,6 +625,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
   final Value<bool> isProtected;
   final Value<String?> recurrenceRule;
   final Value<String?> moduleLink;
+  final Value<String?> color;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -604,6 +641,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     this.isProtected = const Value.absent(),
     this.recurrenceRule = const Value.absent(),
     this.moduleLink = const Value.absent(),
+    this.color = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -620,6 +658,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     this.isProtected = const Value.absent(),
     this.recurrenceRule = const Value.absent(),
     this.moduleLink = const Value.absent(),
+    this.color = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -642,6 +681,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     Expression<bool>? isProtected,
     Expression<String>? recurrenceRule,
     Expression<String>? moduleLink,
+    Expression<String>? color,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -658,6 +698,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
       if (isProtected != null) 'is_protected': isProtected,
       if (recurrenceRule != null) 'recurrence_rule': recurrenceRule,
       if (moduleLink != null) 'module_link': moduleLink,
+      if (color != null) 'color': color,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -676,6 +717,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     Value<bool>? isProtected,
     Value<String?>? recurrenceRule,
     Value<String?>? moduleLink,
+    Value<String?>? color,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -692,6 +734,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
       isProtected: isProtected ?? this.isProtected,
       recurrenceRule: recurrenceRule ?? this.recurrenceRule,
       moduleLink: moduleLink ?? this.moduleLink,
+      color: color ?? this.color,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -734,6 +777,9 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     if (moduleLink.present) {
       map['module_link'] = Variable<String>(moduleLink.value);
     }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -760,6 +806,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
           ..write('isProtected: $isProtected, ')
           ..write('recurrenceRule: $recurrenceRule, ')
           ..write('moduleLink: $moduleLink, ')
+          ..write('color: $color, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -7716,6 +7763,7 @@ typedef $$ItemsTableTableCreateCompanionBuilder =
       Value<bool> isProtected,
       Value<String?> recurrenceRule,
       Value<String?> moduleLink,
+      Value<String?> color,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -7733,6 +7781,7 @@ typedef $$ItemsTableTableUpdateCompanionBuilder =
       Value<bool> isProtected,
       Value<String?> recurrenceRule,
       Value<String?> moduleLink,
+      Value<String?> color,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -7799,6 +7848,11 @@ class $$ItemsTableTableFilterComposer
 
   ColumnFilters<String> get moduleLink => $composableBuilder(
     column: $table.moduleLink,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7877,6 +7931,11 @@ class $$ItemsTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7940,6 +7999,9 @@ class $$ItemsTableTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -7989,6 +8051,7 @@ class $$ItemsTableTableTableManager
                 Value<bool> isProtected = const Value.absent(),
                 Value<String?> recurrenceRule = const Value.absent(),
                 Value<String?> moduleLink = const Value.absent(),
+                Value<String?> color = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -8004,6 +8067,7 @@ class $$ItemsTableTableTableManager
                 isProtected: isProtected,
                 recurrenceRule: recurrenceRule,
                 moduleLink: moduleLink,
+                color: color,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -8021,6 +8085,7 @@ class $$ItemsTableTableTableManager
                 Value<bool> isProtected = const Value.absent(),
                 Value<String?> recurrenceRule = const Value.absent(),
                 Value<String?> moduleLink = const Value.absent(),
+                Value<String?> color = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -8036,6 +8101,7 @@ class $$ItemsTableTableTableManager
                 isProtected: isProtected,
                 recurrenceRule: recurrenceRule,
                 moduleLink: moduleLink,
+                color: color,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

@@ -311,6 +311,7 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
     DateTime? scheduledAt,
     int? durationMinutes,
     bool? isProtected,
+    String? color,
   }) async {
     final anchor = await getItemById(anchorId);
     if (anchor == null) return null;
@@ -344,6 +345,8 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
         // concrete-строка — НЕ серия.
         recurrenceRule: const Value(null),
         moduleLink: Value(anchor.moduleLink),
+        // Цвет: явный аргумент (правка) перекрывает значение якоря.
+        color: Value(color ?? anchor.color),
         createdAt: Value(now),
         updatedAt: Value(now),
       ),
