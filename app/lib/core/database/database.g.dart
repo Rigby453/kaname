@@ -116,6 +116,16 @@ class $ItemsTableTable extends ItemsTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _reminderMinutesBeforeMeta =
+      const VerificationMeta('reminderMinutesBefore');
+  @override
+  late final GeneratedColumn<int> reminderMinutesBefore = GeneratedColumn<int>(
+    'reminder_minutes_before',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _moduleLinkMeta = const VerificationMeta(
     'moduleLink',
   );
@@ -170,6 +180,7 @@ class $ItemsTableTable extends ItemsTable
     durationMinutes,
     isProtected,
     recurrenceRule,
+    reminderMinutesBefore,
     moduleLink,
     color,
     createdAt,
@@ -266,6 +277,15 @@ class $ItemsTableTable extends ItemsTable
         ),
       );
     }
+    if (data.containsKey('reminder_minutes_before')) {
+      context.handle(
+        _reminderMinutesBeforeMeta,
+        reminderMinutesBefore.isAcceptableOrUnknown(
+          data['reminder_minutes_before']!,
+          _reminderMinutesBeforeMeta,
+        ),
+      );
+    }
     if (data.containsKey('module_link')) {
       context.handle(
         _moduleLinkMeta,
@@ -343,6 +363,10 @@ class $ItemsTableTable extends ItemsTable
         DriftSqlType.string,
         data['${effectivePrefix}recurrence_rule'],
       ),
+      reminderMinutesBefore: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reminder_minutes_before'],
+      ),
       moduleLink: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}module_link'],
@@ -379,6 +403,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
   final int durationMinutes;
   final bool isProtected;
   final String? recurrenceRule;
+  final int? reminderMinutesBefore;
   final String? moduleLink;
   final String? color;
   final DateTime createdAt;
@@ -394,6 +419,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     required this.durationMinutes,
     required this.isProtected,
     this.recurrenceRule,
+    this.reminderMinutesBefore,
     this.moduleLink,
     this.color,
     required this.createdAt,
@@ -413,6 +439,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     map['is_protected'] = Variable<bool>(isProtected);
     if (!nullToAbsent || recurrenceRule != null) {
       map['recurrence_rule'] = Variable<String>(recurrenceRule);
+    }
+    if (!nullToAbsent || reminderMinutesBefore != null) {
+      map['reminder_minutes_before'] = Variable<int>(reminderMinutesBefore);
     }
     if (!nullToAbsent || moduleLink != null) {
       map['module_link'] = Variable<String>(moduleLink);
@@ -439,6 +468,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       recurrenceRule: recurrenceRule == null && nullToAbsent
           ? const Value.absent()
           : Value(recurrenceRule),
+      reminderMinutesBefore: reminderMinutesBefore == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reminderMinutesBefore),
       moduleLink: moduleLink == null && nullToAbsent
           ? const Value.absent()
           : Value(moduleLink),
@@ -466,6 +498,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       durationMinutes: serializer.fromJson<int>(json['durationMinutes']),
       isProtected: serializer.fromJson<bool>(json['isProtected']),
       recurrenceRule: serializer.fromJson<String?>(json['recurrenceRule']),
+      reminderMinutesBefore: serializer.fromJson<int?>(
+        json['reminderMinutesBefore'],
+      ),
       moduleLink: serializer.fromJson<String?>(json['moduleLink']),
       color: serializer.fromJson<String?>(json['color']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -486,6 +521,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       'durationMinutes': serializer.toJson<int>(durationMinutes),
       'isProtected': serializer.toJson<bool>(isProtected),
       'recurrenceRule': serializer.toJson<String?>(recurrenceRule),
+      'reminderMinutesBefore': serializer.toJson<int?>(reminderMinutesBefore),
       'moduleLink': serializer.toJson<String?>(moduleLink),
       'color': serializer.toJson<String?>(color),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -504,6 +540,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     int? durationMinutes,
     bool? isProtected,
     Value<String?> recurrenceRule = const Value.absent(),
+    Value<int?> reminderMinutesBefore = const Value.absent(),
     Value<String?> moduleLink = const Value.absent(),
     Value<String?> color = const Value.absent(),
     DateTime? createdAt,
@@ -521,6 +558,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     recurrenceRule: recurrenceRule.present
         ? recurrenceRule.value
         : this.recurrenceRule,
+    reminderMinutesBefore: reminderMinutesBefore.present
+        ? reminderMinutesBefore.value
+        : this.reminderMinutesBefore,
     moduleLink: moduleLink.present ? moduleLink.value : this.moduleLink,
     color: color.present ? color.value : this.color,
     createdAt: createdAt ?? this.createdAt,
@@ -546,6 +586,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       recurrenceRule: data.recurrenceRule.present
           ? data.recurrenceRule.value
           : this.recurrenceRule,
+      reminderMinutesBefore: data.reminderMinutesBefore.present
+          ? data.reminderMinutesBefore.value
+          : this.reminderMinutesBefore,
       moduleLink: data.moduleLink.present
           ? data.moduleLink.value
           : this.moduleLink,
@@ -568,6 +611,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           ..write('durationMinutes: $durationMinutes, ')
           ..write('isProtected: $isProtected, ')
           ..write('recurrenceRule: $recurrenceRule, ')
+          ..write('reminderMinutesBefore: $reminderMinutesBefore, ')
           ..write('moduleLink: $moduleLink, ')
           ..write('color: $color, ')
           ..write('createdAt: $createdAt, ')
@@ -588,6 +632,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     durationMinutes,
     isProtected,
     recurrenceRule,
+    reminderMinutesBefore,
     moduleLink,
     color,
     createdAt,
@@ -607,6 +652,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           other.durationMinutes == this.durationMinutes &&
           other.isProtected == this.isProtected &&
           other.recurrenceRule == this.recurrenceRule &&
+          other.reminderMinutesBefore == this.reminderMinutesBefore &&
           other.moduleLink == this.moduleLink &&
           other.color == this.color &&
           other.createdAt == this.createdAt &&
@@ -624,6 +670,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
   final Value<int> durationMinutes;
   final Value<bool> isProtected;
   final Value<String?> recurrenceRule;
+  final Value<int?> reminderMinutesBefore;
   final Value<String?> moduleLink;
   final Value<String?> color;
   final Value<DateTime> createdAt;
@@ -640,6 +687,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     this.durationMinutes = const Value.absent(),
     this.isProtected = const Value.absent(),
     this.recurrenceRule = const Value.absent(),
+    this.reminderMinutesBefore = const Value.absent(),
     this.moduleLink = const Value.absent(),
     this.color = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -657,6 +705,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     this.durationMinutes = const Value.absent(),
     this.isProtected = const Value.absent(),
     this.recurrenceRule = const Value.absent(),
+    this.reminderMinutesBefore = const Value.absent(),
     this.moduleLink = const Value.absent(),
     this.color = const Value.absent(),
     required DateTime createdAt,
@@ -680,6 +729,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     Expression<int>? durationMinutes,
     Expression<bool>? isProtected,
     Expression<String>? recurrenceRule,
+    Expression<int>? reminderMinutesBefore,
     Expression<String>? moduleLink,
     Expression<String>? color,
     Expression<DateTime>? createdAt,
@@ -697,6 +747,8 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
       if (durationMinutes != null) 'duration_minutes': durationMinutes,
       if (isProtected != null) 'is_protected': isProtected,
       if (recurrenceRule != null) 'recurrence_rule': recurrenceRule,
+      if (reminderMinutesBefore != null)
+        'reminder_minutes_before': reminderMinutesBefore,
       if (moduleLink != null) 'module_link': moduleLink,
       if (color != null) 'color': color,
       if (createdAt != null) 'created_at': createdAt,
@@ -716,6 +768,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     Value<int>? durationMinutes,
     Value<bool>? isProtected,
     Value<String?>? recurrenceRule,
+    Value<int?>? reminderMinutesBefore,
     Value<String?>? moduleLink,
     Value<String?>? color,
     Value<DateTime>? createdAt,
@@ -733,6 +786,8 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
       durationMinutes: durationMinutes ?? this.durationMinutes,
       isProtected: isProtected ?? this.isProtected,
       recurrenceRule: recurrenceRule ?? this.recurrenceRule,
+      reminderMinutesBefore:
+          reminderMinutesBefore ?? this.reminderMinutesBefore,
       moduleLink: moduleLink ?? this.moduleLink,
       color: color ?? this.color,
       createdAt: createdAt ?? this.createdAt,
@@ -774,6 +829,11 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     if (recurrenceRule.present) {
       map['recurrence_rule'] = Variable<String>(recurrenceRule.value);
     }
+    if (reminderMinutesBefore.present) {
+      map['reminder_minutes_before'] = Variable<int>(
+        reminderMinutesBefore.value,
+      );
+    }
     if (moduleLink.present) {
       map['module_link'] = Variable<String>(moduleLink.value);
     }
@@ -805,6 +865,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
           ..write('durationMinutes: $durationMinutes, ')
           ..write('isProtected: $isProtected, ')
           ..write('recurrenceRule: $recurrenceRule, ')
+          ..write('reminderMinutesBefore: $reminderMinutesBefore, ')
           ..write('moduleLink: $moduleLink, ')
           ..write('color: $color, ')
           ..write('createdAt: $createdAt, ')
@@ -8114,6 +8175,7 @@ typedef $$ItemsTableTableCreateCompanionBuilder =
       Value<int> durationMinutes,
       Value<bool> isProtected,
       Value<String?> recurrenceRule,
+      Value<int?> reminderMinutesBefore,
       Value<String?> moduleLink,
       Value<String?> color,
       required DateTime createdAt,
@@ -8132,6 +8194,7 @@ typedef $$ItemsTableTableUpdateCompanionBuilder =
       Value<int> durationMinutes,
       Value<bool> isProtected,
       Value<String?> recurrenceRule,
+      Value<int?> reminderMinutesBefore,
       Value<String?> moduleLink,
       Value<String?> color,
       Value<DateTime> createdAt,
@@ -8195,6 +8258,11 @@ class $$ItemsTableTableFilterComposer
 
   ColumnFilters<String> get recurrenceRule => $composableBuilder(
     column: $table.recurrenceRule,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reminderMinutesBefore => $composableBuilder(
+    column: $table.reminderMinutesBefore,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8278,6 +8346,11 @@ class $$ItemsTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get reminderMinutesBefore => $composableBuilder(
+    column: $table.reminderMinutesBefore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get moduleLink => $composableBuilder(
     column: $table.moduleLink,
     builder: (column) => ColumnOrderings(column),
@@ -8346,6 +8419,11 @@ class $$ItemsTableTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get reminderMinutesBefore => $composableBuilder(
+    column: $table.reminderMinutesBefore,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get moduleLink => $composableBuilder(
     column: $table.moduleLink,
     builder: (column) => column,
@@ -8402,6 +8480,7 @@ class $$ItemsTableTableTableManager
                 Value<int> durationMinutes = const Value.absent(),
                 Value<bool> isProtected = const Value.absent(),
                 Value<String?> recurrenceRule = const Value.absent(),
+                Value<int?> reminderMinutesBefore = const Value.absent(),
                 Value<String?> moduleLink = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -8418,6 +8497,7 @@ class $$ItemsTableTableTableManager
                 durationMinutes: durationMinutes,
                 isProtected: isProtected,
                 recurrenceRule: recurrenceRule,
+                reminderMinutesBefore: reminderMinutesBefore,
                 moduleLink: moduleLink,
                 color: color,
                 createdAt: createdAt,
@@ -8436,6 +8516,7 @@ class $$ItemsTableTableTableManager
                 Value<int> durationMinutes = const Value.absent(),
                 Value<bool> isProtected = const Value.absent(),
                 Value<String?> recurrenceRule = const Value.absent(),
+                Value<int?> reminderMinutesBefore = const Value.absent(),
                 Value<String?> moduleLink = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 required DateTime createdAt,
@@ -8452,6 +8533,7 @@ class $$ItemsTableTableTableManager
                 durationMinutes: durationMinutes,
                 isProtected: isProtected,
                 recurrenceRule: recurrenceRule,
+                reminderMinutesBefore: reminderMinutesBefore,
                 moduleLink: moduleLink,
                 color: color,
                 createdAt: createdAt,

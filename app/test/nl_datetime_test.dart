@@ -526,6 +526,70 @@ void main() {
     });
   });
 
+  group('Reminder → reminderMinutesBefore', () {
+    test('"собрание завтра 15:00 напомни за 30 мин" → when + reminder 30, title "собрание"', () {
+      final r = parseNaturalDateTime('собрание завтра 15:00 напомни за 30 мин', now);
+      expect(r.when, DateTime(2026, 6, 18, 15, 0));
+      expect(r.reminderMinutesBefore, 30);
+      expect(r.cleanedTitle, 'собрание');
+    });
+
+    test('"напомни за 10 мин" → 10', () {
+      final r = parseNaturalDateTime('звонок напомни за 10 мин', now);
+      expect(r.reminderMinutesBefore, 10);
+      expect(r.cleanedTitle, 'звонок');
+    });
+
+    test('"напоминание за 15 минут" → 15', () {
+      final r = parseNaturalDateTime('встреча напоминание за 15 минут', now);
+      expect(r.reminderMinutesBefore, 15);
+      expect(r.cleanedTitle, 'встреча');
+    });
+
+    test('"напоминание за 1 час" → 60', () {
+      final r = parseNaturalDateTime('экзамен напоминание за 1 час', now);
+      expect(r.reminderMinutesBefore, 60);
+      expect(r.cleanedTitle, 'экзамен');
+    });
+
+    test('"напомнить за 2 часа до" → 120', () {
+      final r = parseNaturalDateTime('дедлайн напомнить за 2 часа до', now);
+      expect(r.reminderMinutesBefore, 120);
+      expect(r.cleanedTitle, 'дедлайн');
+    });
+
+    test('EN "remind 10 min before" → 10', () {
+      final r = parseNaturalDateTime('call remind 10 min before', now);
+      expect(r.reminderMinutesBefore, 10);
+      expect(r.cleanedTitle, 'call');
+    });
+
+    test('EN "reminder 1h before" → 60', () {
+      final r = parseNaturalDateTime('meeting reminder 1h before', now);
+      expect(r.reminderMinutesBefore, 60);
+      expect(r.cleanedTitle, 'meeting');
+    });
+
+    test('negative: "напоминалка" не триггерит', () {
+      final r = parseNaturalDateTime('купить напоминалку', now);
+      expect(r.reminderMinutesBefore, isNull);
+    });
+
+    test('negative: plain "разминка 30 мин" → duration, NOT reminder', () {
+      // Без маркера «напомни» это длительность задачи, а не напоминание.
+      final r = parseNaturalDateTime('разминка 30 мин', now);
+      expect(r.reminderMinutesBefore, isNull);
+      expect(r.durationMinutes, 30);
+    });
+
+    test('reminder не съедает длительность: "тренировка 1ч напомни за 15 мин"', () {
+      final r = parseNaturalDateTime('тренировка 1ч напомни за 15 мин', now);
+      expect(r.durationMinutes, 60);
+      expect(r.reminderMinutesBefore, 15);
+      expect(r.cleanedTitle, 'тренировка');
+    });
+  });
+
   group('Backward-compat — new fields null when only time present', () {
     test('"Сдать лабу завтра 17:00" → duration/priority/recurrence null', () {
       final r = parseNaturalDateTime('Сдать лабу завтра 17:00', now);
@@ -533,6 +597,7 @@ void main() {
       expect(r.durationMinutes, isNull);
       expect(r.priority, isNull);
       expect(r.recurrenceRule, isNull);
+      expect(r.reminderMinutesBefore, isNull);
       expect(r.cleanedTitle, 'Сдать лабу');
     });
 

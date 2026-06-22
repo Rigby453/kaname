@@ -29,6 +29,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/settings/swipe_action_provider.dart';
 import '../../../core/settings/swipe_hint_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../services/notifications/notification_service.dart';
 import '../../plan/widgets/recurrence_providers.dart';
 import '../task_colors.dart';
 import 'add_task_sheet.dart';
@@ -295,6 +296,8 @@ class _TaskListState extends ConsumerState<TaskList>
       );
     } else {
       await dao.markDone(item.id);
+      // Выполненной задаче напоминание больше не нужно — снимаем.
+      await ref.read(notificationServiceProvider).cancelTaskReminder(item.id);
     }
     // §3.1: тост «задача выполнена» с кнопкой Undo (отмена завершения).
     if (context.mounted && targetId != null) {
@@ -324,6 +327,8 @@ class _TaskListState extends ConsumerState<TaskList>
       );
     } else {
       await dao.markSkipped(item.id);
+      // Пропущенной задаче напоминание больше не нужно — снимаем.
+      await ref.read(notificationServiceProvider).cancelTaskReminder(item.id);
     }
   }
 
@@ -376,6 +381,8 @@ class _TaskListState extends ConsumerState<TaskList>
     // Снимок строки для Undo (восстановление через re-insert).
     final snapshot = await dao.getItemById(deletedId);
     await dao.deleteItem(deletedId);
+    // Снимаем запланированное напоминание удалённой задачи (если было).
+    await ref.read(notificationServiceProvider).cancelTaskReminder(deletedId);
     // §3.3: тост «удалено» с кнопкой Undo.
     if (context.mounted) {
       showAppToast(

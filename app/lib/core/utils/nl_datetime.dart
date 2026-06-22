@@ -31,6 +31,7 @@ class NlDateTimeResult {
     this.durationMinutes,
     this.priority,
     this.recurrenceRule,
+    this.reminderMinutesBefore,
   });
 
   /// null — дата/время не распознаны.
@@ -47,6 +48,11 @@ class NlDateTimeResult {
 
   /// Строка правила повтора (см. recurrence.dart::toRuleString) или null.
   final String? recurrenceRule;
+
+  /// Напоминание за N минут до [when] («напомни за 10 мин») или null.
+  /// Час → 60 минут. Распознаётся только рядом со словом-маркером
+  /// «напомни/напоминание/remind/reminder» (защита от ложных срабатываний).
+  final int? reminderMinutesBefore;
 }
 
 /// Парсит временные/датовые фразы из [text] относительно [now].
@@ -85,6 +91,15 @@ NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
     working = _eraseSpans(working, [recur.span]);
   }
 
+  // Напоминание — ДО длительности: фраза «напомни за 10 мин» содержит «10 мин»,
+  // которую иначе перехватил бы _parseDuration как длительность задачи.
+  final reminder = _parseReminder(working);
+  int? reminderMinutesBefore;
+  if (reminder != null) {
+    reminderMinutesBefore = reminder.minutes;
+    working = _eraseSpans(working, [reminder.span]);
+  }
+
   final dur = _parseDuration(working);
   int? durationMinutes;
   if (dur != null) {
@@ -113,6 +128,7 @@ NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
     durationMinutes: durationMinutes,
     priority: priority,
     recurrenceRule: recurrenceRule,
+    reminderMinutesBefore: reminderMinutesBefore,
   );
 }
 
@@ -494,6 +510,62 @@ _DurationMatch? _parseDuration(String text) {
   }
 
   return null;
+}
+
+// --- Напоминание -----------------------------------------------------------
+
+class _ReminderMatch {
+  const _ReminderMatch(this.minutes, this.span);
+  final int minutes;
+  final _Span span;
+}
+
+/// Распознаёт «напомнить за N (минут/часов) до» и возвращает минуты + span.
+///
+/// Поддерживаемые формы (RU / EN):
+///   • «напомни за 10 мин», «напоминание за 15 минут», «напомнить за 30 мин до»,
+///     «напомни за 1 час», «напоминание за 2 часа до»;
+///   • EN «remind 10 min before», «reminder 1h before», «remind me 15 minutes before»,
+///     «remind in 30 min».
+///
+/// Час → 60 минут (множитель). Результат в диапазоне 1..1440 (сутки макс).
+///
+/// Защита от ложных срабатываний: ОБЯЗАТЕЛЕН маркер
+/// «напомни/напоминание/напомнить/remind/reminder» рядом с числом+единицей.
+/// Поэтому «напоминалка» (нет числа+единицы рядом) не триггерит,
+/// а «30 мин» без маркера трактуется как длительность, а не напоминание.
+_ReminderMatch? _parseReminder(String text) {
+  // Маркер ... [за|in] N (мин|минут|ч|час...|min|h|hour...) [до|before]
+  // Единственный регэксп ловит весь фрагмент от маркера до числа+единицы,
+  // включая необязательные «за»/«до» (RU) и «in»/«before»/«me» (EN).
+  final re = RegExp(
+    r'(?:напомни(?:ть|нание)?|напоминание|remind(?:er)?)'
+    r'(?:\s+me)?'
+    r'(?:\s+(?:за|in))?'
+    r'\s+(\d+)\s*'
+    r'(минут[аы]?|мин|час(?:а|ов|)|ч|minutes?|mins?|min|hours?|hrs?|h)'
+    r'(?![a-zа-яё])'
+    r'(?:\s+(?:до|before))?',
+    caseSensitive: false,
+    unicode: true,
+  );
+  final m = re.firstMatch(text);
+  if (m == null) return null;
+
+  final value = int.tryParse(m.group(1)!);
+  if (value == null || value <= 0) return null;
+
+  final unit = m.group(2)!.toLowerCase();
+  // Часовые единицы: ч / час / часа / часов / h / hour(s) / hr(s).
+  final isHours = unit == 'ч' ||
+      unit.startsWith('час') ||
+      unit == 'h' ||
+      unit.startsWith('hour') ||
+      unit.startsWith('hr');
+  final minutes = isHours ? value * 60 : value;
+  if (minutes < 1 || minutes > 1440) return null;
+
+  return _ReminderMatch(minutes, _Span(m.start, m.end));
 }
 
 // --- Приоритет -------------------------------------------------------------

@@ -197,6 +197,72 @@ class NotificationService {
       await _plugin.cancel(id: id);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Напоминания перед задачей (reminder_minutes_before)
+  // ---------------------------------------------------------------------------
+
+  static const _taskDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'kaizen_tasks',
+      'Task reminders',
+      channelDescription: 'Reminders before a scheduled task',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+  );
+
+  /// Стабильный положительный int-id уведомления из UUID задачи [itemId].
+  /// Один и тот же itemId всегда даёт один id — поэтому повторное планирование
+  /// перетирает прежнее, а cancelTaskReminder гарантированно его отменяет.
+  /// Диапазон смещён от системных id (review/posture) добавлением базы.
+  static int taskReminderId(String itemId) {
+    // FNV-1a 32-бит → положительный диапазон [1_000_000, ~1_004M].
+    var hash = 0x811c9dc5;
+    for (final code in itemId.codeUnits) {
+      hash ^= code;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return 1000000 + (hash % 1000000000);
+  }
+
+  /// Планирует одноразовое локальное уведомление-напоминание для задачи [itemId]
+  /// на момент [fireAt] (абсолютное локальное время, обычно scheduledAt − N мин).
+  /// Сначала отменяет прежнее напоминание этой задачи (id стабилен по itemId).
+  /// Если [fireAt] в прошлом — ничего не планирует (и снимает старое).
+  /// Время интерпретируется в tz.local (уважает override таймзоны).
+  Future<void> scheduleTaskReminder(
+    String itemId,
+    String title,
+    DateTime fireAt,
+  ) async {
+    if (kIsWeb) return;
+    await init();
+    final id = taskReminderId(itemId);
+    // Всегда снимаем прежнее напоминание этой задачи перед перепланированием.
+    await _plugin.cancel(id: id);
+
+    final scheduled = tz.TZDateTime.from(fireAt, tz.local);
+    final nowTz = tz.TZDateTime.now(tz.local);
+    if (!scheduled.isAfter(nowTz)) return; // в прошлом — не планируем
+
+    await _plugin.zonedSchedule(
+      id: id,
+      title: title.isEmpty ? 'Reminder' : title,
+      body: 'Starts soon — get ready.',
+      scheduledDate: scheduled,
+      notificationDetails: _taskDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+  }
+
+  /// Отменяет напоминание задачи [itemId] (id стабилен по itemId).
+  Future<void> cancelTaskReminder(String itemId) async {
+    if (kIsWeb) return;
+    await init();
+    await _plugin.cancel(id: taskReminderId(itemId));
+  }
 }
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {

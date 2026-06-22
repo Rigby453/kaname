@@ -32,6 +32,7 @@ import '../../../core/settings/recent_subjects.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/id.dart';
 import '../../../core/utils/nl_datetime.dart';
+import '../../../services/notifications/notification_service.dart';
 import '../../plan/recurrence.dart';
 import '../../plan/widgets/recurrence_providers.dart';
 import '../task_colors.dart';
@@ -41,6 +42,24 @@ const List<String> _types = ['task', 'event', 'exam', 'deadline'];
 const List<String> _priorities = ['low', 'medium', 'high', 'main'];
 const List<int> _durations = [15, 30, 45, 60, 90, 120];
 const int _maxMainPerDay = 3;
+
+/// Пресеты напоминания перед задачей (минут до scheduledAt).
+/// 0 = «в момент» (за 0 минут). Вариант «Нет» = _reminderMinutesBefore == null.
+const List<int> _reminderPresets = [0, 5, 10, 15, 30, 60];
+
+/// Человекочитаемая метка напоминания: null→«Нет», 0→«в момент», 60→«1ч».
+String _reminderLabel(BuildContext context, int? minutes) {
+  if (minutes == null) return context.s('today.reminder_none');
+  if (minutes == 0) return context.s('today.reminder_at_time');
+  if (minutes >= 60 && minutes % 60 == 0) {
+    return context
+        .s('today.reminder_h_before')
+        .replaceAll('{n}', '${minutes ~/ 60}');
+  }
+  return context
+      .s('today.reminder_min_before')
+      .replaceAll('{n}', '$minutes');
+}
 
 /// Человекочитаемая длительность: 45 → "45m", 90 → "1h 30m".
 String _durationLabel(int minutes) {
@@ -182,6 +201,11 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   bool _userPickedDuration = false;
   bool _userPickedPriority = false;
   bool _userPickedRepeat = false;
+  bool _userPickedReminder = false;
+
+  // Напоминание перед задачей: null = нет; 0 = в момент; >0 = за N минут до
+  // scheduledAt. Авто-подставляется парсером до ручного выбора (_userPickedReminder).
+  int? _reminderMinutesBefore;
 
   // --- Voice input ---
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -200,6 +224,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _durationMinutes = existing?.durationMinutes ?? 30;
     _moduleLink = existing?.moduleLink;
     _color = existing?.color;
+    _reminderMinutesBefore = existing?.reminderMinutesBefore;
     // Инициализируем состояние повтора из существующего правила (режим
     // редактирования якоря серии). Для виртуального повтора и обычной задачи
     // контрол повтора не показываем, поэтому состояние остаётся дефолтным.
@@ -293,6 +318,11 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           _repeatMonthDay = rule.byMonthDay;
         });
       }
+    }
+
+    // --- Напоминание перед задачей ---
+    if (!_userPickedReminder && result.reminderMinutesBefore != null) {
+      setState(() => _reminderMinutesBefore = result.reminderMinutesBefore);
     }
   }
 
@@ -699,6 +729,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     // пустой выбор дней/числа => используем день недели/число даты задачи.
     final newRuleString = _buildRuleString();
 
+    // id сохранённой задачи — для планирования напоминания после записи в Drift.
+    String? savedItemId;
+
     if (_isVirtualOccurrence) {
       // Редактирование одного дня серии: материализуем его в реальную строку
       // с применёнными правками (анкер получает EXDATE на эту дату).
@@ -715,7 +748,18 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         isProtected: isProtected,
         color: _color,
       );
-      if (concreteId != null) await _persistSubtasks(concreteId);
+      if (concreteId != null) {
+        await _persistSubtasks(concreteId);
+        // materializeOccurrence не принимает reminder — проставляем отдельно.
+        await dao.updateItem(
+          concreteId,
+          ItemsTableCompanion(
+            reminderMinutesBefore: Value(_reminderMinutesBefore),
+            updatedAt: Value(now),
+          ),
+        );
+        savedItemId = concreteId;
+      }
     } else if (_isEditing) {
       // Обычное редактирование / редактирование якоря серии. Для якоря
       // сохраняем (возможно обновлённую через UNTIL) строку правила; для
@@ -736,12 +780,16 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           durationMinutes: Value(_durationMinutes),
           isProtected: Value(isProtected),
           recurrenceRule: ruleValue,
+          reminderMinutesBefore: Value(_reminderMinutesBefore),
           moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
           color: Value(_color), // локальное поле — не попадает в синк
           updatedAt: Value(now),
         ),
       );
       await _persistSubtasks(widget.existing!.id);
+      // Напоминание планируем только для НЕ-серийных задач (у якоря серии нет
+      // одного конкретного scheduledAt; повторы материализуются отдельно).
+      if (!_isSeriesAnchor) savedItemId = widget.existing!.id;
     } else {
       final newId = uuidV4();
       await dao.insertItem(
@@ -756,6 +804,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           durationMinutes: Value(_durationMinutes),
           isProtected: Value(isProtected),
           recurrenceRule: Value(newRuleString),
+          reminderMinutesBefore: Value(_reminderMinutesBefore),
           moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
           color: Value(_color), // локальное поле — не попадает в синк
           createdAt: Value(now),
@@ -765,9 +814,33 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       await _persistSubtasks(newId);
       // Записываем «добавлено» для одноуровневой отмены (кнопка ↩ на Today).
       ref.read(lastUndoableActionProvider.notifier).recordAdd(newId);
+      // Напоминание планируем только для не-серийной задачи (newRuleString==null).
+      if (newRuleString == null) savedItemId = newId;
+    }
+
+    // Планируем/отменяем локальное напоминание для сохранённой задачи.
+    if (savedItemId != null) {
+      await _applyReminder(savedItemId, title);
     }
 
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Планирует или отменяет локальное напоминание для задачи [itemId].
+  /// fireAt = scheduledAt − reminderMinutesBefore. Планируем, только если
+  /// напоминание задано (не null) и fireAt в будущем; иначе снимаем прежнее
+  /// (на случай, если пользователь убрал/сдвинул напоминание при редактировании).
+  Future<void> _applyReminder(String itemId, String title) async {
+    final service = ref.read(notificationServiceProvider);
+    final minutes = _reminderMinutesBefore;
+    if (minutes == null) {
+      await service.cancelTaskReminder(itemId);
+      return;
+    }
+    final fireAt = _scheduledAt.subtract(Duration(minutes: minutes));
+    // scheduleTaskReminder сам отменит прежнее и пропустит планирование,
+    // если fireAt уже в прошлом.
+    await service.scheduleTaskReminder(itemId, title, fireAt);
   }
 
   /// Сохраняет черновик подзадач в Drift, привязывая их к задаче [itemId].
@@ -898,6 +971,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (confirmed != true) return;
     final dao = ref.read(itemsDaoProvider);
     await dao.deleteItem(existing.id);
+    // Снимаем запланированное напоминание удаляемой задачи (если было).
+    await ref.read(notificationServiceProvider).cancelTaskReminder(existing.id);
     // Записываем «удалено» (полный снимок) для одноуровневой отмены кнопкой ↩.
     ref.read(lastUndoableActionProvider.notifier).recordDelete(existing);
     if (!mounted) return;
@@ -1195,6 +1270,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                     onPressed: _pickTime,
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Напоминание перед задачей (reminder_minutes_before).
+            // «Нет» / «в момент» / за 5 / 10 / 15 / 30 мин / 1 час.
+            Text(context.s('today.reminder_label'), style: textTheme.labelMedium),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  label: Text(context.s('today.reminder_none')),
+                  selected: _reminderMinutesBefore == null,
+                  onSelected: (_) => setState(() {
+                    _reminderMinutesBefore = null;
+                    _userPickedReminder = true;
+                  }),
+                ),
+                ..._reminderPresets.map((m) => ChoiceChip(
+                      label: Text(_reminderLabel(context, m)),
+                      selected: _reminderMinutesBefore == m,
+                      onSelected: (_) => setState(() {
+                        _reminderMinutesBefore = m;
+                        _userPickedReminder = true;
+                      }),
+                    )),
               ],
             ),
             const SizedBox(height: 16),

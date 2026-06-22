@@ -330,6 +330,7 @@ class SyncService {
       'duration_minutes': item.durationMinutes,
       'is_protected': item.isProtected,
       'recurrence_rule': item.recurrenceRule,
+      'reminder_minutes_before': item.reminderMinutesBefore,
       'created_at': item.createdAt.toUtc().toIso8601String(),
       'updated_at': item.updatedAt.toUtc().toIso8601String(),
     };
@@ -353,6 +354,7 @@ class SyncService {
       durationMinutes: Value((m['duration_minutes'] as int?) ?? 30),
       isProtected: Value((m['is_protected'] as bool?) ?? false),
       recurrenceRule: Value(m['recurrence_rule'] as String?),
+      reminderMinutesBefore: Value((m['reminder_minutes_before'] as num?)?.toInt()),
       createdAt: Value(DateTime.parse(m['created_at'] as String)),
       updatedAt: Value(DateTime.parse(m['updated_at'] as String)),
     );

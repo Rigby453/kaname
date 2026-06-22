@@ -48,6 +48,11 @@ class ItemsTable extends Table {
   // iCal RRULE, null = не повторяется
   TextColumn get recurrenceRule => text().nullable()();
 
+  // Напоминание перед задачей: за сколько минут до scheduledAt уведомить.
+  // null или 0 = нет напоминания; >0 = за N минут. Синхронизируется
+  // (snake_case reminder_minutes_before). Добавлено в schemaVersion 15.
+  IntColumn get reminderMinutesBefore => integer().nullable()();
+
   // Ссылка на модуль: null | 'workout' | 'meal:breakfast' | 'meal:lunch' |
   // 'meal:dinner' | 'sleep'. Локальное поле — НЕ синхронизируется с сервером.
   TextColumn get moduleLink => text().nullable()();
@@ -531,7 +536,7 @@ class AppDatabase extends _$AppDatabase {
   HabitsDao get habitsDao => HabitsDao(this);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -592,6 +597,11 @@ class AppDatabase extends _$AppDatabase {
           // v14: добавлена таблица subtasks (чеклист подзадач у задач).
           if (from < 14) {
             await m.createTable(subtasksTable);
+          }
+          // v15: добавлена колонка reminder_minutes_before в items
+          // (напоминание за N минут до scheduledAt).
+          if (from < 15) {
+            await m.addColumn(itemsTable, itemsTable.reminderMinutesBefore);
           }
         },
       );
