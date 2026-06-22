@@ -287,15 +287,19 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
     final textTheme = Theme.of(context).textTheme;
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = selectedDay == today;
+
     return Padding(
       // 24dp горизонтальный отступ экрана (02-type-space.md §4.1)
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Обёртка Flexible + SingleChildScrollView предотвращает overflow
-          // на узких экранах (~360px): сегменты прокручиваются горизонтально,
-          // но все три всегда доступны.
+          // Сегмент День/Неделя/Месяц — основной (primary) контрол.
+          // Flexible + horizontal scroll — последняя страховка: на самых узких
+          // экранах сегмент может ужаться, но overflow не возникнет. В обычном
+          // случае (320px+) всё помещается и без скролла.
           Flexible(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -312,89 +316,106 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               ),
             ),
           ),
-          // Правая группа: дата + поиск + иконки.
-          // Обёртка Flexible + SingleChildScrollView — на 320px эта группа
-          // не помещается по ширине; горизонтальный скролл предотвращает overflow
-          // (симметрично левой части с SegmentedButton).
+          // Правая группа компактна: всё иконизировано, текстовых меток нет.
+          // Today (только когда выбран не сегодня) + дата + поиск (Day) видны
+          // всегда; редкие действия (цели, импорт) — в overflow-меню «⋮».
+          // Кнопка «Today» — видна только когда выбран не сегодня
+          if (!isToday)
+            TextButton(
+              onPressed: () {
+                ref.read(selectedDayProvider.notifier).state = today;
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: Text(context.s('plan.today')),
+            ),
+          // Тап на дату открывает DatePicker.
+          // Flexible: на самых узких экранах с видимой кнопкой «Today» дата
+          // ужимается (ellipsis), а не вызывает overflow.
           Flexible(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Кнопка «Today» — видна только когда выбран не сегодня
-                  Builder(builder: (ctx) {
-                    final now = DateTime.now();
-                    final today = DateTime(now.year, now.month, now.day);
-                    if (selectedDay != today) {
-                      return TextButton(
-                        onPressed: () {
-                          ref.read(selectedDayProvider.notifier).state = today;
-                        },
-                        child: Text(ctx.s('plan.today')),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  }),
-                  // Тап на дату открывает DatePicker
-                  GestureDetector(
-                    onTap: () => _pickDate(selectedDay),
-                    child: Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _formatSelectedDate(selectedDay),
-                            // bodySmall для метаданных (02-type-space §1)
-                            style: textTheme.bodySmall?.copyWith(
-                              color: textMuted,
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            Icons.arrow_drop_down,
-                            size: 18,
-                            // нейтральный цвет для иконок тулбара (accent discipline)
-                            color: textMuted,
-                          ),
-                        ],
+            child: GestureDetector(
+              onTap: () => _pickDate(selectedDay),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _formatSelectedDate(selectedDay),
+                        // bodySmall для метаданных (02-type-space §1)
+                        style: textTheme.bodySmall?.copyWith(color: textMuted),
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
                       ),
                     ),
-                  ),
-                  // Иконка поиска (только в режиме Day) — нейтральный цвет
-                  if (view == PlanView.day)
-                    IconButton(
-                      icon: Icon(
-                        searchVisible ? Icons.search_off : Icons.search,
-                        color: textMuted,
-                      ),
-                      tooltip: context.s('plan.search_tooltip'),
-                      onPressed: () {
-                        final notifier =
-                            ref.read(planSearchVisibleProvider.notifier);
-                        notifier.state = !notifier.state;
-                        if (notifier.state == false) {
-                          // Сбрасываем запрос при закрытии
-                          ref.read(planSearchQueryProvider.notifier).state = '';
-                        }
-                      },
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      // нейтральный цвет для иконок тулбара (accent discipline)
+                      color: textMuted,
                     ),
-                  // Нейтральные иконки тулбара (не accent — accent discipline)
-                  IconButton(
-                    icon: Icon(Icons.flag_outlined, color: textMuted),
-                    tooltip: context.s('plan.goals_tooltip'),
-                    onPressed: () => context.push('/goals'),
-                  ),
-                  TextButton.icon(
-                    icon: Icon(Icons.upload_file_outlined, size: 18, color: textMuted),
-                    label: Text(context.s('plan.import_label')),
-                    onPressed: () => showImportSheet(context, day: selectedDay),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
+          ),
+          // Иконка поиска (только в режиме Day) — нейтральный цвет
+          if (view == PlanView.day)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                searchVisible ? Icons.search_off : Icons.search,
+                color: textMuted,
+              ),
+              tooltip: context.s('plan.search_tooltip'),
+              onPressed: () {
+                final notifier = ref.read(planSearchVisibleProvider.notifier);
+                notifier.state = !notifier.state;
+                if (notifier.state == false) {
+                  // Сбрасываем запрос при закрытии
+                  ref.read(planSearchQueryProvider.notifier).state = '';
+                }
+              },
+            ),
+          // Overflow-меню для редких действий (цели, импорт) — нейтральный цвет.
+          // Держит видимый ряд коротким → нет горизонтального скролла на 320px.
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: textMuted),
+            tooltip: context.s('plan.more_tooltip'),
+            onSelected: (value) {
+              switch (value) {
+                case 'goals':
+                  context.push('/goals');
+                case 'import':
+                  showImportSheet(context, day: selectedDay);
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'goals',
+                child: Row(
+                  children: [
+                    Icon(Icons.flag_outlined, size: 20, color: textMuted),
+                    const SizedBox(width: 12),
+                    Text(ctx.s('plan.goals_tooltip')),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    Icon(Icons.upload_file_outlined, size: 20, color: textMuted),
+                    const SizedBox(width: 12),
+                    Text(ctx.s('plan.import_label')),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

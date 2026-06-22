@@ -17,6 +17,7 @@ import 'package:app/features/diary/diary_screen.dart';
 import 'package:app/features/food/food_screen.dart';
 import 'package:app/features/health/health_screen.dart';
 import 'package:app/features/plan/plan_screen.dart';
+import 'package:app/features/plan/widgets/week_strip.dart' show selectedDayProvider;
 import 'package:app/features/today/today_screen.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -68,11 +69,16 @@ class _OverflowHarness {
 
   /// Строит дерево виджетов для экрана [screen].
   /// [textScale] — множитель шрифта; по умолчанию 1.0.
-  Widget build(Widget screen, {double textScale = 1.0}) {
+  Widget build(
+    Widget screen, {
+    double textScale = 1.0,
+    List<Override> extraOverrides = const [],
+  }) {
     return ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         appDatabaseProvider.overrideWithValue(db),
+        ...extraOverrides,
       ],
       child: MediaQuery(
         // Переопределяем textScaler здесь — тема приложения уважает это значение.
@@ -174,6 +180,22 @@ void main() {
       await _setSize(tester, _normalSize);
       await tester.pumpWidget(
         harness.build(const PlanScreen(), textScale: _largeTextScale),
+      );
+      await _settle(tester);
+      await _unmount(tester);
+    });
+
+    // Худший случай тулбара: выбран НЕ сегодня → видна кнопка «Today» вдобавок
+    // к дате, поиску и overflow-меню. Проверяем, что всё помещается на 320px.
+    testWidgets('narrow 320px with non-today (Today button visible): no overflow',
+        (tester) async {
+      await _setSize(tester, _narrowSize);
+      final past = DateTime(2020, 1, 1);
+      await tester.pumpWidget(
+        harness.build(
+          const PlanScreen(),
+          extraOverrides: [selectedDayProvider.overrideWith((ref) => past)],
+        ),
       );
       await _settle(tester);
       await _unmount(tester);
