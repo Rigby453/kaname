@@ -1379,4 +1379,34 @@ const Map<String, Map<String, String>> todayStrings = {
     'ja': 'タスクの読み込みに失敗しました: {err}',
     'ko': '할 일 불러오기 실패: {err}',
   },
+
+  // Постоянная кнопка ↩ слева от FAB: подсказка (tooltip).
+  'today.undo_tooltip': {
+    'en': 'Undo',
+    'ru': 'Отменить',
+    'de': 'Rückgängig',
+    'fr': 'Annuler',
+    'it': 'Annulla',
+    'pt': 'Desfazer',
+    'es': 'Deshacer',
+    'id': 'Batalkan',
+    'hi': 'पूर्ववत करें',
+    'ja': '元に戻す',
+    'ko': '실행 취소',
+  },
+
+  // Краткое подтверждение после нажатия ↩.
+  'today.undo_done': {
+    'en': 'Undone',
+    'ru': 'Действие отменено',
+    'de': 'Rückgängig gemacht',
+    'fr': 'Action annulée',
+    'it': 'Annullato',
+    'pt': 'Desfeito',
+    'es': 'Deshecho',
+    'id': 'Dibatalkan',
+    'hi': 'पूर्ववत किया गया',
+    'ja': '元に戻しました',
+    'ko': '실행이 취소되었습니다',
+  },
 };

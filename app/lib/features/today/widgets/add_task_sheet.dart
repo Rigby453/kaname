@@ -32,6 +32,7 @@ import '../../../core/settings/recent_subjects.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/id.dart';
 import '../../../core/utils/nl_datetime.dart';
+import '../undo_provider.dart';
 
 const List<String> _types = ['task', 'event', 'exam', 'deadline'];
 const List<String> _priorities = ['low', 'medium', 'high', 'main'];
@@ -549,9 +550,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         ),
       );
     } else {
+      final newId = uuidV4();
       await dao.insertItem(
         ItemsTableCompanion(
-          id: Value(uuidV4()),
+          id: Value(newId),
           userId: const Value('local'), // заменится на реальный userId на шаге 8 (sync)
           title: Value(title),
           type: Value(_type),
@@ -565,6 +567,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           updatedAt: Value(now),
         ),
       );
+      // Записываем «добавлено» для одноуровневой отмены (кнопка ↩ на Today).
+      ref.read(lastUndoableActionProvider.notifier).recordAdd(newId);
     }
 
     if (mounted) Navigator.of(context).pop();
@@ -597,6 +601,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (confirmed != true) return;
     final dao = ref.read(itemsDaoProvider);
     await dao.deleteItem(existing.id);
+    // Записываем «удалено» (полный снимок) для одноуровневой отмены кнопкой ↩.
+    ref.read(lastUndoableActionProvider.notifier).recordDelete(existing);
     if (!mounted) return;
     // §3.3: тост «Task removed» с Undo. Показываем до pop — OverlayEntry живёт
     // в корневом Overlay навигатора и переживает закрытие шита.

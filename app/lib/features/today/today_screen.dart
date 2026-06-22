@@ -23,6 +23,7 @@ import '../../features/mascot/kai_mascot.dart';
 import '../../features/mascot/kai_speech_bubble.dart';
 import '../../services/streak/streak_service.dart';
 import '../../services/widget/widget_service.dart';
+import 'undo_provider.dart';
 import 'widgets/add_task_sheet.dart';
 import 'widgets/celebration_overlay.dart';
 import 'widgets/evening_review_card.dart';
@@ -157,11 +158,19 @@ class TodayScreen extends ConsumerWidget {
           // Простой круглый FAB — только плюс-иконка, без текстовой подписи.
           // Текст-метка убрана (она сама начиналась с «+», давая двойной плюс).
           // tooltip обеспечивает доступность вместо видимой подписи.
-          // Оставлен одиночной кнопкой, чтобы рядом мог встать Row (undo слева).
-          floatingActionButton: FloatingActionButton(
-            onPressed: () => showAddTaskSheet(context, day: now),
-            tooltip: context.s('today.add_task_btn'),
-            child: const Icon(Icons.add),
+          // Слева от него — постоянная кнопка ↩ (undo), видна только когда
+          // есть что отменять (lastUndoableActionProvider != null).
+          floatingActionButton: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _UndoFab(),
+              const SizedBox(width: 12),
+              FloatingActionButton(
+                onPressed: () => showAddTaskSheet(context, day: now),
+                tooltip: context.s('today.add_task_btn'),
+                child: const Icon(Icons.add),
+              ),
+            ],
           ),
           body: itemsAsync.when(
             // Заменяем стандартный спиннер на KaiLoader (BOLD design system)
@@ -237,14 +246,21 @@ class TodayScreen extends ConsumerWidget {
     return Stack(
       children: [
         Scaffold(
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => showAddTaskSheet(context, day: now),
-            icon: const Icon(Icons.add),
-            label: Text(context.s('today.fab_add')),
-            // Тень для визуальной отдельности FAB от контента (тема: elevation=0)
-            elevation: 4,
-            focusElevation: 6,
-            hoverElevation: 6,
+          floatingActionButton: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _UndoFab(),
+              const SizedBox(width: 12),
+              FloatingActionButton.extended(
+                onPressed: () => showAddTaskSheet(context, day: now),
+                icon: const Icon(Icons.add),
+                label: Text(context.s('today.fab_add')),
+                // Тень для визуальной отдельности FAB от контента (тема: elevation=0)
+                elevation: 4,
+                focusElevation: 6,
+                hoverElevation: 6,
+              ),
+            ],
           ),
           body: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,6 +420,49 @@ class _KaiHeaderSection extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _UndoFab — постоянная кнопка ↩ слева от FAB «Add».
+//
+// Видна ТОЛЬКО когда есть обратимое действие (lastUndoableActionProvider != null) —
+// чтобы не захламлять экран. Нажатие выполняет отмену через DAO (offline-first)
+// и показывает краткое подтверждение снэкбаром.
+// ---------------------------------------------------------------------------
+
+class _UndoFab extends ConsumerWidget {
+  const _UndoFab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final action = ref.watch(lastUndoableActionProvider);
+    // Нечего отменять — скрываем кнопку (prefer hidden, ТЗ).
+    if (action == null) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    // Приглушённый accent: undo вторичнее, чем основной add-FAB.
+    final bg = ext?.surfaceElevated ?? colorScheme.surface;
+    final fg = colorScheme.primary;
+
+    return FloatingActionButton.small(
+      heroTag: 'today_undo_fab',
+      backgroundColor: bg,
+      foregroundColor: fg,
+      tooltip: context.s('today.undo_tooltip'),
+      onPressed: () async {
+        final dao = ref.read(itemsDaoProvider);
+        final done =
+            await ref.read(lastUndoableActionProvider.notifier).undo(dao);
+        if (done && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.s('today.undo_done'))),
+          );
+        }
+      },
+      child: const Icon(Icons.undo),
     );
   }
 }
