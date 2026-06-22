@@ -177,6 +177,11 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   DateTime? _nlDetectedDateTime;
   // Флаг: пользователь вручную изменил дату/время → не перезаписываем.
   bool _userPickedDateTime = false;
+  // Флаги ручного выбора для остальных NL-полей: пока поле не тронули руками,
+  // парсер может его автоматически подставлять; после ручного выбора — нет.
+  bool _userPickedDuration = false;
+  bool _userPickedPriority = false;
+  bool _userPickedRepeat = false;
 
   // --- Voice input ---
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -224,31 +229,84 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   }
 
   /// Запускается при каждом изменении заголовка.
-  /// Применяет NL-парсер; если есть распознанная дата и пользователь
-  /// не переопределил её вручную — подставляем автоматически.
+  /// Применяет NL-парсер и автоподставляет распознанные поля.
+  ///
+  /// Политика автоподстановки: каждое поле (дата/время, длительность, приоритет,
+  /// повтор) подставляется ТОЛЬКО пока пользователь не трогал его вручную
+  /// (флаги _userPicked*). После ручного выбора NL это поле не перетирает —
+  /// явный выбор пользователя главнее. Поля независимы: можно вручную задать
+  /// время, но всё ещё ловить длительность/приоритет/повтор из текста.
   void _onTitleChanged() {
-    if (_userPickedDateTime) return;
     final text = _titleController.text;
     final result = parseNaturalDateTime(text, DateTime.now());
-    if (result.when != null) {
-      setState(() {
-        _nlDetectedDateTime = result.when;
-        _scheduledAt = result.when!;
-      });
-    } else {
-      // Нет совпадений — убираем маркер NL-определённой даты.
-      if (_nlDetectedDateTime != null) {
+
+    // --- Дата/время ---
+    if (!_userPickedDateTime) {
+      if (result.when != null) {
+        setState(() {
+          _nlDetectedDateTime = result.when;
+          _scheduledAt = result.when!;
+        });
+      } else if (_nlDetectedDateTime != null) {
         setState(() => _nlDetectedDateTime = null);
+      }
+    }
+
+    // --- Длительность ---
+    if (!_userPickedDuration && result.durationMinutes != null) {
+      setState(() {
+        _durationMinutes = result.durationMinutes!;
+        // Синхронизируем поле ручного ввода минут, если значение не пресет.
+        if (!_durations.contains(_durationMinutes)) {
+          _customMinutesController.text = '$_durationMinutes';
+        } else {
+          _customMinutesController.clear();
+        }
+      });
+    }
+
+    // --- Приоритет ---
+    if (!_userPickedPriority &&
+        result.priority != null &&
+        _priorities.contains(result.priority)) {
+      // Лимит main соблюдаем: если main уже исчерпан, не подставляем main авто.
+      final wantsMain = result.priority == 'main';
+      final mainBlocked = wantsMain &&
+          _mainCount >= _maxMainPerDay &&
+          !(_isEditing && widget.existing!.priority == 'main');
+      if (!mainBlocked) {
+        setState(() => _priority = result.priority!);
+      }
+    }
+
+    // --- Повтор (серия) ---
+    // Не трогаем для виртуальных повторов / якорей серии при редактировании —
+    // там правило управляется серийными действиями.
+    if (!_userPickedRepeat && !_isSeriesItem && result.recurrenceRule != null) {
+      final rule = RecurrenceRule.parse(result.recurrenceRule);
+      if (rule != null) {
+        setState(() {
+          _repeatFreq = rule.freq;
+          _repeatWeekdays
+            ..clear()
+            ..addAll(rule.byDays);
+          _repeatMonthDay = rule.byMonthDay;
+        });
       }
     }
   }
 
-  /// Возвращает чистый заголовок (без временной фразы) для сохранения.
+  /// Возвращает чистый заголовок (без распознанных NL-фраз) для сохранения.
+  /// Чистим, если распознано ХОТЬ ЧТО-ТО: время, длительность, приоритет или
+  /// повтор — иначе оставляем исходный текст без изменений.
   String get _cleanedTitle {
     final text = _titleController.text;
     final result = parseNaturalDateTime(text, DateTime.now());
-    // Если NL распознал фразу — сохраняем очищенный вариант.
-    if (result.when != null) return result.cleanedTitle.trim();
+    final recognizedSomething = result.when != null ||
+        result.durationMinutes != null ||
+        result.priority != null ||
+        result.recurrenceRule != null;
+    if (recognizedSomething) return result.cleanedTitle.trim();
     return text.trim();
   }
 
@@ -410,7 +468,11 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         return;
       }
     }
-    setState(() => _priority = priority);
+    // Ручной выбор приоритета → NL больше не перетирает это поле.
+    setState(() {
+      _priority = priority;
+      _userPickedPriority = true;
+    });
   }
 
   Future<void> _pickDate() async {
@@ -477,6 +539,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       _durationMinutes = diffMinutes;
       // Сбрасываем поле ручного ввода — показываем вычисленное значение.
       _customMinutesController.text = '$diffMinutes';
+      // Ручной выбор длительности → NL больше не перетирает.
+      _userPickedDuration = true;
     });
   }
 
@@ -484,7 +548,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   void _onCustomMinutesChanged(String value) {
     final parsed = int.tryParse(value.trim());
     if (parsed != null && parsed > 0) {
-      setState(() => _durationMinutes = parsed);
+      setState(() {
+        _durationMinutes = parsed;
+        _userPickedDuration = true;
+      });
     }
   }
 
@@ -1043,6 +1110,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                           _durationMinutes = d;
                           // Сбрасываем кастомный ввод при выборе пресета.
                           _customMinutesController.clear();
+                          // Ручной выбор → NL не перетирает длительность.
+                          _userPickedDuration = true;
                         }),
                       ))
                   .toList(),
@@ -1142,25 +1211,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                   ChoiceChip(
                     label: Text(context.s('addtask.repeat_none')),
                     selected: _repeatFreq == null,
-                    onSelected: (_) => setState(() => _repeatFreq = null),
+                    onSelected: (_) => setState(() {
+                      _repeatFreq = null;
+                      _userPickedRepeat = true;
+                    }),
                   ),
                   ChoiceChip(
                     label: Text(context.s('addtask.repeat_daily')),
                     selected: _repeatFreq == RecurFreq.daily,
-                    onSelected: (_) =>
-                        setState(() => _repeatFreq = RecurFreq.daily),
+                    onSelected: (_) => setState(() {
+                      _repeatFreq = RecurFreq.daily;
+                      _userPickedRepeat = true;
+                    }),
                   ),
                   ChoiceChip(
                     label: Text(context.s('addtask.repeat_weekly')),
                     selected: _repeatFreq == RecurFreq.weekly,
-                    onSelected: (_) =>
-                        setState(() => _repeatFreq = RecurFreq.weekly),
+                    onSelected: (_) => setState(() {
+                      _repeatFreq = RecurFreq.weekly;
+                      _userPickedRepeat = true;
+                    }),
                   ),
                   ChoiceChip(
                     label: Text(context.s('addtask.repeat_monthly')),
                     selected: _repeatFreq == RecurFreq.monthly,
-                    onSelected: (_) =>
-                        setState(() => _repeatFreq = RecurFreq.monthly),
+                    onSelected: (_) => setState(() {
+                      _repeatFreq = RecurFreq.monthly;
+                      _userPickedRepeat = true;
+                    }),
                   ),
                 ],
               ),
@@ -1175,6 +1253,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                     } else {
                       _repeatWeekdays.add(wd);
                     }
+                    _userPickedRepeat = true;
                   }),
                 ),
               ],
@@ -1184,7 +1263,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 _MonthDayPicker(
                   value: _repeatMonthDay ?? _scheduledAt.day,
                   label: context.s('addtask.repeat_monthday'),
-                  onChanged: (d) => setState(() => _repeatMonthDay = d),
+                  onChanged: (d) => setState(() {
+                    _repeatMonthDay = d;
+                    _userPickedRepeat = true;
+                  }),
                 ),
               ],
               // Дата окончания повтора (UNTIL) — показывается при включённом повторе.

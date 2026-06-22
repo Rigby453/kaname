@@ -12,15 +12,41 @@
 // Консервативный подход: если ничего не распознано, when == null,
 // cleanedTitle == исходный текст без изменений.
 
-/// Результат парсинга.
-class NlDateTimeResult {
-  const NlDateTimeResult({required this.when, required this.cleanedTitle});
+import '../../features/plan/recurrence.dart';
 
-  /// null — ничего не распознано.
+/// Результат парсинга.
+///
+/// Помимо даты/времени ([when]) парсер опционально распознаёт (Todoist-стиль):
+///   • [durationMinutes] — длительность («1.5ч», «30 мин», «1.5h»),
+///   • [priority]        — приоритет («!важно», «p1», «p2», «низкий» …),
+///   • [recurrenceRule]  — повтор-правило (строка из recurrence.dart:
+///                          «каждый день», «по пн,ср,пт», «15 числа» …).
+/// Любое из этих полей == null, если соответствующая фраза не распознана.
+/// [cleanedTitle] — заголовок без ВСЕХ распознанных фраз (время + длительность
+/// + приоритет + повтор).
+class NlDateTimeResult {
+  const NlDateTimeResult({
+    required this.when,
+    required this.cleanedTitle,
+    this.durationMinutes,
+    this.priority,
+    this.recurrenceRule,
+  });
+
+  /// null — дата/время не распознаны.
   final DateTime? when;
 
-  /// Заголовок с удалённой временной фразой.
+  /// Заголовок с удалёнными распознанными фразами.
   final String cleanedTitle;
+
+  /// Длительность в минутах (1..1440) или null.
+  final int? durationMinutes;
+
+  /// Приоритет: 'main' | 'medium' | 'low' или null.
+  final String? priority;
+
+  /// Строка правила повтора (см. recurrence.dart::toRuleString) или null.
+  final String? recurrenceRule;
 }
 
 /// Парсит временные/датовые фразы из [text] относительно [now].
@@ -35,18 +61,59 @@ class NlDateTimeResult {
 ///   • голое ЧЧММ "700" / "1830" (Todoist-стиль) → 7:00 / 18:30
 ///
 /// Если ничего не распознано — when=null, cleanedTitle == text.
+///
+/// Порядок обработки (важно против ложных срабатываний и конфликтов с числами):
+///   1. Сначала вырезаем повтор-фразы («каждый день», «по пн,ср,пт», «15 числа»),
+///      затем длительность («1.5ч», «30 мин»), затем приоритет («p1», «!важно»).
+///      Эти фразы содержат цифры/слова, которые иначе мог бы перехватить
+///      разбор времени (например «15» в «15 числа» как компактное ЧЧММ).
+///   2. На ОСТАВШЕМСЯ тексте запускаем существующий разбор даты/времени —
+///      его API и поведение («700»→7:00 и т.д.) не меняются.
 NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
   final input = text.trim();
   if (input.isEmpty) {
     return NlDateTimeResult(when: null, cleanedTitle: input);
   }
 
-  return _tryRelativeHours(input, now) ??
-      _tryTomorrowTime(input, now) ??
-      _tryTodayTime(input, now) ??
-      _tryWeekdayTime(input, now) ??
-      _tryBareTime(input, now) ??
-      NlDateTimeResult(when: null, cleanedTitle: input);
+  // --- Шаг 1: распознаём и вырезаем повтор / длительность / приоритет. ---
+  var working = input;
+
+  final recur = _parseRecurrence(working);
+  String? recurrenceRule;
+  if (recur != null) {
+    recurrenceRule = recur.ruleString;
+    working = _eraseSpans(working, [recur.span]);
+  }
+
+  final dur = _parseDuration(working);
+  int? durationMinutes;
+  if (dur != null) {
+    durationMinutes = dur.minutes;
+    working = _eraseSpans(working, [dur.span]);
+  }
+
+  final prio = _parsePriority(working);
+  String? priority;
+  if (prio != null) {
+    priority = prio.value;
+    working = _eraseSpans(working, [prio.span]);
+  }
+
+  // --- Шаг 2: дата/время на оставшемся тексте (существующее поведение). ---
+  final dt = _tryRelativeHours(working, now) ??
+      _tryTomorrowTime(working, now) ??
+      _tryTodayTime(working, now) ??
+      _tryWeekdayTime(working, now) ??
+      _tryBareTime(working, now) ??
+      NlDateTimeResult(when: null, cleanedTitle: working);
+
+  return NlDateTimeResult(
+    when: dt.when,
+    cleanedTitle: dt.cleanedTitle,
+    durationMinutes: durationMinutes,
+    priority: priority,
+    recurrenceRule: recurrenceRule,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -358,4 +425,416 @@ bool _isDigitBoundary(String ch) {
   final isCyrillic = code >= 0x0410 && code <= 0x044F;
   if (isLatin || isCyrillic) return false;
   return true;
+}
+
+// ===========================================================================
+// РАСШИРЕНИЕ: длительность / приоритет / повтор (Todoist-стиль).
+// Каждый экстрактор возвращает распознанное значение + _Span для вырезания.
+// Экстракторы работают с ИСХОДНЫМ (необрезанным) текстом; вырезание делает
+// вызывающая функция через _eraseSpans, как и для времени.
+// ===========================================================================
+
+// --- Длительность ----------------------------------------------------------
+
+class _DurationMatch {
+  const _DurationMatch(this.minutes, this.span);
+  final int minutes;
+  final _Span span;
+}
+
+/// Распознаёт длительность и возвращает минуты (1..1440) + span.
+///
+/// Поддерживаемые форматы (RU / EN):
+///   • часы (вкл. дробные .5): «1.5ч», «1.5 часа», «2 часа», «1.5h», «2 h»,
+///     «1,5ч» (запятая как десятичный разделитель в RU);
+///   • минуты: «30 мин», «45м», «90 минут», «30 min», «45 m».
+///
+/// Правила против ложных срабатываний:
+///   • число ОБЯЗАНО примыкать к единице (ч/час[а/ов]/h | м/мин[ут]/min/m);
+///     одиночное число без единицы НЕ трактуется как длительность;
+///   • единица «h»/«m» латиницей требует границы справа (не часть слова),
+///     чтобы «5 home» не дало 5h. Регэксп уже привязан к границам токена.
+///   • результат клампится в диапазон 1..1440 мин; вне диапазона → не матч.
+_DurationMatch? _parseDuration(String text) {
+  // Часы: «1.5ч», «1.5 часа», «2 часа», «1,5ч», «1.5h», «2 h».
+  // Группа единицы: ч | час | часа | часов | h (h — только как отдельный токен).
+  // Негативный lookbehind на «через »/«in » — это относительное СМЕЩЕНИЕ
+  // («через 2 часа»), а не длительность; его разбирает _tryRelativeHours.
+  final hoursRe = RegExp(
+    r'(?<!через\s)(?<!in\s)(\d+(?:[.,]\d+)?)\s*(час(?:а|ов|)|ч|hours?|hrs?|h)(?![a-zа-яё])',
+    caseSensitive: false,
+    unicode: true,
+  );
+  // Минуты: «30 мин», «45м», «90 минут», «30 min», «45 m».
+  final minutesRe = RegExp(
+    r'(\d+)\s*(минут[ы]?|мин|м|minutes?|mins?|min|m)(?![a-zа-яё])',
+    caseSensitive: false,
+    unicode: true,
+  );
+
+  // Сначала пробуем часы (более «ценная» единица). Если не нашли — минуты.
+  final hm = hoursRe.firstMatch(text);
+  if (hm != null) {
+    final raw = hm.group(1)!.replaceAll(',', '.');
+    final value = double.tryParse(raw);
+    if (value != null && value > 0) {
+      final minutes = (value * 60).round();
+      if (minutes >= 1 && minutes <= 1440) {
+        return _DurationMatch(minutes, _Span(hm.start, hm.end));
+      }
+    }
+  }
+
+  final mm = minutesRe.firstMatch(text);
+  if (mm != null) {
+    final value = int.tryParse(mm.group(1)!);
+    if (value != null && value >= 1 && value <= 1440) {
+      return _DurationMatch(value, _Span(mm.start, mm.end));
+    }
+  }
+
+  return null;
+}
+
+// --- Приоритет -------------------------------------------------------------
+
+class _PriorityMatch {
+  const _PriorityMatch(this.value, this.span);
+
+  /// 'main' | 'medium' | 'low'.
+  final String value;
+  final _Span span;
+}
+
+/// Распознаёт приоритет и возвращает значение модели + span.
+///
+/// Маппинг:
+///   main   ← «p1», «!важно», «!!!», «важно», «главное», «important»
+///   medium ← «p2», «средний»
+///   low    ← «p3», «low», «низкий»
+///
+/// Правила против ложных срабатываний (главное — НЕ ловить обычный «!» в тексте):
+///   • явный маркер обязателен. Допустимы только:
+///       — токены «p1/p2/p3» (латиница, как отдельное слово);
+///       — «!!!» (три и более «!») → main;
+///       — ведущий «!» вплотную к ключевому слову: «!важно», «!important»;
+///       — отдельные ключевые слова: «важно», «главное», «important»,
+///         «средний», «низкий», «low» (как самостоятельные слова).
+///   • одиночный «!» в произвольном месте текста («ура!») приоритет НЕ даёт.
+///   • первый по порядку специфичности: «p1/2/3» → «!!!» → «!слово» → слова.
+_PriorityMatch? _parsePriority(String text) {
+  final lower = text.toLowerCase();
+
+  // 1) p1 / p2 / p3 — самые однозначные маркеры (как отдельное слово).
+  final pRe = RegExp(r'(?<![a-zа-яё0-9])p([123])(?![a-zа-яё0-9])',
+      caseSensitive: false, unicode: true);
+  final pm = pRe.firstMatch(lower);
+  if (pm != null) {
+    final level = pm.group(1)!;
+    final value = level == '1'
+        ? 'main'
+        : level == '2'
+            ? 'medium'
+            : 'low';
+    return _PriorityMatch(value, _Span(pm.start, pm.end));
+  }
+
+  // 2) «!!!» (три и более восклицательных) → main.
+  final bangRe = RegExp(r'!{3,}');
+  final bm = bangRe.firstMatch(text);
+  if (bm != null) {
+    return _PriorityMatch('main', _Span(bm.start, bm.end));
+  }
+
+  // 3) Ведущий «!» вплотную к ключевому слову: «!важно», «!important».
+  //    А также сами ключевые слова без «!». Порядок: длинные/специфичные слова.
+  //    Каждый кортеж: (слово, значение). Слова matchаем как отдельные токены
+  //    через _findWord (с поддержкой ведущего «!»).
+  const keywords = <(String, String)>[
+    ('важно', 'main'),
+    ('главное', 'main'),
+    ('important', 'main'),
+    ('средний', 'medium'),
+    ('низкий', 'low'),
+    ('low', 'low'),
+  ];
+
+  for (final (word, value) in keywords) {
+    // Ищем «!слово» (ведущий «!») или само «слово» как отдельный токен.
+    final span = _findWordWithOptionalBang(lower, word);
+    if (span != null) return _PriorityMatch(value, span);
+  }
+
+  return null;
+}
+
+/// Ищет [word] как отдельный токен, опционально с ведущим «!» (вплотную).
+/// Граница слева — начало строки/пробел/пунктуация ИЛИ «!»; справа — обычная
+/// граница слова. Если перед словом стоит «!» — он включается в span.
+_Span? _findWordWithOptionalBang(String lower, String word) {
+  var from = 0;
+  while (true) {
+    final idx = lower.indexOf(word, from);
+    if (idx < 0) return null;
+    final end = idx + word.length;
+    final hasBang = idx > 0 && lower[idx - 1] == '!';
+    final beforeOk =
+        idx == 0 || hasBang || _isBoundary(lower[idx - 1]);
+    final afterOk = end >= lower.length || _isBoundary(lower[end]);
+    if (beforeOk && afterOk) {
+      return _Span(hasBang ? idx - 1 : idx, end);
+    }
+    from = idx + 1;
+  }
+}
+
+// --- Повтор ----------------------------------------------------------------
+
+class _RecurrenceMatch {
+  const _RecurrenceMatch(this.ruleString, this.span);
+  final String ruleString;
+  final _Span span;
+}
+
+/// Распознаёт фразу повтора и собирает правило через API recurrence.dart.
+///
+/// Поддерживаемые формы (RU / EN):
+///   daily   ← «каждый день», «ежедневно», «daily», «every day»
+///   monthly ← «N числа», «каждый месяц», «ежемесячно», «monthly»
+///   weekly  ← «по будням» (Пн-Пт), «по пн,ср,пт» / «каждый понедельник»
+///             «every monday», «каждую неделю», «еженедельно», «weekly»
+///
+/// Порядок (специфичные → общие):
+///   1. «N числа» (monthly с конкретным числом).
+///   2. daily-фразы.
+///   3. weekly: «по будням», списки дней «по пн,ср,пт», конкретный день недели.
+///   4. monthly-общие («каждый месяц» …) и weekly-общие («каждую неделю» …).
+///
+/// Правила против ложных срабатываний:
+///   • все фразы — целые токены (через _findWord / якорные регэкспы),
+///     одиночное «день» / «day» без «каждый/every» повтор НЕ даёт;
+///   • «N числа» требует слова «числа» рядом с числом 1..31.
+_RecurrenceMatch? _parseRecurrence(String text) {
+  final lower = text.toLowerCase();
+
+  // 1) «15 числа» / «1 числа» → monthly(monthDay).
+  final monthDayRe = RegExp(
+    r'(\d{1,2})\s*(?:-?е|-?го)?\s*числа',
+    caseSensitive: false,
+    unicode: true,
+  );
+  final mdm = monthDayRe.firstMatch(lower);
+  if (mdm != null) {
+    final day = int.tryParse(mdm.group(1)!);
+    if (day != null && day >= 1 && day <= 31) {
+      final rule = monthlyRule(monthDay: day);
+      return _RecurrenceMatch(rule.toRuleString(), _Span(mdm.start, mdm.end));
+    }
+  }
+
+  // 2) daily-фразы.
+  const dailyPhrases = ['каждый день', 'ежедневно', 'every day', 'daily'];
+  for (final phrase in dailyPhrases) {
+    final span = _findPhrase(lower, phrase);
+    if (span != null) {
+      return _RecurrenceMatch(dailyRule().toRuleString(), span);
+    }
+  }
+
+  // 3) weekly: «по будням» (Пн-Пт).
+  for (final phrase in ['по будням', 'будни', 'on weekdays', 'every weekday']) {
+    final span = _findPhrase(lower, phrase);
+    if (span != null) {
+      final days = {
+        RecurWeekday.mo,
+        RecurWeekday.tu,
+        RecurWeekday.we,
+        RecurWeekday.th,
+        RecurWeekday.fr,
+      };
+      return _RecurrenceMatch(weeklyRule(days).toRuleString(), span);
+    }
+  }
+
+  // 3b) Список дней недели: «по пн,ср,пт» / «по пн ср пт» /
+  //     «every mon,wed,fri». Требуем ведущий маркер «по» (RU) или «every» (EN),
+  //     иначе обычный текст с днями недели не превращаем в повтор.
+  final weekdayList = _parseWeekdayList(lower);
+  if (weekdayList != null) {
+    return _RecurrenceMatch(
+      weeklyRule(weekdayList.days).toRuleString(),
+      weekdayList.span,
+    );
+  }
+
+  // 3c) Конкретный одиночный день: «каждый понедельник», «every monday»,
+  //     «по понедельникам».
+  final singleDay = _parseSingleWeekday(lower);
+  if (singleDay != null) {
+    return _RecurrenceMatch(
+      weeklyRule({singleDay.day}).toRuleString(),
+      singleDay.span,
+    );
+  }
+
+  // 4) Общие weekly-фразы (без указания дня → день недели якоря выберется при
+  //    сборке правила в add_task_sheet; здесь даём пустой набор дней).
+  for (final phrase in [
+    'каждую неделю',
+    'еженедельно',
+    'every week',
+    'weekly',
+  ]) {
+    final span = _findPhrase(lower, phrase);
+    if (span != null) {
+      return _RecurrenceMatch(weeklyRule(const {}).toRuleString(), span);
+    }
+  }
+
+  // 4b) Общие monthly-фразы (без числа → день месяца якоря выберется позже).
+  for (final phrase in [
+    'каждый месяц',
+    'ежемесячно',
+    'every month',
+    'monthly',
+  ]) {
+    final span = _findPhrase(lower, phrase);
+    if (span != null) {
+      return _RecurrenceMatch(monthlyRule().toRuleString(), span);
+    }
+  }
+
+  return null;
+}
+
+/// Карта токенов дней недели (RU короткие/полные + EN) → RecurWeekday.
+/// Длинные ключи идут первыми, чтобы «понедельникам» не словился как «пн».
+const Map<String, RecurWeekday> _weekdayTokens = {
+  // RU полные (вкл. падежи «по понедельникам»)
+  'понедельникам': RecurWeekday.mo, 'понедельник': RecurWeekday.mo,
+  'вторникам': RecurWeekday.tu, 'вторник': RecurWeekday.tu,
+  'средам': RecurWeekday.we, 'среду': RecurWeekday.we, 'среда': RecurWeekday.we,
+  'четвергам': RecurWeekday.th, 'четверг': RecurWeekday.th,
+  'пятницам': RecurWeekday.fr, 'пятницу': RecurWeekday.fr,
+  'пятница': RecurWeekday.fr,
+  'субботам': RecurWeekday.sa, 'субботу': RecurWeekday.sa,
+  'суббота': RecurWeekday.sa,
+  'воскресеньям': RecurWeekday.su, 'воскресенье': RecurWeekday.su,
+  // RU короткие
+  'пн': RecurWeekday.mo, 'вт': RecurWeekday.tu, 'ср': RecurWeekday.we,
+  'чт': RecurWeekday.th, 'пт': RecurWeekday.fr, 'сб': RecurWeekday.sa,
+  'вс': RecurWeekday.su,
+  // EN полные
+  'monday': RecurWeekday.mo, 'tuesday': RecurWeekday.tu,
+  'wednesday': RecurWeekday.we, 'thursday': RecurWeekday.th,
+  'friday': RecurWeekday.fr, 'saturday': RecurWeekday.sa,
+  'sunday': RecurWeekday.su,
+  // EN короткие
+  'mon': RecurWeekday.mo, 'tue': RecurWeekday.tu, 'wed': RecurWeekday.we,
+  'thu': RecurWeekday.th, 'fri': RecurWeekday.fr, 'sat': RecurWeekday.sa,
+  'sun': RecurWeekday.su,
+};
+
+class _WeekdayListMatch {
+  const _WeekdayListMatch(this.days, this.span);
+  final Set<RecurWeekday> days;
+  final _Span span;
+}
+
+/// Парсит список дней после маркера «по …» (RU) или «every …» (EN):
+/// «по пн,ср,пт» / «по пн ср пт» / «every mon, wed, fri».
+/// Возвращает набор дней + span (включая маркер). null если ≥2 дней не нашли.
+_WeekdayListMatch? _parseWeekdayList(String lower) {
+  // Маркер + хвост до конца строки. Хвост режем по словам и сверяем со словарём.
+  final markerRe = RegExp(r'(?<![a-zа-яё])(по|every)\s+',
+      caseSensitive: false, unicode: true);
+  final mk = markerRe.firstMatch(lower);
+  if (mk == null) return null;
+
+  // Берём токены сразу после маркера, разделённые запятой/пробелом.
+  var pos = mk.end;
+  final days = <RecurWeekday>{};
+  var lastEnd = mk.start; // конец последнего распознанного токена дня
+
+  // Идём по токенам, пока они являются днями недели или разделителями.
+  final tokenRe = RegExp(r'[a-zа-яё]+', caseSensitive: false, unicode: true);
+  while (pos < lower.length) {
+    // Пропускаем разделители (пробелы, запятые, «и»/«and» — простые союзы).
+    final sepMatch = RegExp(r'^[\s,]+').firstMatch(lower.substring(pos));
+    if (sepMatch != null) {
+      pos += sepMatch.end;
+      continue;
+    }
+    final tm = tokenRe.matchAsPrefix(lower, pos);
+    if (tm == null) break;
+    final token = tm.group(0)!;
+    // Союз «и»/«and» между днями — пропускаем, продолжаем.
+    if (token == 'и' || token == 'and') {
+      pos = tm.end;
+      continue;
+    }
+    final wd = _weekdayTokens[token];
+    if (wd == null) break; // не день недели → конец списка
+    days.add(wd);
+    lastEnd = tm.end;
+    pos = tm.end;
+  }
+
+  if (days.length < 2) return null; // «по пн» — это одиночный день (см. ниже)
+  return _WeekdayListMatch(days, _Span(mk.start, lastEnd));
+}
+
+class _SingleWeekdayMatch {
+  const _SingleWeekdayMatch(this.day, this.span);
+  final RecurWeekday day;
+  final _Span span;
+}
+
+/// Парсит одиночный повторяющийся день: «каждый понедельник»,
+/// «every monday», «по понедельникам», «по пн». Требует маркера повтора
+/// («каждый/каждую/every/по»), иначе обычное упоминание дня недели — это
+/// одноразовая дата (её обрабатывает _tryWeekdayTime), а не серия.
+_SingleWeekdayMatch? _parseSingleWeekday(String lower) {
+  final markerRe = RegExp(r'(?<![a-zа-яё])(кажд(?:ый|ую|ое)|every|по)\s+',
+      caseSensitive: false, unicode: true);
+  for (final mk in markerRe.allMatches(lower)) {
+    // Берём первый словарный токен после маркера.
+    final tm = RegExp(r'[a-zа-яё]+', caseSensitive: false, unicode: true)
+        .matchAsPrefix(lower, mk.end);
+    if (tm == null) continue;
+    final token = tm.group(0)!;
+    final wd = _weekdayTokens[token];
+    if (wd != null) {
+      return _SingleWeekdayMatch(wd, _Span(mk.start, tm.end));
+    }
+  }
+  return null;
+}
+
+/// Ищет точную фразу [phrase] (может содержать пробелы) как отдельный фрагмент:
+/// границы слева/справа — край строки или не-буквенный символ.
+/// Возвращает span или null.
+_Span? _findPhrase(String lower, String phrase) {
+  var from = 0;
+  while (true) {
+    final idx = lower.indexOf(phrase, from);
+    if (idx < 0) return null;
+    final end = idx + phrase.length;
+    final before = idx == 0 || _isPhraseBoundary(lower[idx - 1]);
+    final after = end >= lower.length || _isPhraseBoundary(lower[end]);
+    if (before && after) return _Span(idx, end);
+    from = idx + 1;
+  }
+}
+
+/// Граница для фраз повтора: не буква и не цифра (пробел/пунктуация/край).
+bool _isPhraseBoundary(String ch) {
+  final code = ch.codeUnitAt(0);
+  final isDigit = code >= 0x30 && code <= 0x39;
+  final isLatin =
+      (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A);
+  final isCyrillic = (code >= 0x0410 && code <= 0x044F) ||
+      code == 0x0401 ||
+      code == 0x0451; // Ё/ё
+  return !(isDigit || isLatin || isCyrillic);
 }

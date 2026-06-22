@@ -294,4 +294,255 @@ void main() {
       expect(r.cleanedTitle, isNotNull);
     });
   });
+
+  // =========================================================================
+  // РАСШИРЕНИЕ: длительность / приоритет / повтор.
+  // =========================================================================
+
+  group('Duration → durationMinutes', () {
+    test('"лекция 1.5ч" → 90 min, title "лекция"', () {
+      final r = parseNaturalDateTime('лекция 1.5ч', now);
+      expect(r.durationMinutes, 90);
+      expect(r.cleanedTitle, 'лекция');
+    });
+
+    test('"созвон 1.5 часа" → 90 min', () {
+      final r = parseNaturalDateTime('созвон 1.5 часа', now);
+      expect(r.durationMinutes, 90);
+      expect(r.cleanedTitle, 'созвон');
+    });
+
+    test('"встреча 2 часа" → 120 min', () {
+      final r = parseNaturalDateTime('встреча 2 часа', now);
+      expect(r.durationMinutes, 120);
+      expect(r.cleanedTitle, 'встреча');
+    });
+
+    test('"разминка 30 мин" → 30 min', () {
+      final r = parseNaturalDateTime('разминка 30 мин', now);
+      expect(r.durationMinutes, 30);
+      expect(r.cleanedTitle, 'разминка');
+    });
+
+    test('"перерыв 45м" → 45 min', () {
+      final r = parseNaturalDateTime('перерыв 45м', now);
+      expect(r.durationMinutes, 45);
+      expect(r.cleanedTitle, 'перерыв');
+    });
+
+    test('"чтение 90 минут" → 90 min', () {
+      final r = parseNaturalDateTime('чтение 90 минут', now);
+      expect(r.durationMinutes, 90);
+      expect(r.cleanedTitle, 'чтение');
+    });
+
+    test('EN "call 1.5h" → 90 min', () {
+      final r = parseNaturalDateTime('call 1.5h', now);
+      expect(r.durationMinutes, 90);
+      expect(r.cleanedTitle, 'call');
+    });
+
+    test('EN "break 30 min" → 30 min', () {
+      final r = parseNaturalDateTime('break 30 min', now);
+      expect(r.durationMinutes, 30);
+      expect(r.cleanedTitle, 'break');
+    });
+
+    test('RU comma decimal "1,5ч" → 90 min', () {
+      final r = parseNaturalDateTime('йога 1,5ч', now);
+      expect(r.durationMinutes, 90);
+      expect(r.cleanedTitle, 'йога');
+    });
+
+    test('negative: plain number "глава 12" → no duration', () {
+      final r = parseNaturalDateTime('глава 12', now);
+      expect(r.durationMinutes, isNull);
+    });
+
+    test('negative: "5 home" не даёт 5h (h — часть слова)', () {
+      final r = parseNaturalDateTime('go 5 home', now);
+      expect(r.durationMinutes, isNull);
+    });
+  });
+
+  group('Priority → priority', () {
+    test('"купить молоко p2" → medium, title "купить молоко"', () {
+      final r = parseNaturalDateTime('купить молоко p2', now);
+      expect(r.priority, 'medium');
+      expect(r.cleanedTitle, 'купить молоко');
+    });
+
+    test('"задача p1" → main', () {
+      final r = parseNaturalDateTime('задача p1', now);
+      expect(r.priority, 'main');
+      expect(r.cleanedTitle, 'задача');
+    });
+
+    test('"уборка p3" → low', () {
+      final r = parseNaturalDateTime('уборка p3', now);
+      expect(r.priority, 'low');
+      expect(r.cleanedTitle, 'уборка');
+    });
+
+    test('"отчёт !важно" → main, title "отчёт"', () {
+      final r = parseNaturalDateTime('отчёт !важно', now);
+      expect(r.priority, 'main');
+      expect(r.cleanedTitle, 'отчёт');
+    });
+
+    test('"дедлайн !!!" → main', () {
+      final r = parseNaturalDateTime('дедлайн !!!', now);
+      expect(r.priority, 'main');
+      expect(r.cleanedTitle, 'дедлайн');
+    });
+
+    test('"важно позвонить" → main', () {
+      final r = parseNaturalDateTime('важно позвонить', now);
+      expect(r.priority, 'main');
+    });
+
+    test('EN "fix bug important" → main', () {
+      final r = parseNaturalDateTime('fix bug important', now);
+      expect(r.priority, 'main');
+      expect(r.cleanedTitle, 'fix bug');
+    });
+
+    test('"задача средний" → medium', () {
+      final r = parseNaturalDateTime('задача средний', now);
+      expect(r.priority, 'medium');
+    });
+
+    test('"задача низкий" → low', () {
+      final r = parseNaturalDateTime('задача низкий', now);
+      expect(r.priority, 'low');
+    });
+
+    test('negative: single bang "ура!" → no priority', () {
+      final r = parseNaturalDateTime('сделал ура!', now);
+      expect(r.priority, isNull);
+    });
+
+    test('negative: plain text "купить молоко" → no priority', () {
+      final r = parseNaturalDateTime('купить молоко', now);
+      expect(r.priority, isNull);
+    });
+
+    test('negative: "помыть пол" (содержит "по") → no false recurrence/priority', () {
+      final r = parseNaturalDateTime('помыть пол', now);
+      expect(r.priority, isNull);
+      expect(r.recurrenceRule, isNull);
+    });
+  });
+
+  group('Recurrence → recurrenceRule', () {
+    test('"зарядка каждый день" → DAILY, title "зарядка"', () {
+      final r = parseNaturalDateTime('зарядка каждый день', now);
+      expect(r.recurrenceRule, 'FREQ=DAILY');
+      expect(r.cleanedTitle, 'зарядка');
+    });
+
+    test('"витамины ежедневно" → DAILY', () {
+      final r = parseNaturalDateTime('витамины ежедневно', now);
+      expect(r.recurrenceRule, 'FREQ=DAILY');
+      expect(r.cleanedTitle, 'витамины');
+    });
+
+    test('EN "water daily" → DAILY', () {
+      final r = parseNaturalDateTime('water daily', now);
+      expect(r.recurrenceRule, 'FREQ=DAILY');
+      expect(r.cleanedTitle, 'water');
+    });
+
+    test('"пара по пн,ср,пт" → WEEKLY MO,WE,FR', () {
+      final r = parseNaturalDateTime('пара по пн,ср,пт', now);
+      expect(r.recurrenceRule, 'FREQ=WEEKLY;BYDAY=MO,WE,FR');
+      expect(r.cleanedTitle, 'пара');
+    });
+
+    test('"тренировка по будням" → WEEKLY MO..FR', () {
+      final r = parseNaturalDateTime('тренировка по будням', now);
+      expect(r.recurrenceRule, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR');
+      expect(r.cleanedTitle, 'тренировка');
+    });
+
+    test('"урок каждый понедельник" → WEEKLY MO', () {
+      final r = parseNaturalDateTime('урок каждый понедельник', now);
+      expect(r.recurrenceRule, 'FREQ=WEEKLY;BYDAY=MO');
+      expect(r.cleanedTitle, 'урок');
+    });
+
+    test('EN "gym every monday" → WEEKLY MO', () {
+      final r = parseNaturalDateTime('gym every monday', now);
+      expect(r.recurrenceRule, 'FREQ=WEEKLY;BYDAY=MO');
+      expect(r.cleanedTitle, 'gym');
+    });
+
+    test('"оплата 15 числа" → MONTHLY day15, title "оплата"', () {
+      final r = parseNaturalDateTime('оплата 15 числа', now);
+      expect(r.recurrenceRule, 'FREQ=MONTHLY;BYMONTHDAY=15');
+      expect(r.cleanedTitle, 'оплата');
+    });
+
+    test('"взнос каждый месяц" → MONTHLY (без дня)', () {
+      final r = parseNaturalDateTime('взнос каждый месяц', now);
+      expect(r.recurrenceRule, 'FREQ=MONTHLY');
+      expect(r.cleanedTitle, 'взнос');
+    });
+
+    test('"отчёт еженедельно" → WEEKLY (без дней)', () {
+      final r = parseNaturalDateTime('отчёт еженедельно', now);
+      expect(r.recurrenceRule, 'FREQ=WEEKLY');
+      expect(r.cleanedTitle, 'отчёт');
+    });
+
+    test('negative: plain "позвонить в понедельник" → одноразовая дата, не серия', () {
+      // "в понедельник" без маркера повтора → разовая дата (when), не recurrence.
+      final r = parseNaturalDateTime('позвонить в понедельник', now);
+      expect(r.recurrenceRule, isNull);
+      expect(r.when, isNotNull);
+    });
+
+    test('negative: plain text "купить хлеб" → no recurrence', () {
+      final r = parseNaturalDateTime('купить хлеб', now);
+      expect(r.recurrenceRule, isNull);
+    });
+  });
+
+  group('Combo — date + time + duration + priority', () {
+    test('"тренировка завтра 18:00 1ч важно" → all fields, title "тренировка"', () {
+      final r = parseNaturalDateTime('тренировка завтра 18:00 1ч важно', now);
+      expect(r.when, DateTime(2026, 6, 18, 18, 0));
+      expect(r.durationMinutes, 60);
+      expect(r.priority, 'main');
+      expect(r.cleanedTitle, 'тренировка');
+    });
+
+    test('"созвон завтра 15:00 30 мин p2"', () {
+      final r = parseNaturalDateTime('созвон завтра 15:00 30 мин p2', now);
+      expect(r.when, DateTime(2026, 6, 18, 15, 0));
+      expect(r.durationMinutes, 30);
+      expect(r.priority, 'medium');
+      expect(r.cleanedTitle, 'созвон');
+    });
+  });
+
+  group('Backward-compat — new fields null when only time present', () {
+    test('"Сдать лабу завтра 17:00" → duration/priority/recurrence null', () {
+      final r = parseNaturalDateTime('Сдать лабу завтра 17:00', now);
+      expect(r.when, DateTime(2026, 6, 18, 17, 0));
+      expect(r.durationMinutes, isNull);
+      expect(r.priority, isNull);
+      expect(r.recurrenceRule, isNull);
+      expect(r.cleanedTitle, 'Сдать лабу');
+    });
+
+    test('"лекция 700" compact time still works, no extra fields', () {
+      final r = parseNaturalDateTime('лекция 700', now);
+      expect(r.when, DateTime(2026, 6, 18, 7, 0));
+      expect(r.durationMinutes, isNull);
+      expect(r.priority, isNull);
+      expect(r.recurrenceRule, isNull);
+      expect(r.cleanedTitle, 'лекция');
+    });
+  });
 }
