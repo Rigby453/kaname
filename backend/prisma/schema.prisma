@@ -36,6 +36,7 @@ model User {
   coStudySessions  CoStudySession[]
   ownedGroups      StudyGroup[]     @relation("GroupOwner")
   groupMemberships StudyGroupMember[]
+  passwordResetCodes PasswordResetCode[]
 }
 
 model Item {
@@ -152,6 +153,25 @@ model AiUsage {
 
   @@unique([userId, day, feature])
   @@index([userId, day])
+}
+
+// Код восстановления пароля. Устойчив к рестарту и мультиинстансу (ADR-047),
+// как AiUsage (ADR-034) — раньше коды жили в Map в памяти процесса и терялись
+// при засыпании/перезапуске/масштабировании инстанса.
+// Храним ТОЛЬКО SHA-256-хэш кода (codeHash), не сам код — при утечке БД
+// 6-значный код нельзя восстановить, а проверка — это сравнение хэшей.
+// expiresAt — срок жизни (15 мин), usedAt — одноразовость (null = не использован).
+model PasswordResetCode {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Friend {

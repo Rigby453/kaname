@@ -5,6 +5,15 @@
 
 ---
 
+## ADR-047: Password-reset codes persisted in a PasswordResetCode table (not in-memory), stored as SHA-256 hashes
+**Date:** 2026-06-23
+**Decision:** Replace the in-memory `Map` that held password-reset codes in `backend/src/routes/auth-reset.ts` with a persistent `PasswordResetCode` table (`id`, `userId` → User `onDelete: Cascade`, `codeHash`, `expiresAt`, `usedAt?`, `createdAt`, indexed on `userId` and `expiresAt`). Same class of fix as the AiUsage move ([[ADR-034]]): state that must survive a process restart belongs in the DB, not process memory. Design choices:
+- **Store a SHA-256 hash of the code, never the code itself.** On a DB leak the 6-digit code cannot be recovered, and verification is a hash-equality lookup. We use SHA-256 (deterministic, searchable by `codeHash` in a `WHERE`) rather than bcrypt: bcrypt's deliberate slowness defends long human passwords against offline brute force, but a 6-digit code is better protected by a short TTL + one-time use than by per-guess cost, and bcrypt's per-hash random salt would force a full table scan to verify. The user **password** itself is still hashed with bcrypt saltRounds=12 (unchanged).
+- **TTL + one-time use:** `expiresAt` = now + 15 min; `usedAt` marks consumption. A valid code is `usedAt IS NULL AND expiresAt > now AND codeHash matches`. Requesting a new code invalidates all prior unused codes for that user (marks them used), so only the latest code works. On success the code is marked used and the password updated in a single `$transaction`; the `usedAt IS NULL` guard makes replay return 400. Expired/used rows are lazily deleted after a successful reset.
+- **Dev contract preserved:** in non-production the response still returns `dev_code` for testing; real email send remains a TODO (blocked by no SMTP — unchanged). The forgot/reset response contract is otherwise untouched (these endpoints are not in `/docs/api-spec.yaml`).
+- Pure logic (generate / hash / validity) lives in `backend/src/models/passwordReset.ts` and is unit-tested without a DB. The route now uses the shared retry-wrapped Prisma singleton (`src/models/prisma.ts`) instead of its own `new PrismaClient()`.
+**Reason:** On the production host the instance sleeps / restarts / scales horizontally, so an in-memory code was lost between the forgot-password request and the reset-password submit — password recovery simply did not work in prod. A DB-backed, hashed, time-boxed, single-use code is durable across restarts and correct under horizontal scale. **Migration not yet applied to Neon:** the integration tests for this flow currently fail with Prisma `P2021` (`public.PasswordResetCode does not exist`) until the orchestrator runs the `CREATE TABLE` migration; the unit tests pass.
+
 ## ADR-046: menu-build — smart-модель, полный набор макро-целей, цельная еда, валидационный цикл, приёмы по количеству
 **Date:** 2026-06-22
 **Decision:** Переработан `/api/v1/ai/menu-build`, чтобы попадать во ВСЕ макро-цели и не

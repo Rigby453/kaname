@@ -1,17 +1,17 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import prisma from "../models/prisma.js";
+import {
+  RESET_CODE_TTL_MS,
+  generateResetCode,
+  hashResetCode,
+} from "../models/passwordReset.js";
 
-const prisma = new PrismaClient();
-
-// In-memory store: email → { code, expiresAt }
-// Достаточно для MVP; в production заменить на Redis или DB-таблицу
-const resetTokens = new Map<string, { code: string; expiresAt: number }>();
-
-function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+// Коды восстановления хранятся в таблице PasswordResetCode (ADR-047), а не в
+// Map в памяти процесса: память не переживает рестарт/засыпание/масштабирование
+// инстанса, из-за чего код терялся между запросом и вводом (тот же класс
+// проблемы, что вынос AiUsage из памяти в БД — ADR-034).
 
 const forgotSchema = z.object({ email: z.string().email() });
 const resetSchema = z.object({
@@ -33,13 +33,22 @@ const authResetRoutes: FastifyPluginAsync = async (fastify) => {
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (user) {
-      const code = generateCode();
-      resetTokens.set(email.toLowerCase(), {
-        code,
-        expiresAt: Date.now() + 15 * 60 * 1000,
+      const code = generateResetCode();
+      const codeHash = hashResetCode(code);
+      const expiresAt = new Date(Date.now() + RESET_CODE_TTL_MS);
+
+      // Инвалидируем все прошлые неиспользованные коды пользователя, помечая их
+      // использованными — активным остаётся только что выданный (одноразовость).
+      await prisma.passwordResetCode.updateMany({
+        where: { userId: user.id, usedAt: null },
+        data: { usedAt: new Date() },
       });
-      // TODO: в production отправить email через SMTP/SES
-      fastify.log.info({ email, code }, "Password reset code generated");
+      await prisma.passwordResetCode.create({
+        data: { userId: user.id, codeHash, expiresAt },
+      });
+
+      // TODO: в production отправить email через SMTP/SES (заблокировано отсутствием SMTP)
+      fastify.log.info({ email }, "Password reset code generated");
       // В dev-режиме возвращаем код в ответе для тестирования
       if (process.env["NODE_ENV"] !== "production") {
         return reply.status(200).send({
@@ -64,18 +73,47 @@ const authResetRoutes: FastifyPluginAsync = async (fastify) => {
     }
     const { email, code, newPassword } = parsed.data;
 
-    const entry = resetTokens.get(email.toLowerCase());
-    if (!entry || entry.code !== code || Date.now() > entry.expiresAt) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return reply.status(400).send({ error: "Invalid or expired code" });
+    }
+
+    // Ищем валидный код: совпадает хэш, не использован, ещё не истёк.
+    const now = new Date();
+    const record = await prisma.passwordResetCode.findFirst({
+      where: {
+        userId: user.id,
+        codeHash: hashResetCode(code),
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+    });
+    if (!record) {
       return reply.status(400).send({ error: "Invalid or expired code" });
     }
 
     const hash = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({
-      where: { email },
-      data: { passwordHash: hash },
+    // Помечаем код использованным и меняем пароль; одноразовость гарантируется
+    // условием usedAt=null в updateMany — повторное использование не сработает.
+    await prisma.$transaction([
+      prisma.passwordResetCode.update({
+        where: { id: record.id },
+        data: { usedAt: now },
+      }),
+      prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: hash },
+      }),
+    ]);
+
+    // Лениво подчищаем истёкшие/использованные коды этого пользователя.
+    await prisma.passwordResetCode.deleteMany({
+      where: {
+        userId: user.id,
+        OR: [{ usedAt: { not: null } }, { expiresAt: { lte: now } }],
+      },
     });
 
-    resetTokens.delete(email.toLowerCase());
     return reply.status(200).send({ message: "Password updated successfully" });
   });
 };
