@@ -562,6 +562,52 @@ class ApiClient {
     }
   }
 
+  /// «AI-программа тренировок» (Feature A, premium). Бэкенд выступает тренером и
+  /// возвращает недельную программу: { program_name, days:[{ title, exercises:[
+  /// { name, sets, reps(строка), rest_seconds, note? }] }], note }.
+  /// Вес/нагрузку модель НЕ назначает (первый проход — просто).
+  /// [equipment] — доступный инвентарь (barbell/dumbbells/pullup_bar/bodyweight/
+  /// full_gym); модель использует ТОЛЬКО его.
+  /// [focus]/[limitations] — опциональные; передаются только если не null.
+  /// [profile] — опциональный контекст атлета { sex, age, weight_kg, height_cm };
+  /// включается в тело как profile ТОЛЬКО когда непустой.
+  Future<Map<String, dynamic>> aiWorkoutBuild({
+    required String goal,
+    required String experience,
+    required List<String> equipment,
+    required int daysPerWeek,
+    required int minutesPerSession,
+    String? focus,
+    String? limitations,
+    required String tone,
+    Map<String, dynamic>? profile,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'goal': goal,
+        'experience': experience,
+        'equipment': equipment,
+        'days_per_week': daysPerWeek,
+        'minutes_per_session': minutesPerSession,
+        // null-aware элемент (?value) опускает пару, когда значение null.
+        'focus': ?focus,
+        'limitations': ?limitations,
+        'tone': tone,
+      };
+      // Профиль атлета — только если непустой (не null и хоть одно поле задано).
+      if (profile != null && profile.values.any((v) => v != null)) {
+        body['profile'] = profile;
+      }
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/api/v1/ai/workout-build',
+        data: body,
+      );
+      return response.data!;
+    } on DioException catch (e) {
+      _throw(e);
+    }
+  }
+
   /// Распознать расписание с фото (premium). Возвращает список { title, scheduled_at }.
   /// [mediaType] — 'image/jpeg' или 'image/png'; [targetDate] — 'YYYY-MM-DD'.
   Future<List<dynamic>> scheduleImportFromPhoto({

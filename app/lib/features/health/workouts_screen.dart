@@ -13,6 +13,7 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
+import 'ai_workout_sheet.dart';
 
 // ---------------------------------------------------------------------------
 // Провайдеры (используются и редактором тренировки)
@@ -100,7 +101,17 @@ class WorkoutsScreen extends ConsumerWidget {
     final workoutsAsync = ref.watch(workoutsListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(context.s('workout.title'))),
+      appBar: AppBar(
+        title: Text(context.s('workout.title')),
+        actions: [
+          // «Собрать программу» — анкета → шаблонная (free) или AI (premium) программа.
+          IconButton(
+            tooltip: context.s('workout.ai_title'),
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: () => showAiWorkoutSheet(context, ref),
+          ),
+        ],
+      ),
       // FAB — единственное первичное действие (+ New Workout)
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'workouts_add_fab',

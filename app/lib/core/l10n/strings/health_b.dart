@@ -1621,4 +1621,142 @@ const Map<String, Map<String, String>> healthBStrings = {
     'ja': '目標達成！',
     'ko': '목표 달성!',
   },
+
+  // ---------------------------------------------------------------------------
+  // workout.ai_* (Feature A) — анкета + лист «AI / шаблонная программа»
+  // (ai_workout_sheet.dart). EN/RU; остальные языки откатываются на EN.
+  // ---------------------------------------------------------------------------
+
+  'workout.ai_program': {
+    'en': 'AI program',
+    'ru': 'AI-программа',
+  },
+  'workout.ai_title': {
+    'en': 'Build a program',
+    'ru': 'Собрать программу',
+  },
+  'workout.ai_goal': {
+    'en': 'Goal',
+    'ru': 'Цель',
+  },
+  'workout.ai_goal_strength': {
+    'en': 'Strength',
+    'ru': 'Сила',
+  },
+  'workout.ai_goal_muscle': {
+    'en': 'Muscle',
+    'ru': 'Мышцы',
+  },
+  'workout.ai_goal_fat_loss': {
+    'en': 'Fat loss',
+    'ru': 'Жиросжигание',
+  },
+  'workout.ai_goal_endurance': {
+    'en': 'Endurance',
+    'ru': 'Выносливость',
+  },
+  'workout.ai_goal_general': {
+    'en': 'General',
+    'ru': 'Общая форма',
+  },
+  'workout.ai_experience': {
+    'en': 'Experience',
+    'ru': 'Опыт',
+  },
+  'workout.ai_exp_beginner': {
+    'en': 'Beginner',
+    'ru': 'Новичок',
+  },
+  'workout.ai_exp_intermediate': {
+    'en': 'Intermediate',
+    'ru': 'Средний',
+  },
+  'workout.ai_exp_advanced': {
+    'en': 'Advanced',
+    'ru': 'Продвинутый',
+  },
+  'workout.ai_equipment': {
+    'en': 'Equipment',
+    'ru': 'Инвентарь',
+  },
+  'workout.ai_eq_barbell': {
+    'en': 'Barbell',
+    'ru': 'Штанга',
+  },
+  'workout.ai_eq_dumbbells': {
+    'en': 'Dumbbells',
+    'ru': 'Гантели',
+  },
+  'workout.ai_eq_pullup_bar': {
+    'en': 'Pull-up bar',
+    'ru': 'Турник',
+  },
+  'workout.ai_eq_bodyweight': {
+    'en': 'Bodyweight',
+    'ru': 'Свой вес',
+  },
+  'workout.ai_eq_full_gym': {
+    'en': 'Full gym',
+    'ru': 'Зал',
+  },
+  'workout.ai_days': {
+    'en': 'Days per week',
+    'ru': 'Дней в неделю',
+  },
+  'workout.ai_minutes': {
+    'en': 'Minutes per session',
+    'ru': 'Минут на тренировку',
+  },
+  'workout.ai_focus': {
+    'en': 'Focus (optional)',
+    'ru': 'Акцент (необязательно)',
+  },
+  'workout.ai_focus_hint': {
+    'en': 'e.g. chest, deadlift',
+    'ru': 'напр. грудь, становая',
+  },
+  'workout.ai_limitations': {
+    'en': 'Limitations (optional)',
+    'ru': 'Ограничения (необязательно)',
+  },
+  'workout.ai_limitations_hint': {
+    'en': 'e.g. bad knee, no jumping',
+    'ru': 'напр. колено, без прыжков',
+  },
+  'workout.ai_build_free': {
+    'en': 'Build program',
+    'ru': 'Собрать программу',
+  },
+  'workout.ai_build_ai': {
+    'en': 'Build with AI',
+    'ru': 'Собрать с AI',
+  },
+  'workout.ai_rebuild': {
+    'en': 'Rebuild',
+    'ru': 'Пересобрать',
+  },
+  'workout.ai_save': {
+    'en': 'Save program',
+    'ru': 'Сохранить программу',
+  },
+  'workout.ai_saved': {
+    'en': 'Program saved to your workouts',
+    'ru': 'Программа сохранена в тренировки',
+  },
+  'workout.ai_loading': {
+    'en': 'Coaching your program…',
+    'ru': 'Собираю программу…',
+  },
+  'workout.ai_empty': {
+    'en': 'Could not build a program. Try again.',
+    'ru': 'Не удалось собрать программу. Попробуйте ещё раз.',
+  },
+  'workout.ai_try_again': {
+    'en': 'Try again',
+    'ru': 'Попробовать снова',
+  },
+  'workout.ai_premium_feature': {
+    'en': 'AI workout program',
+    'ru': 'AI-программа тренировок',
+  },
 };
