@@ -3,10 +3,16 @@
 // Использует ember-цвет (accent-discipline: только для urgent/overdue).
 // UX-LAYOUT.md §5 §9 п.2: «EXAM COMING» — закреплена вверху ленты,
 // не уезжает при скролле, пока дедлайн актуален.
+//
+// Сворачивание (Task B): состояние помнится через pinnedDeadlineCollapsedProvider.
+// Свёрнуто → тонкая строка-чип (⚑ название, дата + ▾); развёрнуто → полная
+// карточка + аффорданс свернуть (▴). Ничего не удаляется — вернуть = тап.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/database/database.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../today/widgets/add_task_sheet.dart';
@@ -26,11 +32,37 @@ class PinnedExamCard extends ConsumerWidget {
     final item = asyncItem.valueOrNull;
     if (item == null) return const SizedBox.shrink();
 
+    final collapsed = ref.watch(pinnedDeadlineCollapsedProvider);
+
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final ember = ext?.ember ?? colorScheme.secondary;
     final surface = colorScheme.surface;
+
+    // Открывает редактирование задачи; переключает день на день экзамена.
+    void openEditor() {
+      final examDay = DateTime(
+        item.scheduledAt.year,
+        item.scheduledAt.month,
+        item.scheduledAt.day,
+      );
+      ref.read(selectedDayProvider.notifier).state = examDay;
+      showAddTaskSheet(context, day: examDay, existing: item);
+    }
+
+    void toggleCollapsed() =>
+        ref.read(pinnedDeadlineCollapsedProvider.notifier).toggle();
+
+    if (collapsed) {
+      return _CollapsedChip(
+        item: item,
+        ember: ember,
+        surface: surface,
+        textTheme: textTheme,
+        onTap: toggleCollapsed,
+      );
+    }
 
     final countdown = _countdownLabel(context, item.scheduledAt);
     final typeKey = item.type == 'exam'
@@ -38,16 +70,8 @@ class PinnedExamCard extends ConsumerWidget {
         : 'plan.pinned_type_deadline';
 
     return GestureDetector(
-      onTap: () {
-        // Тап открывает редактирование задачи; переключаем день на день экзамена.
-        final examDay = DateTime(
-          item.scheduledAt.year,
-          item.scheduledAt.month,
-          item.scheduledAt.day,
-        );
-        ref.read(selectedDayProvider.notifier).state = examDay;
-        showAddTaskSheet(context, day: examDay, existing: item);
-      },
+      // Тап по телу карточки — открыть редактирование (как раньше).
+      onTap: openEditor,
       child: Container(
         // 24dp горизонтальный отступ, 12dp вертикальный (02-type-space §4.1)
         margin: const EdgeInsets.fromLTRB(24, 8, 24, 4),
@@ -104,7 +128,78 @@ class PinnedExamCard extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 4),
-            Icon(Icons.chevron_right, color: ember, size: 18),
+            // Аффорданс свернуть (▴) — тап сворачивает карточку.
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(Icons.keyboard_arrow_up, color: ember, size: 20),
+              tooltip: context.s('plan.pinned_collapse_tooltip'),
+              onPressed: toggleCollapsed,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Свёрнутый вид: тонкая одна строка-чип «⚑ {название}, {дата}» + стрелка ▾.
+/// Тап по всей строке разворачивает карточку обратно.
+class _CollapsedChip extends StatelessWidget {
+  const _CollapsedChip({
+    required this.item,
+    required this.ember,
+    required this.surface,
+    required this.textTheme,
+    required this.onTap,
+  });
+
+  final ItemsTableData item;
+  final Color ember;
+  final Color surface;
+  final TextTheme textTheme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = item.scheduledAt;
+    final now = DateTime.now();
+    // Год показываем только если не текущий (как _formatSelectedDate).
+    final dateLabel = date.year == now.year
+        ? DateFormat('d MMM').format(date)
+        : DateFormat('d MMM y').format(date);
+    final title = item.title;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(24, 8, 24, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: ember, width: 1),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.flag_outlined, color: ember, size: 16),
+            const SizedBox(width: 8),
+            // «{название}, {дата}» — одна строка с ellipsis.
+            Expanded(
+              child: Text(
+                '$title, $dateLabel',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: ember,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            // Стрелка ▾ — аффорданс развернуть.
+            Icon(Icons.keyboard_arrow_down, color: ember, size: 18),
           ],
         ),
       ),

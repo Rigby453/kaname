@@ -289,11 +289,12 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     );
   }
 
-  /// Строит панель инструментов в ДВЕ строки (для mobile).
-  /// Строка 1 (управление видом): сегмент День/Неделя/Месяц + тумблер раскладки
-  /// (Day/Week). Это первичные контролы — всегда видны полностью.
-  /// Строка 2 (дата и действия): дата + «Today» слева; поиск (Day) + overflow «⋮»
-  /// (цели, импорт) справа. Обе строки помещаются на 320px при scale 1.3.
+  /// Строит панель инструментов в ОДНУ строку (для mobile).
+  /// Слева направо: компактный выпадающий список вида `[День ▾]` → «Today»
+  /// (только если выбран не сегодня) → дата (тап → DatePicker) → Spacer →
+  /// поиск (Day) → тумблер раскладки (Day/Week) → overflow «⋮» (цели, импорт).
+  /// Гарантированно влезает на 320px при textScale 1.3 за счёт Flexible/ellipsis
+  /// на дате и компактных контролов вместо SegmentedButton.
   Widget _buildToolbar(
     BuildContext context,
     DateTime selectedDay,
@@ -312,142 +313,109 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     return Padding(
       // 16dp слева, компактно справа под иконки (02-type-space.md §4.1)
       padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          // --- Строка 1: управление видом ---
-          Row(
-            children: [
-              // Сегмент День/Неделя/Месяц — основной (primary) контрол.
-              // Flexible + horizontal scroll — страховка от overflow на самых
-              // узких экранах; в обычном случае (320px+) помещается без скролла.
-              Flexible(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<PlanView>(
-                    segments: [
-                      ButtonSegment(value: PlanView.day, label: Text(context.s('plan.view_day'))),
-                      ButtonSegment(value: PlanView.week, label: Text(context.s('plan.view_week'))),
-                      ButtonSegment(value: PlanView.month, label: Text(context.s('plan.view_month'))),
-                    ],
-                    selected: {view},
-                    showSelectedIcon: false,
-                    onSelectionChanged: (s) =>
-                        ref.read(planViewProvider.notifier).state = s.first,
-                  ),
+          // --- Компактный выпадающий список вида: [День ▾] ---
+          // Заменяет SegmentedButton из 3 кнопок (не влезает в один ряд).
+          _ViewDropdown(view: view),
+          // --- Кнопка «Today» — только когда выбран не сегодня (компактная) ---
+          if (!isToday)
+            TextButton(
+              onPressed: () {
+                ref.read(selectedDayProvider.notifier).state = today;
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(context.s('plan.today')),
+            ),
+          // --- Дата: тап открывает DatePicker. Flexible: ужимается (ellipsis),
+          // а не вызывает overflow. ---
+          Flexible(
+            child: GestureDetector(
+              onTap: () => _pickDate(selectedDay),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _formatSelectedDate(selectedDay),
+                        // bodySmall для метаданных (02-type-space §1)
+                        style: textTheme.bodySmall?.copyWith(color: textMuted),
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      // нейтральный цвет для иконок тулбара (accent discipline)
+                      color: textMuted,
+                    ),
+                  ],
                 ),
               ),
-              // Тумблер раскладки (список ↔ сетка времени) — только Day/Week.
-              // Прижат к правому краю первой строки.
-              if (view != PlanView.month) ...[
-                const SizedBox(width: 4),
-                _LayoutToggleButton(layout: layout),
-              ],
-            ],
+            ),
           ),
-          // Небольшой зазор между строками (без тяжёлого разделителя).
-          const SizedBox(height: 4),
-          // --- Строка 2: дата и действия ---
-          Row(
-            children: [
-              // Кнопка «Today» — видна только когда выбран не сегодня.
-              if (!isToday)
-                TextButton(
-                  onPressed: () {
-                    ref.read(selectedDayProvider.notifier).state = today;
-                  },
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 36),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  child: Text(context.s('plan.today')),
-                ),
-              // Тап на дату открывает DatePicker. Flexible: ужимается (ellipsis),
-              // а не вызывает overflow.
-              Flexible(
-                child: GestureDetector(
-                  onTap: () => _pickDate(selectedDay),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            _formatSelectedDate(selectedDay),
-                            // bodySmall для метаданных (02-type-space §1)
-                            style: textTheme.bodySmall?.copyWith(color: textMuted),
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        Icon(
-                          Icons.arrow_drop_down,
-                          size: 18,
-                          // нейтральный цвет для иконок тулбара (accent discipline)
-                          color: textMuted,
-                        ),
-                      ],
-                    ),
-                  ),
+          // Прижимаем действия к правому краю строки.
+          const Spacer(),
+          // --- Иконка поиска (только в режиме Day) — нейтральный цвет. ---
+          if (view == PlanView.day)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                searchVisible ? Icons.search_off : Icons.search,
+                color: textMuted,
+              ),
+              tooltip: context.s('plan.search_tooltip'),
+              onPressed: () {
+                final notifier = ref.read(planSearchVisibleProvider.notifier);
+                notifier.state = !notifier.state;
+                if (notifier.state == false) {
+                  // Сбрасываем запрос при закрытии
+                  ref.read(planSearchQueryProvider.notifier).state = '';
+                }
+              },
+            ),
+          // --- Тумблер раскладки (список ↔ сетка времени) — только Day/Week. ---
+          if (view != PlanView.month) _LayoutToggleButton(layout: layout),
+          // --- Overflow-меню для редких действий (цели, импорт). ---
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: textMuted),
+            tooltip: context.s('plan.more_tooltip'),
+            onSelected: (value) {
+              switch (value) {
+                case 'goals':
+                  context.push('/goals');
+                case 'import':
+                  showImportSheet(context, day: selectedDay);
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'goals',
+                child: Row(
+                  children: [
+                    Icon(Icons.flag_outlined, size: 20, color: textMuted),
+                    const SizedBox(width: 12),
+                    Text(ctx.s('plan.goals_tooltip')),
+                  ],
                 ),
               ),
-              // Прижимаем действия к правому краю строки.
-              const Spacer(),
-              // Иконка поиска (только в режиме Day) — нейтральный цвет.
-              if (view == PlanView.day)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    searchVisible ? Icons.search_off : Icons.search,
-                    color: textMuted,
-                  ),
-                  tooltip: context.s('plan.search_tooltip'),
-                  onPressed: () {
-                    final notifier = ref.read(planSearchVisibleProvider.notifier);
-                    notifier.state = !notifier.state;
-                    if (notifier.state == false) {
-                      // Сбрасываем запрос при закрытии
-                      ref.read(planSearchQueryProvider.notifier).state = '';
-                    }
-                  },
+              PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    Icon(Icons.upload_file_outlined, size: 20, color: textMuted),
+                    const SizedBox(width: 12),
+                    Text(ctx.s('plan.import_label')),
+                  ],
                 ),
-              // Overflow-меню для редких действий (цели, импорт) — нейтральный цвет.
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: textMuted),
-                tooltip: context.s('plan.more_tooltip'),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'goals':
-                      context.push('/goals');
-                    case 'import':
-                      showImportSheet(context, day: selectedDay);
-                  }
-                },
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(
-                    value: 'goals',
-                    child: Row(
-                      children: [
-                        Icon(Icons.flag_outlined, size: 20, color: textMuted),
-                        const SizedBox(width: 12),
-                        Text(ctx.s('plan.goals_tooltip')),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'import',
-                    child: Row(
-                      children: [
-                        Icon(Icons.upload_file_outlined, size: 20, color: textMuted),
-                        const SizedBox(width: 12),
-                        Text(ctx.s('plan.import_label')),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
@@ -470,8 +438,10 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       case PlanView.week:
         return Column(
           children: [
-            // Раскрывающийся календарь: потяни вниз — развернётся месяц.
-            const ExpandableWeekCalendar(),
+            // Раскрывающийся календарь (полоса дней недели) — только для
+            // списочной раскладки. В сетке (WeekTimeGrid) свой заголовок-ряд
+            // дней, иначе дни недели дублировались бы (Task D).
+            if (!isGrid) const ExpandableWeekCalendar(),
             // Тонкий разделитель (02-type-space §4.3 hairline)
             Divider(height: 0.5, thickness: 0.5, color: border),
             // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
@@ -529,6 +499,63 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ],
         );
     }
+  }
+}
+
+/// Компактный выпадающий список вида: `[День ▾]`. Заменяет SegmentedButton
+/// из трёх кнопок (не влезает в одну строку тулбара на узких экранах).
+/// Показывает текущий вид + стрелку ▾; пункты — day/week/month.
+class _ViewDropdown extends ConsumerWidget {
+  const _ViewDropdown({required this.view});
+
+  final PlanView view;
+
+  String _label(BuildContext context, PlanView v) {
+    switch (v) {
+      case PlanView.day:
+        return context.s('plan.view_day');
+      case PlanView.week:
+        return context.s('plan.view_week');
+      case PlanView.month:
+        return context.s('plan.view_month');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? Theme.of(context).colorScheme.onSurface;
+    final textTheme = Theme.of(context).textTheme;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    return PopupMenuButton<PlanView>(
+      tooltip: context.s('plan.view_picker_tooltip'),
+      initialValue: view,
+      onSelected: (v) => ref.read(planViewProvider.notifier).state = v,
+      itemBuilder: (ctx) => [
+        for (final v in PlanView.values)
+          PopupMenuItem(
+            value: v,
+            child: Text(_label(ctx, v)),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _label(context, view),
+              style: textTheme.bodyMedium?.copyWith(
+                color: onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, size: 18, color: textMuted),
+          ],
+        ),
+      ),
+    );
   }
 }
 

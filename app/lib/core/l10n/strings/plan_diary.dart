@@ -45,6 +45,19 @@ const Map<String, Map<String, String>> planDiaryStrings = {
     'ja': '月',
     'ko': '월',
   },
+  'plan.view_picker_tooltip': {
+    'en': 'Choose view',
+    'ru': 'Выбрать вид',
+    'de': 'Ansicht wählen',
+    'fr': 'Choisir la vue',
+    'it': 'Scegli vista',
+    'pt': 'Escolher visualização',
+    'es': 'Elegir vista',
+    'id': 'Pilih tampilan',
+    'hi': 'दृश्य चुनें',
+    'ja': '表示を選択',
+    'ko': '보기 선택',
+  },
 
   // Plan — тулбар
   'plan.today': {
@@ -288,6 +301,19 @@ const Map<String, Map<String, String>> planDiaryStrings = {
     'hi': 'समय-सीमा',
     'ja': '締切',
     'ko': '마감',
+  },
+  'plan.pinned_collapse_tooltip': {
+    'en': 'Collapse',
+    'ru': 'Свернуть',
+    'de': 'Einklappen',
+    'fr': 'Réduire',
+    'it': 'Comprimi',
+    'pt': 'Recolher',
+    'es': 'Contraer',
+    'id': 'Ciutkan',
+    'hi': 'संक्षिप्त करें',
+    'ja': '折りたたむ',
+    'ko': '접기',
   },
   'plan.type_event': {
     'en': 'event',
