@@ -680,9 +680,10 @@ class _TaskCardState extends State<_TaskCard> {
     } else if (moduleLink == 'sleep') {
       context.push('/sleep-report');
     } else if (moduleLink.startsWith('meal:')) {
-      // Food-экран не принимает параметр приёма пищи — открываем общий.
-      // TODO: расширить food_screen.dart scroll-to-meal (follow-up задача).
-      context.push('/food');
+      // meal:<slot> → открыть Food и доскроллить к нужному приёму
+      // (FoodScreen.targetMeal, см. /food?meal=). Если приёма ещё нет в логе —
+      // экран откроется обычно, без доскролла.
+      context.push('/food?meal=${moduleLink.substring(5)}');
     }
   }
 

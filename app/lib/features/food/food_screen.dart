@@ -16,6 +16,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/animations/ai_insight_reveal.dart';
+import '../../core/animations/constants.dart';
 import '../../core/widgets/collapsing_fab.dart';
 import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/animations/app_sheet.dart';
@@ -141,15 +142,73 @@ Nutrition _logToNutrition(FoodLogsTableData l) => Nutrition(
       fiber: l.fiber,
     );
 
-class FoodScreen extends ConsumerWidget {
-  const FoodScreen({super.key});
+class FoodScreen extends ConsumerStatefulWidget {
+  const FoodScreen({super.key, this.targetMeal});
+
+  /// Приём пищи (slot, напр. 'breakfast'), к которому надо доскроллить и
+  /// кратко подсветить при открытии экрана. null — обычное открытие.
+  /// Приходит из moduleLink `meal:<slot>` через query-параметр маршрута /food.
+  final String? targetMeal;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FoodScreen> createState() => _FoodScreenState();
+}
+
+class _FoodScreenState extends ConsumerState<FoodScreen> {
+  // GlobalKey'и заголовков секций приёмов — для Scrollable.ensureVisible.
+  final Map<String, GlobalKey> _mealKeys = {};
+
+  // Слот, чей заголовок сейчас подсвечен (короткая вспышка после доскролла).
+  String? _highlightedMeal;
+
+  // Чтобы доскролл сработал только при ПЕРВОМ построении с непустым списком
+  // (а не на каждом ребилде стрима после добавления/удаления записи).
+  bool _scrolledToTarget = false;
+
+  /// Возвращает (создавая при необходимости) GlobalKey заголовка секции [slot].
+  GlobalKey _mealKey(String slot) =>
+      _mealKeys.putIfAbsent(slot, () => GlobalKey());
+
+  /// После первого кадра со списком — доскроллить к целевому приёму и подсветить.
+  void _maybeScrollToTarget(List<FoodLogsTableData> logs) {
+    if (_scrolledToTarget) return;
+    final target = widget.targetMeal;
+    if (target == null || logs.isEmpty) return;
+    // Целевая секция должна реально присутствовать в сегодняшнем логе.
+    if (!logs.any((l) => l.meal == target)) return;
+    _scrolledToTarget = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _mealKeys[target];
+      final ctx = key?.currentContext;
+      if (ctx == null) return;
+      final reduce = reduceMotionOf(context);
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.05,
+        duration: reduce ? Duration.zero : kDurationNormal,
+        curve: kCurveSlide,
+      );
+      // Краткая подсветка заголовка целевой секции (не при reduce-motion).
+      if (!reduce) {
+        setState(() => _highlightedMeal = target);
+        Future.delayed(const Duration(milliseconds: 1400), () {
+          if (mounted) setState(() => _highlightedMeal = null);
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final logs = ref.watch(_todayFoodProvider).valueOrNull ??
         const <FoodLogsTableData>[];
     final totals = sumNutrition(logs.map(_logToNutrition));
+
+    // Планируем доскролл к целевому приёму при первом непустом построении.
+    _maybeScrollToTarget(logs);
 
     return Scaffold(
       appBar: AppBar(
@@ -227,6 +286,13 @@ class FoodScreen extends ConsumerWidget {
     );
   }
 
+  /// Заголовок секции с GlobalKey (для доскролла) и флагом подсветки.
+  Widget _sectionHeader(String slot) => _MealSectionHeader(
+        key: _mealKey(slot),
+        slot: slot,
+        highlighted: _highlightedMeal == slot,
+      );
+
   /// Группирует дневной лог по слотам приёмов пищи и рендерит секции в
   /// каноническом порядке (kMealSlotOrder). Пустые группы пропускаются.
   /// Записи с meal, которого нет в kMealSlotOrder, собираются в «прочее»
@@ -250,12 +316,12 @@ class FoodScreen extends ConsumerWidget {
     for (final slot in kMealSlotOrder) {
       final group = grouped[slot];
       if (group == null || group.isEmpty) continue;
-      sections.add(_MealSectionHeader(slot: slot));
+      sections.add(_sectionHeader(slot));
       sections.addAll(group.map((l) => _FoodRow(log: l)));
     }
     // «Прочее» — записи с неизвестным/легаси-приёмом — в конец под «перекус».
     if (other.isNotEmpty) {
-      sections.add(const _MealSectionHeader(slot: 'snack'));
+      sections.add(_sectionHeader('snack'));
       sections.addAll(other.map((l) => _FoodRow(log: l)));
     }
     return sections;
@@ -265,8 +331,17 @@ class FoodScreen extends ConsumerWidget {
 /// Маленький заголовок-секция приёма пищи над группой записей.
 /// Лейбл локализуется через `food.meal_<slot>`; первая буква — в верхний регистр.
 class _MealSectionHeader extends StatelessWidget {
-  const _MealSectionHeader({required this.slot});
+  const _MealSectionHeader({
+    required this.slot,
+    this.highlighted = false,
+    super.key,
+  });
   final String slot;
+
+  /// true — короткая подсветка фона (после доскролла к этому приёму).
+  /// Используется accentMuted (selection highlight, design-tokens) — не залив
+  /// акцентом, а мягкое выделение «вот сюда ты пришёл».
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -280,8 +355,20 @@ class _MealSectionHeader extends StatelessWidget {
         ? label[0].toUpperCase() + label.substring(1)
         : slot;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 6, left: 4),
+    // Подсветка-вспышка: плавно появляется и гаснет (флаг highlighted снимается
+    // через таймер в _FoodScreenState). accentMuted = selection highlight bg.
+    final highlightColor = ext?.accentMuted ??
+        Theme.of(context).colorScheme.primary.withAlpha(30);
+
+    return AnimatedContainer(
+      duration: kDurationNormal,
+      curve: kCurveSlide,
+      margin: const EdgeInsets.only(top: 12, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        color: highlighted ? highlightColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(8), // radius.sm
+      ),
       child: Text(
         display,
         style: textTheme.titleSmall?.copyWith(color: mutedColor),

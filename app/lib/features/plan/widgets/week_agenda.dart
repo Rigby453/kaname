@@ -253,6 +253,7 @@ void _openModule(BuildContext context, String moduleLink) {
   } else if (moduleLink == 'sleep') {
     context.push('/sleep-report');
   } else if (moduleLink.startsWith('meal:')) {
-    context.push('/food');
+    // meal:<slot> → открыть Food и доскроллить к этому приёму.
+    context.push('/food?meal=${moduleLink.substring(5)}');
   }
 }
