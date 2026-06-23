@@ -406,10 +406,86 @@ class _TimeSpan {
   final _Span span;
 }
 
+/// Применяет RU-маркер части суток к часу 1..12.
+///   «утра»/«ночи»  → как есть (но 12 ночи → 00);
+///   «дня»/«вечера» → +12 для 1..11 (12 дня = 12:00, остаётся как есть).
+/// Возвращает скорректированный час 0..23 или null, если час вне 0..23.
+int? _applyRuMeridiem(int hour, String marker) {
+  final m = marker.toLowerCase();
+  var h = hour;
+  if (m == 'утра' || m == 'ночи') {
+    if (h == 12) h = 0; // 12 ночи / 12 утра → полночь
+  } else if (m == 'дня' || m == 'вечера') {
+    if (h != 12) h += 12; // 7 вечера → 19, 12 дня → 12
+  }
+  if (h < 0 || h > 23) return null;
+  return h;
+}
+
+/// RU-часть-суток как хвост паттерна времени (необязательная группа).
+/// «утра|вечера|дня|ночи» с границей слова справа.
+const String _ruMeridiemRe = r'(?:\s*(утра|вечера|дня|ночи)(?![а-яё]))?';
+
+/// Распознаёт RU-время с опциональным предлогом «в», пробельным форматом минут
+/// («7 00» = 07:00) и опциональным маркером части суток («утра/вечера/дня/ночи»).
+/// Span покрывает предлог «в», час, минуты И маркер — чтобы _eraseSpans вырезал
+/// всё это из названия. Возвращает null, если такой конструкции нет.
+///
+/// Поддерживает:
+///   • «в 7 00 утра» / «7 00» / «в 7 00» — час ПРОБЕЛ минуты;
+///   • «в 7 утра» / «7 утра» / «в 8 вечера» — час + маркер (минуты = 00);
+///   • «7:00 утра» — двоеточие + маркер.
+/// НЕ матчит голый «в 7» без минут/маркера (его берёт существующая ветка) и
+/// НЕ матчит, если за минутами/часом сразу идёт ещё цифра (часть длинного числа).
+_TimeSpan? _parseRuSpacedTime(String text) {
+  // Предлог «в»/«во» — опционально, попадает в span (group 0).
+  // Час 1-2 цифры; затем ЛИБО «:MM»/« MM» (пробельные минуты), ЛИБО ничего —
+  // но тогда ОБЯЗАТЕЛЕН маркер части суток (иначе это просто число).
+  // (?<![\d]) перед часом — не середина длинного числа.
+  // Вариант A: час + минуты (пробел/двоеточие) + опц. маркер.
+  final withMin = RegExp(
+    r'(?:(?:^|\s)(?:во|в)\s+)?(?<![\d:])(\d{1,2})[\s:](\d{2})(?![\d:])' +
+        _ruMeridiemRe,
+    caseSensitive: false,
+    unicode: true,
+  );
+  for (final m in withMin.allMatches(text)) {
+    final h0 = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    if (h0 > 23 || min > 59) continue;
+    final marker = m.group(3);
+    final h = marker != null ? _applyRuMeridiem(h0, marker) : h0;
+    if (h == null) continue;
+    return _TimeSpan(h, min, _Span(m.start, m.end));
+  }
+
+  // Вариант B: час + ОБЯЗАТЕЛЬНЫЙ маркер (минуты = 00): «7 утра», «в 8 вечера».
+  final withMarker = RegExp(
+    r'(?:(?:^|\s)(?:во|в)\s+)?(?<![\d:])(\d{1,2})\s*(утра|вечера|дня|ночи)(?![а-яё])',
+    caseSensitive: false,
+    unicode: true,
+  );
+  final mm = withMarker.firstMatch(text);
+  if (mm != null) {
+    final h0 = int.parse(mm.group(1)!);
+    if (h0 <= 23) {
+      final h = _applyRuMeridiem(h0, mm.group(2)!);
+      if (h != null) return _TimeSpan(h, 0, _Span(mm.start, mm.end));
+    }
+  }
+
+  return null;
+}
+
 /// Ищет время в [text]. Возвращает null если не найдено.
 /// НЕ удаляет предлоги — их убирает _eraseSpans.
 _TimeSpan? _parseTime(String text) {
-  // HH:MM (24h) — высший приоритет
+  // RU пробельный формат «7 00» / маркеры «утра/вечера» — высший приоритет,
+  // т.к. иначе HH:MM или «в N» перехватят часть конструкции.
+  final ru = _parseRuSpacedTime(text);
+  if (ru != null) return ru;
+
+  // HH:MM (24h)
   var m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(text);
   if (m != null) {
     final h = int.parse(m.group(1)!);
@@ -644,6 +720,17 @@ NlDateTimeResult? _tryWordDate(String text, DateTime now) {
 
 /// Голое время (без контекста даты): "17:00", "5pm" → сегодня/завтра.
 NlDateTimeResult? _tryBareTime(String text, DateTime now) {
+  // RU пробельный формат «7 00» и маркеры «утра/вечера/дня/ночи» (вкл. предлог
+  // «в») — высший приоритет: ловит «в 7 00 утра», «7 утра», «в 8 вечера» и
+  // вырезает всю конструкцию (предлог + час + минуты + маркер) из названия.
+  final ru = _parseRuSpacedTime(text);
+  if (ru != null) {
+    var dt = _withTime(now, ru.hour, ru.minute);
+    dt = _futureOrTomorrow(dt, now);
+    final cleaned = _eraseSpans(text, [ru.span]);
+    return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
+  }
+
   // HH:MM
   var m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(text);
   if (m != null) {

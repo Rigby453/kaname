@@ -283,8 +283,17 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _loadMainCount();
     // Загружаем недавние названия задач для ряда «быстрый выбор».
     _loadRecentTitles();
-    // Загружаем вложения (только в режиме редактирования — у новой задачи нет id).
-    if (_isEditing) _loadAttachments();
+    // Вложения. Для новой задачи сначала чистим возможные «осиротевшие»
+    // '__pending__'-строки от предыдущей прерванной сессии (иначе они
+    // протекли бы в новую задачу), затем — на Android подбираем потерянный
+    // результат камеры (Activity мог пересоздаться) и загружаем сетку.
+    if (_isEditing) {
+      _loadAttachments();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initPendingAttachments();
+      });
+    }
     // Загружаем подзадачи (чеклист) для редактируемой задачи / шаблона серии.
     if (_isEditing) _loadSubtasks();
     // Слушаем изменения заголовка для NL-парсинга.
@@ -443,11 +452,21 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     );
   }
 
+  /// Временный itemId для вложений новой (ещё не сохранённой) задачи.
+  /// При сохранении перепривязываются к реальному id (reassignItemId в _save).
+  static const String _pendingAttachmentItemId = '__pending__';
+
+  /// id, под которым лежат вложения текущей формы: реальный id для
+  /// редактирования, '__pending__' для новой задачи.
+  String get _attachmentItemId => widget.existing?.id ?? _pendingAttachmentItemId;
+
   Future<void> _loadAttachments() async {
-    if (widget.existing == null) return;
+    // Работает и для новой задачи: читаем по _attachmentItemId (для новой —
+    // '__pending__'), иначе сетка миниатюр у новой задачи никогда не обновлялась
+    // после добавления (баг «через раз»). Future-запрос вместо стрима — нам нужен
+    // снимок текущего набора.
     final dao = ref.read(itemAttachmentsDaoProvider);
-    final list =
-        await dao.watchAttachments(widget.existing!.id).first;
+    final list = await dao.getAttachments(_attachmentItemId);
     if (mounted) setState(() => _attachments = list);
   }
 
@@ -774,16 +793,83 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     }
   }
 
-  Future<void> _pickAttachment(ImageSource source, {bool isVideo = false}) async {
-    XFile? file;
-    if (isVideo) {
-      file = await _imagePicker.pickVideo(source: source);
-    } else {
-      file = await _imagePicker.pickImage(source: source, imageQuality: 85);
-    }
-    if (file == null || !mounted) return;
+  /// Инициализация вложений новой задачи (post-frame):
+  /// 1) Чистим осиротевшие '__pending__' от прошлой прерванной сессии формы.
+  /// 2) На Android подбираем «потерянный» результат камеры/галереи
+  ///    (Activity мог быть пересоздан и pick* вернул бы null — баг «через раз»).
+  /// 3) Загружаем сетку.
+  Future<void> _initPendingAttachments() async {
+    final dao = ref.read(itemAttachmentsDaoProvider);
+    // Осиротевшие pending-вложения предыдущей сессии (форма закрыта без сохранения
+    // не успев перепривязать) удаляем вместе с файлами, чтобы они не «прилипли»
+    // к новой задаче.
+    await dao.deleteAllForItem(_pendingAttachmentItemId);
+    await _retrieveLostAttachment();
+    if (mounted) _loadAttachments();
+  }
 
-    // Копируем в директорию приложения для надёжного хранения
+  /// Android: подбор потерянного результата image_picker после пересоздания
+  /// Activity (стандартное решение image_picker). На прочих платформах — no-op.
+  Future<void> _retrieveLostAttachment() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      final response = await _imagePicker.retrieveLostData();
+      if (response.isEmpty) return;
+      final isVideo = response.type == RetrieveType.video;
+      // files заполняется только для мульти-выбора; для одиночного фото/видео
+      // результат лежит в file. Берём непустой набор из доступного.
+      final files = (response.files != null && response.files!.isNotEmpty)
+          ? response.files!
+          : (response.file != null ? [response.file!] : const <XFile>[]);
+      for (final f in files) {
+        await _storeAttachment(f, isVideo: isVideo);
+      }
+    } catch (_) {
+      // Молча игнорируем — потерянных данных просто нет/не получить.
+    }
+  }
+
+  Future<void> _pickAttachment(ImageSource source, {bool isVideo = false}) async {
+    // Локализуем сообщения ДО async-разрывов, чтобы не трогать context после
+    // await (use_build_context_synchronously).
+    final failedMsg = context.s('today.attachment_failed');
+    final cancelledMsg = context.s('today.attachment_cancelled');
+
+    XFile? file;
+    try {
+      if (isVideo) {
+        file = await _imagePicker.pickVideo(source: source);
+      } else {
+        file = await _imagePicker.pickImage(source: source, imageQuality: 85);
+      }
+    } catch (e) {
+      // Picker бросил (нет разрешения, занят и т.п.) — раньше это было «тихо».
+      debugPrint('Attachment pick failed: $e');
+      _showAttachmentSnack(failedMsg);
+      return;
+    }
+
+    // null = пользователь отменил выбор ИЛИ Android потерял результат
+    // (Activity пересоздана). Сообщаем «отменено», но не как ошибку.
+    if (file == null) {
+      _showAttachmentSnack(cancelledMsg);
+      return;
+    }
+
+    try {
+      await _storeAttachment(file, isVideo: isVideo);
+    } catch (e) {
+      debugPrint('Attachment store failed: $e');
+      _showAttachmentSnack(failedMsg);
+      return;
+    }
+    if (mounted) _loadAttachments();
+  }
+
+  /// Копирует выбранный файл в каталог приложения и пишет строку вложения
+  /// под текущим _attachmentItemId (реальный id или '__pending__').
+  Future<void> _storeAttachment(XFile file, {required bool isVideo}) async {
+    // Копируем в директорию приложения для надёжного хранения.
     final dir = await getApplicationDocumentsDirectory();
     final ext = p.extension(file.path).isEmpty
         ? (isVideo ? '.mp4' : '.jpg')
@@ -794,16 +880,22 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     await File(file.path).copy(dest.path);
 
     final dao = ref.read(itemAttachmentsDaoProvider);
-    // Для новых задач временно используем пустой itemId — обновим после сохранения.
-    // Для редактирования — сразу привязываем к существующему id.
-    final itemId = widget.existing?.id ?? '__pending__';
+    // Новая задача → '__pending__' (перепривяжем в _save); редактирование →
+    // реальный id.
     await dao.addAttachment(ItemAttachmentsTableCompanion(
       id: Value(uuidV4()),
-      itemId: Value(itemId),
+      itemId: Value(_attachmentItemId),
       localPath: Value(dest.path),
       type: Value(isVideo ? 'video' : 'photo'),
     ));
-    if (mounted) _loadAttachments();
+  }
+
+  /// Короткий SnackBar по поводу вложения (если виджет ещё в дереве).
+  void _showAttachmentSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _viewAttachment(ItemAttachmentsTableData a) {
@@ -972,6 +1064,12 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         ),
       );
       await _persistSubtasks(newId);
+      // Перепривязываем вложения, добавленные до сохранения (лежали под
+      // '__pending__'), к реальному id новой задачи — иначе они «пропадали»
+      // (оставались осиротевшими и не показывались на карточке задачи).
+      await ref
+          .read(itemAttachmentsDaoProvider)
+          .reassignItemId(_pendingAttachmentItemId, newId);
       // Записываем «добавлено» для одноуровневой отмены (кнопка ↩ на Today).
       ref.read(lastUndoableActionProvider.notifier).recordAdd(newId);
       // Напоминание планируем только для не-серийной задачи (newRuleString==null).
@@ -1220,11 +1318,24 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _isEditing ? context.s('today.edit_task') : context.s('today.new_task'),
-              style: textTheme.headlineSmall,
+            // Заголовок + видимый крестик закрытия (не только кнопка «назад»).
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _isEditing
+                        ? context.s('today.edit_task')
+                        : context.s('today.new_task'),
+                    style: textTheme.headlineSmall,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
             // 1. Заголовок + mic + NL-подсказка
             _TitleField(
@@ -1442,42 +1553,49 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             if (!_isVirtualOccurrence) ...[
               Text(context.s('addtask.repeat'), style: textTheme.labelMedium),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  ChoiceChip(
-                    label: Text(context.s('addtask.repeat_none')),
-                    selected: _repeatFreq == null,
-                    onSelected: (_) => setState(() {
-                      _repeatFreq = null;
-                      _userPickedRepeat = true;
-                    }),
-                  ),
-                  ChoiceChip(
-                    label: Text(context.s('addtask.repeat_daily')),
-                    selected: _repeatFreq == RecurFreq.daily,
-                    onSelected: (_) => setState(() {
-                      _repeatFreq = RecurFreq.daily;
-                      _userPickedRepeat = true;
-                    }),
-                  ),
-                  ChoiceChip(
-                    label: Text(context.s('addtask.repeat_weekly')),
-                    selected: _repeatFreq == RecurFreq.weekly,
-                    onSelected: (_) => setState(() {
-                      _repeatFreq = RecurFreq.weekly;
-                      _userPickedRepeat = true;
-                    }),
-                  ),
-                  ChoiceChip(
-                    label: Text(context.s('addtask.repeat_monthly')),
-                    selected: _repeatFreq == RecurFreq.monthly,
-                    onSelected: (_) => setState(() {
-                      _repeatFreq = RecurFreq.monthly;
-                      _userPickedRepeat = true;
-                    }),
-                  ),
-                ],
+              // Один горизонтально прокручиваемый ряд чипов частоты (не
+              // переносится) — тот же паттерн, что у длительности/напоминания.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: Text(context.s('addtask.repeat_none')),
+                      selected: _repeatFreq == null,
+                      onSelected: (_) => setState(() {
+                        _repeatFreq = null;
+                        _userPickedRepeat = true;
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(context.s('addtask.repeat_daily')),
+                      selected: _repeatFreq == RecurFreq.daily,
+                      onSelected: (_) => setState(() {
+                        _repeatFreq = RecurFreq.daily;
+                        _userPickedRepeat = true;
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(context.s('addtask.repeat_weekly')),
+                      selected: _repeatFreq == RecurFreq.weekly,
+                      onSelected: (_) => setState(() {
+                        _repeatFreq = RecurFreq.weekly;
+                        _userPickedRepeat = true;
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(context.s('addtask.repeat_monthly')),
+                      selected: _repeatFreq == RecurFreq.monthly,
+                      onSelected: (_) => setState(() {
+                        _repeatFreq = RecurFreq.monthly;
+                        _userPickedRepeat = true;
+                      }),
+                    ),
+                  ],
+                ),
               ),
               // WEEKLY: выбор дней недели чипами Пн..Вс.
               if (_repeatFreq == RecurFreq.weekly) ...[
