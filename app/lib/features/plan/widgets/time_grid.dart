@@ -637,19 +637,19 @@ class _DayColumn extends ConsumerWidget {
         return Stack(
           children: [
             for (var i = 0; i < items.length; i++)
-              RepaintBoundary(
-                // RepaintBoundary изолирует перерисовку блока: во время drag/resize
-                // перерисовывается только этот слой, а не вся колонка/сетка.
-                child: _EventBlock(
-                  key: ValueKey(items[i].id),
-                  item: items[i],
-                  day: day,
-                  hourHeight: hourHeight,
-                  columnWidth: width,
-                  lane: lanes[i].lane,
-                  laneCount: lanes[i].laneCount,
-                  compact: compact,
-                ),
+              // Positioned должен быть прямым потомком Stack, поэтому _EventBlock
+              // кладётся в Stack напрямую. RepaintBoundary для изоляции
+              // перерисовки блока во время drag/resize находится внутри
+              // _EventBlock (оборачивает child у Positioned).
+              _EventBlock(
+                key: ValueKey(items[i].id),
+                item: items[i],
+                day: day,
+                hourHeight: hourHeight,
+                columnWidth: width,
+                lane: lanes[i].lane,
+                laneCount: lanes[i].laneCount,
+                compact: compact,
               ),
           ],
         );
@@ -802,7 +802,10 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
           left: left,
           width: width,
           height: height,
-          child: GestureDetector(
+          // RepaintBoundary изолирует перерисовку блока: во время drag/resize
+          // перерисовывается только этот слой, а не вся колонка/сетка.
+          child: RepaintBoundary(
+            child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             // Короткий тап → карточка-деталь (а не сразу форма).
             onTap: () => showTaskDetailSheet(
@@ -854,6 +857,7 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
                 ],
               ),
             ),
+          ),
           ),
         );
       },
@@ -971,15 +975,28 @@ class _BlockContent extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.bg,
         borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: colors.border, width: 3),
-          top: BorderSide(color: colors.border.withValues(alpha: 0.4)),
-          right: BorderSide(color: colors.border.withValues(alpha: 0.4)),
-          bottom: BorderSide(color: colors.border.withValues(alpha: 0.4)),
-        ),
+        // Рамка должна быть равномерной по цвету, иначе borderRadius бросает
+        // ассерт «A borderRadius can only be given on borders with uniform
+        // colors». Толстый левый акцент рисуется отдельной полоской ниже.
+        border: Border.all(color: colors.border.withValues(alpha: 0.4)),
       ),
       child: Stack(
         children: [
+          // Левый акцент-полоска (бывшая толстая левая граница).
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.border,
+                borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(8),
+                ),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 3, 4, 3),
             child: Column(
