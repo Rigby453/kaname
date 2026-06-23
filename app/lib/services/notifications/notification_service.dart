@@ -293,7 +293,13 @@ class NotificationsEnabled extends Notifier<bool> {
       if (enabled) {
         final granted = await service.requestPermission();
         if (!granted) return false; // state остаётся false
-        await service.scheduleDailyReviews();
+        // Часы разборов берём из prefs (онбординг/setup_flow), как main.dart
+        // и reschedule(), а не дефолтные 8/20 — иначе off→on сбрасывает время.
+        final hours = _reviewHours();
+        await service.scheduleDailyReviews(
+          morningHour: hours.$1,
+          eveningHour: hours.$2,
+        );
       } else {
         await service.cancelAll();
       }
@@ -308,12 +314,28 @@ class NotificationsEnabled extends Notifier<bool> {
     }
   }
 
+  /// Часы утреннего/вечернего разбора из prefs (онбординг/setup_flow),
+  /// дефолты 8/20. Единый источник для setEnabled() и reschedule(), чтобы
+  /// включение/перепланирование не сбрасывало пользовательское время.
+  (int, int) _reviewHours() {
+    final prefs = ref.read(sharedPreferencesProvider);
+    return (
+      prefs.getInt('review_morning_hour') ?? kMorningHour,
+      prefs.getInt('review_evening_hour') ?? kEveningHour,
+    );
+  }
+
   /// Перепланирует уже активные уведомления в текущей эффективной зоне.
   /// Вызывается при смене настройки часового пояса (timezone_provider).
   /// Перечитывает зону устройства/override, затем заново планирует разборы
   /// (если включены) и напоминания об осанке (если их тумблер активен).
   /// Часы разборов берутся из тех же ключей prefs, что и при старте
   /// (review_morning_hour / review_evening_hour — см. onboarding/setup_flow).
+  //
+  // TODO(notifications, LOW): per-task напоминания (scheduleTaskReminder)
+  // НЕ перепланируются при смене часового пояса — они привязаны к старому
+  // tz.local на момент планирования. Короткогоризонтные, поэтому пока ОК;
+  // при необходимости перепланировать активные task-reminder здесь же.
   Future<void> reschedule() async {
     if (kIsWeb) return;
     final service = ref.read(notificationServiceProvider);
@@ -321,9 +343,10 @@ class NotificationsEnabled extends Notifier<bool> {
     try {
       await service.refreshTimezone();
       if (state) {
+        final hours = _reviewHours();
         await service.scheduleDailyReviews(
-          morningHour: prefs.getInt('review_morning_hour') ?? kMorningHour,
-          eveningHour: prefs.getInt('review_evening_hour') ?? kEveningHour,
+          morningHour: hours.$1,
+          eveningHour: hours.$2,
         );
       }
       // Напоминания об осанке планируются отдельным тумблером
