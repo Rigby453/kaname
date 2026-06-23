@@ -200,8 +200,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /focus — фокус-сессии (из Health), вне оболочки
       GoRoute(path: '/focus', builder: (context, state) => const FocusScreen()),
 
-      // /food — модуль еды (из Health), вне оболочки
-      GoRoute(path: '/food', builder: (context, state) => const FoodScreen()),
+      // /food — модуль еды (из Health), вне оболочки.
+      // ?meal=<slot> — при открытии из задачи-приёма (moduleLink meal:*)
+      // экран доскролливает к этой секции и кратко её подсвечивает.
+      GoRoute(
+        path: '/food',
+        builder: (context, state) =>
+            FoodScreen(targetMeal: state.uri.queryParameters['meal']),
+      ),
 
       // /wrapped — weekly wrapped (из Diary), вне оболочки
       GoRoute(
