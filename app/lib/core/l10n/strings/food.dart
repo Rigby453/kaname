@@ -1062,6 +1062,33 @@ const Map<String, Map<String, String>> foodStrings = {
     'ja': 'メニューを記録しました — 良い一日を！',
     'ko': '메뉴가 기록됐어요 — 즐거운 하루 보내세요!',
   },
+  // Итеративная доработка меню (notes + previous_menu)
+  'food.refine_hint': {
+    'en': 'e.g. no pasta, more protein',
+    'ru': 'напр. без макарон, больше белка',
+    'de': 'z. B. ohne Pasta, mehr Protein',
+    'fr': 'p. ex. sans pâtes, plus de protéines',
+    'it': 'es. niente pasta, più proteine',
+    'pt': 'ex.: sem massa, mais proteína',
+    'es': 'p. ej. sin pasta, más proteína',
+    'id': 'mis. tanpa pasta, lebih banyak protein',
+    'hi': 'जैसे पास्ता नहीं, ज़्यादा प्रोटीन',
+    'ja': '例：パスタなし、タンパク質を増やす',
+    'ko': '예: 파스타 빼고, 단백질 더',
+  },
+  'food.refine_btn': {
+    'en': 'Refine menu',
+    'ru': 'Доработать меню',
+    'de': 'Menü anpassen',
+    'fr': 'Affiner le menu',
+    'it': 'Affina il menu',
+    'pt': 'Ajustar cardápio',
+    'es': 'Afinar menú',
+    'id': 'Sempurnakan menu',
+    'hi': 'मेन्यू सुधारें',
+    'ja': 'メニューを調整',
+    'ko': '메뉴 다듬기',
+  },
   // ---------------------------------------------------------------------------
   // Сканер штрихкода
   // ---------------------------------------------------------------------------

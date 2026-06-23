@@ -91,6 +91,8 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
   bool _applying = false;
   // true, если бэкенд сообщил, что меню не уложилось в заданные БЖУ.
   bool _offTarget = false;
+  // Поле «Что изменить?» для итеративной доработки готового меню.
+  final TextEditingController _refineController = TextEditingController();
 
   @override
   void initState() {
@@ -98,10 +100,42 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
     _build();
   }
 
+  @override
+  void dispose() {
+    _refineController.dispose();
+    super.dispose();
+  }
+
+  /// Доработка показанного меню: шлёт пожелание из поля + текущее меню как
+  /// контекст. Тот же путь, что и обычная генерация (через _build), поэтому
+  /// лоадер/ошибки/503 обрабатываются единообразно.
+  Future<void> _refine() async {
+    final notes = _refineController.text.trim();
+    if (notes.isEmpty || _meals.isEmpty) return;
+    final previousMenu = <String, dynamic>{
+      'meals': [
+        for (final m in _meals)
+          {
+            'meal': m.meal,
+            'items': [
+              for (final i in m.items)
+                {'name': i.name, 'grams': i.grams},
+            ],
+          },
+      ],
+    };
+    await _build(notes: notes, previousMenu: previousMenu);
+    // Очищаем поле только после успешной доработки (если меню обновилось).
+    if (mounted && _error == null) _refineController.clear();
+  }
+
   /// Генерирует/пересобирает меню. Каждый вызов начинает с ЧИСТОГО состояния:
   /// _meals/_note/_offTarget сбрасываются, итог ответа ЗАМЕНЯЕТ предыдущий
   /// (не дополняет) — и для первой генерации, и для «Пересобрать».
-  Future<void> _build() async {
+  /// [notes]/[previousMenu] заданы только при ИТЕРАТИВНОЙ доработке готового
+  /// меню («Доработать меню»). При обычной генерации/пересборке они null и
+  /// поведение прежнее (меню с нуля).
+  Future<void> _build({String? notes, Map<String, dynamic>? previousMenu}) async {
     setState(() {
       _loading = true;
       _error = null;
@@ -145,6 +179,8 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
             tone: tone,
             healthProfile: hp.isEmpty ? null : hp.toApiMap(),
             foodPrefs: fp.isEmpty ? null : fp.toApiMap(),
+            notes: notes,
+            previousMenu: previousMenu,
           );
       final parsed = parseMenuResponse(response, widget.candidates);
       if (!mounted) return;
@@ -281,6 +317,30 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
                       ],
                     ),
                     const SizedBox(height: 16),
+                    // Итеративная доработка: пожелание текстом + «Доработать меню».
+                    // Шлёт notes + текущее меню как контекст (тот же путь _build).
+                    TextField(
+                      controller: _refineController,
+                      decoration: InputDecoration(
+                        hintText: context.s('food.refine_hint'),
+                        isDense: true,
+                      ),
+                      textInputAction: TextInputAction.done,
+                      enabled: !(_loading || _applying),
+                      onSubmitted: (_) => _refine(),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: _loading
+                            ? const AiPulseDot(size: 10)
+                            : const Icon(Icons.auto_fix_high, size: 18),
+                        label: Text(context.s('food.refine_btn')),
+                        onPressed: (_loading || _applying) ? null : _refine,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         // Пересобрать — OutlinedButton (вторичное)

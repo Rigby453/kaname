@@ -252,6 +252,57 @@ test('throws unparseable JSON error when no JSON object is present', async () =>
   ).rejects.toThrow('unparseable JSON');
 });
 
+test('refinement: notes + previous_menu inject a REFINEMENT block into the system prompt', async () => {
+  const onTarget = menuJson([
+    { meal: 'breakfast', items: [{ name: 'Oats', grams: 250 }] },
+    { meal: 'lunch', items: [{ name: 'Chicken', grams: 250 }] },
+    { meal: 'dinner', items: [{ name: 'Rice', grams: 500 }] },
+  ]);
+  generateText.mockResolvedValueOnce(onTarget);
+
+  await buildMenu({
+    candidates,
+    calorieGoal: 2000,
+    proteinGoalG: 75,
+    meals: ['breakfast', 'lunch', 'dinner'],
+    tone: 'gentle',
+    notes: 'no rice, more protein',
+    previousMenu: {
+      meals: [{ meal: 'lunch', items: [{ name: 'Rice', grams: 200 }] }],
+    },
+  });
+
+  const system = generateText.mock.calls[0]![0].system as string;
+  expect(system).toContain('REFINEMENT MODE');
+  expect(system).toContain('no rice, more protein'); // пожелание пользователя
+  expect(system).toContain('Current menu'); // текущее меню как контекст
+  expect(system).toContain('Rice'); // позиция из previous_menu попала в промпт
+});
+
+test('refinement: no REFINEMENT block when notes is absent (generation from scratch)', async () => {
+  const onTarget = menuJson([
+    { meal: 'breakfast', items: [{ name: 'Oats', grams: 250 }] },
+    { meal: 'lunch', items: [{ name: 'Chicken', grams: 250 }] },
+    { meal: 'dinner', items: [{ name: 'Rice', grams: 500 }] },
+  ]);
+  generateText.mockResolvedValueOnce(onTarget);
+
+  // previous_menu без notes не должно включать режим доработки.
+  await buildMenu({
+    candidates,
+    calorieGoal: 2000,
+    proteinGoalG: 75,
+    meals: ['breakfast', 'lunch', 'dinner'],
+    tone: 'gentle',
+    previousMenu: {
+      meals: [{ meal: 'lunch', items: [{ name: 'Rice', grams: 200 }] }],
+    },
+  });
+
+  const system = generateText.mock.calls[0]![0].system as string;
+  expect(system).not.toContain('REFINEMENT MODE');
+});
+
 test('totals are computed by code from candidates, never taken from the model', async () => {
   // Модель НЕ возвращает чисел КБЖУ — только name+grams. Проверяем точный расчёт:
   // Chicken 100g = 200 kcal / 30 P / 8 F.

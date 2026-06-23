@@ -112,6 +112,26 @@ const menuBuildSchema = z.object({
   tone: toneSchema.default("gentle"),
   health_profile: healthProfileSchema,
   food_prefs: foodPrefsSchema,
+  // Итеративная доработка меню: свободное пожелание + текущее меню как контекст.
+  // Оба опциональны (back-compat). previous_menu влияет на промпт только вместе
+  // с notes — иначе генерация с нуля. previous_menu принимаем в упрощённой форме
+  // (только meals: name+grams) — числа КБЖУ всё равно считает код, не модель.
+  notes: z.string().trim().max(300).optional(),
+  previous_menu: z
+    .object({
+      meals: z.array(
+        z.object({
+          meal: z.string().min(1),
+          items: z.array(
+            z.object({
+              name: z.string().min(1),
+              grams: z.number(),
+            })
+          ),
+        })
+      ),
+    })
+    .optional(),
 });
 const wrappedSummarySchema = z.object({
   period_days: z.number().int().min(1).max(366),
@@ -368,6 +388,10 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
                   mealsPerDay: parsed.data.food_prefs.meals_per_day,
                 },
               }
+            : {}),
+          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+          ...(parsed.data.previous_menu !== undefined
+            ? { previousMenu: parsed.data.previous_menu }
             : {}),
         });
         return reply.status(200).send({

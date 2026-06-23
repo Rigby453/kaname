@@ -516,6 +516,11 @@ class ApiClient {
   /// [fatGoalG]/[carbsGoalG]/[sugarMaxG]/[fiberMinG] — опциональные цели по
   /// БЖУ/сахару/клетчатке (snake_case в теле; отправляются только если не null).
   /// Бэкенд старается уложиться в них (ADR-046); back-compat — все nullable.
+  /// [notes] — опциональное свободное пожелание для доработки текущего меню
+  /// (напр. «без макарон, больше белка»); кладётся в тело как notes ТОЛЬКО когда
+  /// непустое. [previousMenu] — текущее меню как контекст доработки (форма
+  /// { meals: [{ meal, items: [{ name, grams }] }] }); кладётся как previous_menu
+  /// ТОЛЬКО когда непустое. Влияет на результат только вместе с notes.
   Future<Map<String, dynamic>> aiMenuBuild({
     required List<Map<String, dynamic>> candidates,
     required int calorieGoal,
@@ -528,6 +533,8 @@ class ApiClient {
     required String tone,
     Map<String, String>? healthProfile,
     Map<String, dynamic>? foodPrefs,
+    String? notes,
+    Map<String, dynamic>? previousMenu,
   }) async {
     try {
       final body = <String, dynamic>{
@@ -551,6 +558,13 @@ class ApiClient {
       // Включаем пищевые предпочтения только если они непустые.
       if (foodPrefs != null && foodPrefs.isNotEmpty) {
         body['food_prefs'] = foodPrefs;
+      }
+      // Доработка: пожелание и текущее меню кладём только когда непустые.
+      if (notes != null && notes.trim().isNotEmpty) {
+        body['notes'] = notes.trim();
+      }
+      if (previousMenu != null && previousMenu.isNotEmpty) {
+        body['previous_menu'] = previousMenu;
       }
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/menu-build',

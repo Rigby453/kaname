@@ -496,6 +496,38 @@ paths:
                         Target number of meals per day. Informational — the
                         requested meals array remains the source of truth for
                         meal names and count.
+                notes:
+                  type: string
+                  maxLength: 300
+                  description: >
+                    Optional free-text refinement request (e.g. "no pasta today",
+                    "more protein", "remove fish"). When present, the model keeps
+                    what already works in previous_menu and changes only what the
+                    request asks for, while still hitting the macro targets.
+                    Absent = generate from scratch (backward compatible).
+                    Numbers stay code-computed.
+                previous_menu:
+                  type: object
+                  description: >
+                    Optional current menu, used as context for an iterative
+                    refinement (only meaningful together with notes). Same shape
+                    as the response meals (names + grams only). КБЖУ numbers are
+                    never read from here — totals stay code-computed.
+                  required: [meals]
+                  properties:
+                    meals:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          meal: { type: string }
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name: { type: string }
+                                grams: { type: number }
       responses:
         '200':
           description: >

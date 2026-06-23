@@ -86,6 +86,13 @@ interface MacroTargets {
  *   dislikes — нежелательные продукты (свободный текст); likes — предпочтительные.
  *   mealsPerDay — целевое кол-во приёмов (справочно; состав meals[] — источник истины).
  *   Используется ТОЛЬКО для фильтрации/смещения выбора. Не медицинские рекомендации.
+ * @param notes - необязательное свободное пожелание пользователя по доработке меню
+ *   (напр. «без макарон», «больше белка», «убери рыбу»). Если задано вместе с
+ *   previousMenu — режим ИТЕРАТИВНОЙ ДОРАБОТКИ: сохрани удачное в текущем меню,
+ *   измени только под пожелание. Числа КБЖУ всё равно считает код.
+ * @param previousMenu - необязательное текущее меню (как контекст для доработки).
+ *   Форма совпадает с возвращаемой: { meals: [{ meal, items: [{ name, grams }] }] }.
+ *   Передаётся в промпт только когда есть notes (иначе не влияет на генерацию).
  *
  * @returns meals — меню (name+grams), note — заметка, totals — посчитанные КОДОМ
  *   итоги по дню, offTarget — true если после ретрая всё ещё вне допусков.
@@ -113,6 +120,8 @@ export async function buildMenu(params: {
     likes?: string;
     mealsPerDay?: number;
   };
+  notes?: string;
+  previousMenu?: { meals: MenuMeal[] };
 }): Promise<{ meals: MenuMeal[]; note: string; totals: MenuTotals; offTarget: boolean }> {
   const {
     candidates,
@@ -127,6 +136,8 @@ export async function buildMenu(params: {
     language = "English",
     healthProfile,
     foodPrefs,
+    notes,
+    previousMenu,
   } = params;
 
   const validNames = new Set(candidates.map((c) => c.name));
@@ -146,6 +157,10 @@ export async function buildMenu(params: {
     ...(fiberMinG !== undefined ? { fiberMinG } : {}),
   };
 
+  // Доработка активна только когда есть свободный текст пожелания (notes).
+  // previousMenu без notes — нечего «дорабатывать», ведём себя как генерация с нуля.
+  const refineNotes = notes?.trim() ? notes.trim() : undefined;
+
   const system = buildSystemPrompt({
     tone,
     language,
@@ -153,6 +168,8 @@ export async function buildMenu(params: {
     mealNames,
     healthProfile,
     foodPrefs,
+    refineNotes,
+    previousMenu,
   });
 
   const baseUser = JSON.stringify({
@@ -223,8 +240,11 @@ function buildSystemPrompt(args: {
     likes?: string;
     mealsPerDay?: number;
   };
+  refineNotes?: string;
+  previousMenu?: { meals: MenuMeal[] };
 }): string {
-  const { tone, language, targets, mealNames, healthProfile, foodPrefs } = args;
+  const { tone, language, targets, mealNames, healthProfile, foodPrefs, refineNotes, previousMenu } =
+    args;
 
   // Строки целей — только для переданных значений.
   const targetLines: string[] = [
@@ -330,6 +350,27 @@ function buildSystemPrompt(args: {
       }
       system += "You still output ONLY name+grams and NEVER any nutrition numbers.";
     }
+  }
+
+  // Итеративная доработка: дан текущий меню + свободное пожелание пользователя.
+  // Сохрани удачное, измени только под пожелание (убери/замени нежелательное),
+  // продолжай соблюдать макро-цели. Без пожелания этот блок не добавляется —
+  // поведение прежнее (генерация с нуля).
+  if (refineNotes) {
+    system += "\n\nREFINEMENT MODE (the user already has a menu and wants tweaks):\n";
+    if (previousMenu && previousMenu.meals.length > 0) {
+      const compact = previousMenu.meals.map((m) => ({
+        meal: m.meal,
+        items: m.items.map((it) => ({ name: it.name, grams: it.grams })),
+      }));
+      system += `- Current menu: ${JSON.stringify(compact)}\n`;
+    }
+    system += `- User request: "${refineNotes}"\n`;
+    system +=
+      "- KEEP what already works in the current menu; change ONLY what the request asks for " +
+      "(remove or replace the unwanted foods, adjust grams as needed). Do not rebuild from scratch.\n" +
+      "- Still satisfy ALL the macro targets above and the meal structure rules, " +
+      "and still output ONLY name+grams (never any nutrition numbers).";
   }
 
   return system;
