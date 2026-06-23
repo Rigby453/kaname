@@ -42,10 +42,11 @@ class DayTimeline extends ConsumerWidget {
     // valueOrNull: не блокируем UI на loading — список появится как только
     // стрим доставит данные; ошибка логируется через itemsAsync.error
     final items = itemsAsync.valueOrNull ?? const <ItemsTableData>[];
-    final query = ref.watch(planSearchQueryProvider).toLowerCase();
-    final filtered = query.isEmpty
+    // Фильтр поиска: подстрока заголовка + #хэштег + тип (см. planSearchMatches).
+    final query = ref.watch(planSearchQueryProvider);
+    final filtered = query.trim().isEmpty
         ? items
-        : items.where((i) => i.title.toLowerCase().contains(query)).toList();
+        : items.where((i) => planSearchMatches(i, query)).toList();
 
     // Закрепляем экзамены/дедлайны вверху ленты (UX-LAYOUT.md §5, §9 п.2).
     // Stable-sort: сначала pinned (exam/deadline), отсортированные по scheduledAt

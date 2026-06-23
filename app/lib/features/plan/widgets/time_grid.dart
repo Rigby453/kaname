@@ -270,10 +270,11 @@ class DayTimeGrid extends ConsumerWidget {
       return const Center(child: KaiLoader());
     }
     final items = itemsAsync.valueOrNull ?? const <ItemsTableData>[];
-    final query = ref.watch(planSearchQueryProvider).toLowerCase();
-    final filtered = query.isEmpty
+    // Фильтр поиска: подстрока заголовка + #хэштег + тип (см. planSearchMatches).
+    final query = ref.watch(planSearchQueryProvider);
+    final filtered = query.trim().isEmpty
         ? items
-        : items.where((i) => i.title.toLowerCase().contains(query)).toList();
+        : items.where((i) => planSearchMatches(i, query)).toList();
 
     return _TimeGridScaffold(
       hourHeight: hourHeight,
@@ -376,10 +377,11 @@ class _NDayTimeGrid extends ConsumerWidget {
       return const Center(child: KaiLoader());
     }
     final allItems = itemsAsync.valueOrNull ?? const <ItemsTableData>[];
-    final query = ref.watch(planSearchQueryProvider).toLowerCase();
-    final items = query.isEmpty
+    // Фильтр поиска: подстрока заголовка + #хэштег + тип (см. planSearchMatches).
+    final query = ref.watch(planSearchQueryProvider);
+    final items = query.trim().isEmpty
         ? allItems
-        : allItems.where((i) => i.title.toLowerCase().contains(query)).toList();
+        : allItems.where((i) => planSearchMatches(i, query)).toList();
 
     // Группируем по календарному дню (по локальной дате scheduledAt).
     Map<DateTime, List<ItemsTableData>> byDay = {

@@ -68,6 +68,50 @@ final planSearchVisibleProvider = StateProvider<bool>((ref) => false);
 /// Текущий поисковый запрос на экране Plan.
 final planSearchQueryProvider = StateProvider<String>((ref) => '');
 
+/// Известные типы элементов (совпадают с ItemsTable.type в data-model).
+/// Используются для распознавания токенов вида `exam` / `type:exam`.
+const _kSearchTypeKeywords = {'task', 'event', 'exam', 'deadline'};
+
+/// Проверяет, совпадает ли [item] с поисковым запросом [rawQuery].
+///
+/// Чистая функция (без I/O, без provider) — поэтому юнит-тестируемая.
+/// Запрос разбивается по пробелам на токены (регистронезависимо), и
+/// элемент проходит фильтр только если совпали ВСЕ токены (AND-семантика):
+///   * `#tag` — заголовок должен содержать хэштег как ЦЕЛОЕ слово
+///     (граница слова, так `#math` ≠ «#mathematics»);
+///   * `type:VALUE` или голое слово-тип (`task`/`event`/`exam`/`deadline`) —
+///     требует `item.type == value`;
+///   * любой другой токен — подстрока в заголовке (прежнее поведение).
+/// Пустой/пробельный запрос → совпадает со всем.
+bool planSearchMatches(ItemsTableData item, String rawQuery) {
+  final tokens = rawQuery.toLowerCase().split(RegExp(r'\s+'))
+    ..removeWhere((t) => t.isEmpty);
+  if (tokens.isEmpty) return true;
+
+  final title = item.title.toLowerCase();
+  final type = item.type.toLowerCase();
+
+  for (final token in tokens) {
+    if (token.startsWith('#')) {
+      // Хэштег как целое слово: границы слова вокруг точного совпадения.
+      final pattern = RegExp(
+        r'(?<![\w#])' + RegExp.escape(token) + r'(?![\w#])',
+      );
+      if (!pattern.hasMatch(title)) return false;
+    } else if (token.startsWith('type:')) {
+      // Явный фильтр по типу: type:exam.
+      if (type != token.substring('type:'.length)) return false;
+    } else if (_kSearchTypeKeywords.contains(token)) {
+      // Голое слово-тип: exam / task / event / deadline.
+      if (type != token) return false;
+    } else {
+      // Обычный токен — подстрока в заголовке.
+      if (!title.contains(token)) return false;
+    }
+  }
+  return true;
+}
+
 /// Ранг приоритета для сортировки: main > high > medium > low.
 /// Больше — важнее (используется при равной дате дедлайнов).
 int _priorityRank(String priority) {

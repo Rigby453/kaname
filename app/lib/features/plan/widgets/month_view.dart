@@ -39,8 +39,11 @@ class MonthView extends ConsumerWidget {
     final target = DateTime(sel.year, sel.month + delta, 1);
     final lastDay = DateTime(target.year, target.month + 1, 0).day;
     final day = sel.day.clamp(1, lastDay);
-    ref.read(selectedDayProvider.notifier).state =
-        DateTime(target.year, target.month, day);
+    ref.read(selectedDayProvider.notifier).state = DateTime(
+      target.year,
+      target.month,
+      day,
+    );
   }
 
   void _selectDay(WidgetRef ref, DateTime day) {
@@ -62,9 +65,8 @@ class MonthView extends ConsumerWidget {
 
     final monthStart = DateTime(year, month, 1);
     final monthEnd = DateTime(year, month + 1, 1);
-    final items = ref
-            .watch(rangeItemsProvider((monthStart, monthEnd)))
-            .valueOrNull ??
+    final items =
+        ref.watch(rangeItemsProvider((monthStart, monthEnd))).valueOrNull ??
         const <ItemsTableData>[];
 
     // Группируем задачи по числу дня месяца (по локальной дате scheduledAt).
@@ -99,74 +101,86 @@ class MonthView extends ConsumerWidget {
         ),
     ];
 
-    return Column(
-      children: [
-        // Заголовок месяца со стрелками
-        Padding(
-          // 24dp горизонтальный отступ (02-type-space §4.1)
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Нейтральные иконки навигации (accent discipline)
-              IconButton(
-                icon: Icon(Icons.chevron_left, color: textMuted),
-                onPressed: () => _changeMonth(ref, -1),
-              ),
-              // headlineSmall для заголовка месяца (display font, big headline serif)
-              // Spec: month header = big headline serif (02-type-space §1 headlineSmall)
-              // Expanded + ellipsis: длинное название месяца при крупном тексте
-              // (scale 1.5) или узком экране (320px) не выталкивает стрелки за край.
-              Expanded(
-                child: Text(
-                  DateFormat('MMMM yyyy').format(firstOfMonth),
-                  style: textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+    return GestureDetector(
+      // Горизонтальный свайп листает месяцы — направление и порог как в
+      // expandable_week_calendar (свайп вправо = назад). onHorizontalDragEnd
+      // перехватывает только горизонтальные драги, тапы по ячейкам дней проходят.
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v.abs() <= 300) return;
+        final goBack = v > 0; // свайп вправо = назад
+        _changeMonth(ref, goBack ? -1 : 1);
+      },
+      child: Column(
+        children: [
+          // Заголовок месяца со стрелками
+          Padding(
+            // 24dp горизонтальный отступ (02-type-space §4.1)
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Нейтральные иконки навигации (accent discipline)
+                IconButton(
+                  icon: Icon(Icons.chevron_left, color: textMuted),
+                  onPressed: () => _changeMonth(ref, -1),
                 ),
-              ),
-              IconButton(
-                icon: Icon(Icons.chevron_right, color: textMuted),
-                onPressed: () => _changeMonth(ref, 1),
-              ),
-            ],
-          ),
-        ),
-        // Подписи дней недели — labelSmall, textFaint (минимальный вес)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              for (final key in _weekdayKeys)
+                // headlineSmall для заголовка месяца (display font, big headline serif)
+                // Spec: month header = big headline serif (02-type-space §1 headlineSmall)
+                // Expanded + ellipsis: длинное название месяца при крупном тексте
+                // (scale 1.5) или узком экране (320px) не выталкивает стрелки за край.
                 Expanded(
-                  child: Center(
-                    child: Text(
-                      context.s(key),
-                      style: textTheme.labelSmall?.copyWith(
-                        // textFaint для неинтерактивных вспомогательных меток
-                        color: textFaint,
+                  child: Text(
+                    DateFormat('MMMM yyyy').format(firstOfMonth),
+                    style: textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.chevron_right, color: textMuted),
+                  onPressed: () => _changeMonth(ref, 1),
+                ),
+              ],
+            ),
+          ),
+          // Подписи дней недели — labelSmall, textFaint (минимальный вес)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                for (final key in _weekdayKeys)
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        context.s(key),
+                        style: textTheme.labelSmall?.copyWith(
+                          // textFaint для неинтерактивных вспомогательных меток
+                          color: textFaint,
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        // Сетка дней
-        Expanded(
-          child: GridView.count(
-            crossAxisCount: 7,
-            // Ячейки чуть выше квадрата, чтобы цветные полоски-задачи влезали
-            // под числом дня (число + до 3 полосок).
-            childAspectRatio: 0.62,
-            // 24dp горизонтальный отступ экрана (02-type-space §4.1)
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-            children: cells,
+          const SizedBox(height: 4),
+          // Сетка дней
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 7,
+              // Ячейки чуть выше квадрата, чтобы цветные полоски-задачи влезали
+              // под числом дня (число + до 3 полосок).
+              childAspectRatio: 0.62,
+              // 24dp горизонтальный отступ экрана (02-type-space §4.1)
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+              children: cells,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -195,16 +209,17 @@ class _DayCell extends StatelessWidget {
 
     // Accent discipline: только selected и today получают accent
     final Color textColor = isSelected
-        ? colorScheme.onPrimary    // белый/тёмный поверх accent fill
+        ? colorScheme
+              .onPrimary // белый/тёмный поверх accent fill
         : isToday
-            ? colorScheme.primary  // accent для маркера «сегодня»
-            : colorScheme.onSurface;
+        ? colorScheme
+              .primary // accent для маркера «сегодня»
+        : colorScheme.onSurface;
 
     final total = dayItems.length;
     // Сколько полосок реально рисуем: если задач больше максимума, оставляем
     // место под строку «+N» (последний слот занимает счётчик).
-    final stripeCount =
-        total <= _kMaxStripes ? total : _kMaxStripes - 1;
+    final stripeCount = total <= _kMaxStripes ? total : _kMaxStripes - 1;
     final overflow = total - stripeCount;
 
     return GestureDetector(
