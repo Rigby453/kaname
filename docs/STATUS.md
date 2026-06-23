@@ -6,15 +6,10 @@
 
 ## Сводка для пользователя (обновлено 2026-06-23)
 
-### ⚠️ Требует миграции Neon (КРИТИЧНО — до неё интеграционные тесты падают)
-Код за ночь 2026-06-23 добавил новые таблицы/колонки в `backend/prisma/schema.prisma`, **но миграция к Neon ещё не применена**. До запуска `prisma migrate` (нужен `DIRECT_URL`, ADR-050) бэкенд-интеграционные тесты этих фич падают с Prisma **`P2021`** (relation does not exist). Не применено:
-- **`Subtask`** — таблица подзадач (ADR-048).
-- **`Item.reminderMinutesBefore`** — новая колонка (ADR-048).
-- **`study_groups`** (`StudyGroup`) — таблица учебных групп (ADR-049).
-- **`study_group_members`** (`StudyGroupMember`) — таблица членств (ADR-049).
-- **`PasswordResetCode`** — таблица кодов сброса пароля (ADR-047, всё ещё не мигрирована).
+### ✅ Миграция Neon применена (2026-06-23) — критический блок закрыт
+Миграция `20260623030000_subtasks_reminders_groups_reset` применена к Neon через `prisma migrate deploy` (в `.env` добавлен `DIRECT_URL`, ADR-050; текущая строка уже прямая, без `-pooler`, поэтому DIRECT_URL = DATABASE_URL). Созданы `Subtask`, `PasswordResetCode`, `study_groups`, `study_group_members` + колонка `Item.reminderMinutesBefore` (ADR-047/048/049). `prisma migrate status` → «Database schema is up to date». **`P2021` устранён**: backend jest **199/199** зелёные (18 сьютов). Закоммичено и запушено в `main` (b750ff4).
 
-Действие оркестратора: `cd backend && npx prisma migrate dev --name subtasks_reminders_groups_reset` (или `migrate deploy` на проде) — после этого `P2021` исчезает; юнит-тесты (без БД) уже зелёные.
+> На прод (Render): после деплоя выполнить `prisma migrate deploy` с прод-`DIRECT_URL`, либо положиться на `postinstall`/билд-шаг.
 
 ## Сводка для пользователя (обновлено 2026-06-21)
 
