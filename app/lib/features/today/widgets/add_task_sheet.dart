@@ -29,6 +29,8 @@ import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/l10n/locale_provider.dart';
 import '../../../core/settings/recent_subjects.dart';
+import '../../../core/settings/reminder_default_provider.dart';
+import '../../../core/settings/task_presets_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/id.dart';
 import '../../../core/utils/nl_datetime.dart';
@@ -40,16 +42,23 @@ import '../undo_provider.dart';
 
 const List<String> _types = ['task', 'event', 'exam', 'deadline'];
 const List<String> _priorities = ['low', 'medium', 'high', 'main'];
-const List<int> _durations = [15, 30, 45, 60, 90, 120];
 const int _maxMainPerDay = 3;
 
-/// Дефолтная длительность задачи (минут). Совпадает с пресетом из [_durations],
-/// чтобы при пустом поле ручного ввода подсвеченный чип == сохраняемому значению.
-const int _kDefaultDurationMinutes = 30;
+/// Типы, показываемые чипами в форме (exam сворачиваем в deadline).
+const List<String> _displayTypes = ['task', 'event', 'deadline'];
 
-/// Пресеты напоминания перед задачей (минут до scheduledAt).
-/// 0 = «в момент» (за 0 минут). Вариант «Нет» = _reminderMinutesBefore == null.
-const List<int> _reminderPresets = [0, 5, 10, 15, 30, 60];
+/// Приоритеты, показываемые чипами в форме (low сворачиваем в medium).
+const List<String> _displayPriorities = ['main', 'high', 'medium'];
+
+/// Нормализует тип к одному из показываемых: 'exam' → 'deadline'.
+String _normalizeType(String t) => t == 'exam' ? 'deadline' : t;
+
+/// Нормализует приоритет к одному из показываемых: 'low' → 'medium'.
+String _normalizePriority(String p) => p == 'low' ? 'medium' : p;
+
+/// Дефолтная длительность задачи (минут). Используется как стартовое значение
+/// при создании новой задачи (если не распознано из текста).
+const int _kDefaultDurationMinutes = 30;
 
 /// Человекочитаемая метка напоминания: null→«Нет», 0→«в момент», 60→«1ч».
 String _reminderLabel(BuildContext context, int? minutes) {
@@ -193,6 +202,12 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   final List<_SubtaskDraft> _subtasks = [];
   final TextEditingController _subtaskController = TextEditingController();
 
+  // Недавние уникальные названия задач (для ряда «быстрый выбор»).
+  List<String> _recentTitles = [];
+
+  // Состояние сворачиваемого блока «Ещё» (по умолчанию свёрнут).
+  bool _moreExpanded = false;
+
   final _imagePicker = ImagePicker();
 
   // --- NL datetime ---
@@ -213,6 +228,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   bool _userPickedPriority = false;
   bool _userPickedRepeat = false;
   bool _userPickedReminder = false;
+  // Модуль/тип авто-подставляются NL-парсером по ключевым словам названия,
+  // пока пользователь не выбрал их вручную.
+  bool _userPickedModuleLink = false;
+  bool _userPickedType = false;
 
   // Напоминание перед задачей: null = нет; 0 = в момент; >0 = за N минут до
   // scheduledAt. Авто-подставляется парсером до ручного выбора (_userPickedReminder).
@@ -229,8 +248,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     super.initState();
     final existing = widget.existing;
     _titleController = TextEditingController(text: existing?.title ?? '');
-    _type = existing?.type ?? 'task';
-    _priority = existing?.priority ?? 'medium';
+    // Нормализуем старые значения к показываемым (exam→deadline, low→medium),
+    // чтобы соответствующий чип подсветился и сохранилось нормализованное.
+    _type = _normalizeType(existing?.type ?? 'task');
+    _priority = _normalizePriority(existing?.priority ?? 'medium');
     _scheduledAt = existing?.scheduledAt ?? _defaultScheduledAt();
     _durationMinutes = existing?.durationMinutes ?? _kDefaultDurationMinutes;
     _moduleLink = existing?.moduleLink;
@@ -248,14 +269,20 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
         ..addAll(existingRule.byDays);
       _repeatMonthDay = existingRule.byMonthDay;
     }
-    // Инициализируем поле ручного ввода текущим значением, если оно не входит
-    // в стандартный список пресетов — тогда пользователь сразу видит своё число.
-    final isCustom = !_durations.contains(_durationMinutes);
-    _customMinutesController = TextEditingController(
-      text: isCustom ? '$_durationMinutes' : '',
-    );
+    // Поле ручного ввода больше не показывается всегда (кастомная длительность —
+    // через чип «Свой»/диалог), оставляем контроллер для диалога ввода минут.
+    _customMinutesController = TextEditingController();
+    // Для НОВОЙ задачи предзаполняем напоминание из глобального дефолта, если
+    // пользователь его ещё не трогал. Делаем в post-frame, т.к. читаем провайдер.
+    if (!_isEditing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _applyReminderDefault();
+      });
+    }
     // Загружаем число main-задач для отображения подсказки лимита.
     _loadMainCount();
+    // Загружаем недавние названия задач для ряда «быстрый выбор».
+    _loadRecentTitles();
     // Загружаем вложения (только в режиме редактирования — у новой задачи нет id).
     if (_isEditing) _loadAttachments();
     // Загружаем подзадачи (чеклист) для редактируемой задачи / шаблона серии.
@@ -296,12 +323,6 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (!_userPickedDuration && result.durationMinutes != null) {
       setState(() {
         _durationMinutes = result.durationMinutes!;
-        // Синхронизируем поле ручного ввода минут, если значение не пресет.
-        if (!_durations.contains(_durationMinutes)) {
-          _customMinutesController.text = '$_durationMinutes';
-        } else {
-          _customMinutesController.clear();
-        }
       });
     }
 
@@ -309,13 +330,14 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (!_userPickedPriority &&
         result.priority != null &&
         _priorities.contains(result.priority)) {
+      final parsedPriority = _normalizePriority(result.priority!);
       // Лимит main соблюдаем: если main уже исчерпан, не подставляем main авто.
-      final wantsMain = result.priority == 'main';
+      final wantsMain = parsedPriority == 'main';
       final mainBlocked = wantsMain &&
           _mainCount >= _maxMainPerDay &&
           !(_isEditing && widget.existing!.priority == 'main');
       if (!mainBlocked) {
-        setState(() => _priority = result.priority!);
+        setState(() => _priority = parsedPriority);
       }
     }
 
@@ -338,6 +360,18 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     // --- Напоминание перед задачей ---
     if (!_userPickedReminder && result.reminderMinutesBefore != null) {
       setState(() => _reminderMinutesBefore = result.reminderMinutesBefore);
+    }
+
+    // --- Модуль (moduleLink) по ключевым словам названия ---
+    if (!_userPickedModuleLink && result.moduleLink != null) {
+      setState(() => _moduleLink = result.moduleLink);
+    }
+
+    // --- Тип задачи по ключевым словам названия ---
+    if (!_userPickedType &&
+        result.type != null &&
+        _types.contains(result.type)) {
+      setState(() => _type = _normalizeType(result.type!));
     }
   }
 
@@ -452,6 +486,30 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (mounted) setState(() => _mainCount = count);
   }
 
+  /// Загружает последние уникальные названия задач для ряда «быстрый выбор».
+  Future<void> _loadRecentTitles() async {
+    final dao = ref.read(itemsDaoProvider);
+    final titles = await dao.recentDistinctTitles(limit: 8);
+    if (mounted) setState(() => _recentTitles = titles);
+  }
+
+  /// Предзаполняет напоминание для НОВОЙ задачи из глобального дефолта, пока
+  /// пользователь не выбрал напоминание вручную и NL-парсер его не задал.
+  /// mode='all' → ставим default minutes; mode='main' и приоритет main → ставим;
+  /// иначе оставляем «Нет» (null).
+  void _applyReminderDefault() {
+    if (_isEditing) return;
+    if (_userPickedReminder) return;
+    // NL-парсер уже мог задать напоминание из текста — не перетираем.
+    if (_reminderMinutesBefore != null) return;
+    final def = ref.read(reminderDefaultProvider);
+    final shouldSet =
+        def.mode == 'all' || (def.mode == 'main' && _priority == 'main');
+    if (shouldSet && mounted) {
+      setState(() => _reminderMinutesBefore = def.minutes);
+    }
+  }
+
   /// Умный дефолт времени при создании задачи (UX-LAYOUT §7, §9.5, ADR-033):
   ///
   /// • Будущая дата → 09:00 на эту дату (текущий час ничего не значит для другого дня).
@@ -558,8 +616,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     }
   }
 
-  // Баг 2: выбор «End time» — пользователь указывает время конца задачи,
-  // duration = разница в минутах с _scheduledAt.
+  /// Выбор «Заканчивается в» — пользователь указывает время конца задачи,
+  /// duration = разница в минутах с _scheduledAt. Вызывается из диалога «Свой».
   Future<void> _pickEndTime() async {
     final picked = await showTimePicker(
       context: context,
@@ -586,30 +644,132 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
 
     setState(() {
       _durationMinutes = diffMinutes;
-      // Сбрасываем поле ручного ввода — показываем вычисленное значение.
-      _customMinutesController.text = '$diffMinutes';
       // Ручной выбор длительности → NL больше не перетирает.
       _userPickedDuration = true;
     });
   }
 
-  // Баг 2: обработка ручного ввода минут из TextField.
-  void _onCustomMinutesChanged(String value) {
-    final parsed = int.tryParse(value.trim());
-    if (parsed != null && parsed > 0) {
+  /// Диалог кастомной длительности: ввод минут ИЛИ выбор времени окончания.
+  Future<void> _showCustomDurationDialog() async {
+    _customMinutesController.text = '$_durationMinutes';
+    final minutes = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(ctx.s('today.custom_duration_title')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _customMinutesController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(4),
+              ],
+              decoration: InputDecoration(
+                labelText: ctx.s('today.custom_duration_minutes'),
+                suffixText: ctx.s('today.duration_min_hint'),
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (v) {
+                final parsed = int.tryParse(v.trim());
+                Navigator.of(ctx).pop(
+                    parsed != null && parsed > 0 ? parsed : null);
+              },
+            ),
+            const SizedBox(height: 12),
+            // Альтернатива: выбрать время окончания «Заканчивается в…».
+            OutlinedButton.icon(
+              icon: const Icon(Icons.schedule_outlined, size: 18),
+              label: Text(ctx.s('today.custom_duration_end')),
+              onPressed: () {
+                // Закрываем диалог без значения, затем открываем time picker.
+                Navigator.of(ctx).pop(-1);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(ctx.s('btn.cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(_customMinutesController.text.trim());
+              Navigator.of(ctx).pop(
+                  parsed != null && parsed > 0 ? parsed : null);
+            },
+            child: Text(ctx.s('btn.add')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (minutes == -1) {
+      // Пользователь выбрал «Заканчивается в…» → time picker.
+      await _pickEndTime();
+      return;
+    }
+    if (minutes != null && minutes > 0) {
       setState(() {
-        _durationMinutes = parsed;
+        _durationMinutes = minutes;
         _userPickedDuration = true;
       });
-    } else {
-      // Поле очищено (или 0/невалидно): пресет-чип в build подсвечивается по
-      // пустоте текста, поэтому реальное значение ДОЛЖНО совпасть с тем, что
-      // покажется выбранным. Сбрасываем длительность к дефолтному пресету
-      // (_kDefaultDurationMinutes), иначе сохранилось бы прежнее «кастомное»
-      // число при подсвеченном дефолтном чипе (рассинхрон UI и значения).
+    }
+  }
+
+  /// Диалог кастомного напоминания: ввод «за N минут до» (0 = в момент).
+  Future<void> _showCustomReminderDialog() async {
+    final controller = TextEditingController(
+      text: _reminderMinutesBefore?.toString() ?? '',
+    );
+    final minutes = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(ctx.s('today.reminder_label')),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(4),
+          ],
+          decoration: InputDecoration(
+            labelText: ctx.s('today.reminder_min_before').replaceAll('{n}', 'N'),
+            suffixText: ctx.s('today.duration_min_hint'),
+            border: const OutlineInputBorder(),
+          ),
+          onSubmitted: (v) {
+            final parsed = int.tryParse(v.trim());
+            Navigator.of(ctx).pop(parsed != null && parsed >= 0 ? parsed : null);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(ctx.s('btn.cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              Navigator.of(ctx).pop(
+                  parsed != null && parsed >= 0 ? parsed : null);
+            },
+            child: Text(ctx.s('btn.add')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted) return;
+    if (minutes != null && minutes >= 0) {
       setState(() {
-        _durationMinutes = _kDefaultDurationMinutes;
-        _userPickedDuration = true;
+        _reminderMinutesBefore = minutes;
+        _userPickedReminder = true;
       });
     }
   }
@@ -646,62 +806,32 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (mounted) _loadAttachments();
   }
 
-  void _showPickerMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: Text(context.s('today.photo_camera')),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickAttachment(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: Text(context.s('today.photo_gallery')),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickAttachment(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.video_library_outlined),
-              title: Text(context.s('today.video_gallery')),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickAttachment(ImageSource.gallery, isVideo: true);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _viewAttachment(ItemAttachmentsTableData a) {
     if (a.type == 'photo') {
+      // Полноэкранный просмотр фото с зумом (InteractiveViewer).
       showDialog<void>(
         context: context,
-        builder: (ctx) => Dialog(
-          backgroundColor: Colors.black,
-          child: Stack(
-            children: [
-              Image.file(File(a.localPath), fit: BoxFit.contain),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(ctx),
+        barrierColor: Colors.black,
+        builder: (ctx) => Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: Image.file(File(a.localPath), fit: BoxFit.contain),
                 ),
               ),
-            ],
-          ),
+            ),
+            Positioned(
+              top: 8 + MediaQuery.of(ctx).padding.top,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+          ],
         ),
       );
     } else {
@@ -748,8 +878,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     // main-задачи всегда защищены от автопереноса
     final isProtected = _priority == 'main';
 
-    // Запоминаем названия занятий/экзаменов для быстрого повторного ввода (C4).
-    if (_type == 'event' || _type == 'exam') {
+    // Запоминаем названия занятий/событий для быстрого повторного ввода (C4).
+    // (exam теперь нормализуется в deadline ещё на входе формы.)
+    if (_type == 'event') {
       await ref.read(recentSubjectsProvider).add(title);
     }
 
@@ -1063,6 +1194,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
+    // Настраиваемые пресеты длительности/напоминания (Профиль → Задачи по умолч.).
+    final durationPresets = ref.watch(durationPresetsProvider);
+    final reminderPresets = ref.watch(reminderPresetsProvider);
 
     return SafeArea(
       // Скролл вместо Padding: с открытой клавиатурой контент не помещается
@@ -1080,16 +1214,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Быстрые шаблоны — горизонтальный скролл, заполняют форму одним тапом.
-            _TemplatesRow(
-              onSelect: (title, type) => setState(() {
-                _titleController.text = title;
-                if (_types.contains(type)) _type = type;
-              }),
-            ),
-            const SizedBox(height: 8),
-
-            // Заголовок + mic + NL-подсказка
+            // 1. Заголовок + mic + NL-подсказка
             _TitleField(
               controller: _titleController,
               hintText: context.s('today.task_hint'),
@@ -1113,70 +1238,86 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 }),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Тип
-            Text(context.s('today.type_label'), style: textTheme.labelMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: _types
-                  .map((t) => ChoiceChip(
-                        label: Text(context.s('today.type_$t')),
-                        selected: _type == t,
-                        onSelected: (_) => setState(() => _type = t),
-                      ))
-                  .toList(),
+            // 2. Быстрый выбор — шаблоны (l10n) + недавние задачи, один ряд.
+            _QuickPickRow(
+              recentTitles: _recentTitles,
+              onSelectTemplate: (title, type, moduleLink) => setState(() {
+                _titleController.text = title;
+                _type = _normalizeType(type);
+                // Шаблон явно задаёт тип → NL не перетирает его.
+                _userPickedType = true;
+                if (moduleLink != null) {
+                  _moduleLink = moduleLink;
+                  _userPickedModuleLink = true;
+                }
+              }),
+              onSelectRecent: (title) =>
+                  setState(() => _titleController.text = title),
             ),
             const SizedBox(height: 16),
 
-            // Недавние предметы — быстрый ввод для занятий/экзаменов (C4)
-            if (_type == 'event' || _type == 'exam')
-              Builder(
-                builder: (context) {
-                  final recents = ref.read(recentSubjectsProvider).all;
-                  if (recents.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(context.s('today.recent_subjects'), style: textTheme.labelMedium),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: recents
-                            .map((s) => ActionChip(
-                                  label: Text(s),
-                                  onPressed: () => setState(
-                                      () => _titleController.text = s),
-                                ))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  );
-                },
-              ),
-
-            // Приоритет
-            Text(context.s('today.priority_label'), style: textTheme.labelMedium),
+            // 3. Тип — 3 чипа (Задача / Событие / Дедлайн). exam→deadline.
+            Text(context.s('today.type_label'), style: textTheme.labelMedium),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: _priorities
-                  .map((p) => ChoiceChip(
-                        // Баг 3: Tooltip на чипе main объясняет назначение щита
-                        // (видно при долгом нажатии / hover).
-                        label: p == 'main'
-                            ? Tooltip(
-                                message: context.s('today.priority_tooltip'),
-                                child: Text(context.s('today.priority_main')),
-                              )
-                            : Text(context.s('today.priority_$p')),
-                        selected: _priority == p,
-                        onSelected: (_) => _onPriorityTap(p),
-                      ))
-                  .toList(),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final t in _displayTypes) ...[
+                    ChoiceChip(
+                      label: Text(context.s('today.type_chip_$t')),
+                      selected: _type == t,
+                      onSelected: (_) => setState(() {
+                        _type = t;
+                        // Ручной выбор → NL больше не перетирает тип.
+                        _userPickedType = true;
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 4. Приоритет — 3 чипа (Главное / Важная / Обычная) + «?»-подсказка.
+            Row(
+              children: [
+                Text(context.s('today.priority_label'),
+                    style: textTheme.labelMedium),
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: context.s('today.priority_help'),
+                  triggerMode: TooltipTriggerMode.tap,
+                  showDuration: const Duration(seconds: 8),
+                  child: Icon(
+                    Icons.help_outline,
+                    size: 16,
+                    color: Theme.of(context)
+                            .extension<FocusThemeExtension>()
+                            ?.textMuted ??
+                        colorScheme.onSurface.withAlpha(160),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final pr in _displayPriorities) ...[
+                    ChoiceChip(
+                      label: Text(context.s('today.priority_chip_$pr')),
+                      selected: _priority == pr,
+                      onSelected: (_) => _onPriorityTap(pr),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
             ),
             // Баг 3: подсказка под строкой приоритетов — показывается только
             // когда выбран main, чтобы не захламлять UI по умолчанию.
@@ -1219,142 +1360,71 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
               ),
             const SizedBox(height: 16),
 
-            // Длительность — пресеты + ручной ввод минут + End time (Баг 2)
+            // 5. Дата (date picker).
+            OutlinedButton.icon(
+              icon: const Icon(Icons.calendar_today_outlined, size: 18),
+              label: Text(DateFormat.yMMMEd().format(_scheduledAt)),
+              style: OutlinedButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                minimumSize: const Size(double.infinity, 44),
+              ),
+              onPressed: _pickDate,
+            ),
+            const SizedBox(height: 16),
+
+            // 6. Начало — время старта (перенесено выше длительности).
+            Text(context.s('today.start_label'), style: textTheme.labelMedium),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.access_time, size: 18),
+              label: Text(DateFormat.Hm().format(_scheduledAt)),
+              style: OutlinedButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                minimumSize: const Size(double.infinity, 44),
+              ),
+              onPressed: _pickTime,
+            ),
+            const SizedBox(height: 16),
+
+            // 7. Длительность — пресеты из durationPresetsProvider + «Свой».
+            // Один горизонтально прокручиваемый ряд (не переносится).
             Text(context.s('today.duration_label'), style: textTheme.labelMedium),
             const SizedBox(height: 8),
-            // Строка 1: пресеты чипами
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: _durations
-                  .map((d) => ChoiceChip(
-                        label: Text(_durationLabel(d)),
-                        // Пресет считается выбранным только если поле ручного ввода пустое
-                        // (т.е. пользователь не вводил своё число).
-                        selected: _durationMinutes == d &&
-                            _customMinutesController.text.trim().isEmpty,
-                        onSelected: (_) => setState(() {
-                          _durationMinutes = d;
-                          // Сбрасываем кастомный ввод при выборе пресета.
-                          _customMinutesController.clear();
-                          // Ручной выбор → NL не перетирает длительность.
-                          _userPickedDuration = true;
-                        }),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 8),
-            // Строка 2: ручной ввод минут + кнопка End time
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Поле ввода произвольного числа минут
-                SizedBox(
-                  width: 72,
-                  child: TextField(
-                    controller: _customMinutesController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      // Не более 4 цифр (максимум 9999 минут)
-                      LengthLimitingTextInputFormatter(4),
-                    ],
-                    textAlign: TextAlign.center,
-                    decoration: InputDecoration(
-                      hintText: context.s('today.duration_min_hint'),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final d in durationPresets) ...[
+                    ChoiceChip(
+                      label: Text(_durationLabel(d)),
+                      selected: _durationMinutes == d,
+                      onSelected: (_) => setState(() {
+                        _durationMinutes = d;
+                        // Ручной выбор → NL не перетирает длительность.
+                        _userPickedDuration = true;
+                      }),
                     ),
-                    onChanged: _onCustomMinutesChanged,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Кнопка выбора конечного времени (Баг 2)
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.schedule_outlined, size: 16),
-                  label: Text(context.s('today.end_time')),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    textStyle: textTheme.labelMedium,
-                  ),
-                  onPressed: _pickEndTime,
-                ),
-                // Текущее значение рядом для наглядности
-                if (_durationMinutes > 0) ...[
-                  const SizedBox(width: 8),
-                  Builder(
-                    builder: (ctx) {
-                      // textFaint для вспомогательного отображения значения (01-color.md)
-                      final ext = Theme.of(ctx).extension<FocusThemeExtension>();
-                      return Text(
-                        _durationLabel(_durationMinutes),
-                        style: textTheme.bodySmall?.copyWith(
-                          color: ext?.textFaint ?? colorScheme.onSurface.withAlpha(160),
-                        ),
-                      );
-                    },
+                    const SizedBox(width: 8),
+                  ],
+                  // Чип «Свой» — диалог ввода минут / выбора времени окончания.
+                  // Подсвечен, если текущее значение не входит в пресеты.
+                  ChoiceChip(
+                    label: Text(
+                      durationPresets.contains(_durationMinutes)
+                          ? context.s('today.custom_chip')
+                          : '${context.s('today.custom_chip')} · '
+                              '${_durationLabel(_durationMinutes)}',
+                    ),
+                    avatar: const Icon(Icons.tune, size: 16),
+                    selected: !durationPresets.contains(_durationMinutes),
+                    onSelected: (_) => _showCustomDurationDialog(),
                   ),
                 ],
-              ],
+              ),
             ),
             const SizedBox(height: 16),
 
-            // Дата + время
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                    label: Text(DateFormat.yMMMd().format(_scheduledAt)),
-                    onPressed: _pickDate,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.access_time, size: 18),
-                    label: Text(DateFormat.Hm().format(_scheduledAt)),
-                    onPressed: _pickTime,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Напоминание перед задачей (reminder_minutes_before).
-            // «Нет» / «в момент» / за 5 / 10 / 15 / 30 мин / 1 час.
-            Text(context.s('today.reminder_label'), style: textTheme.labelMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                ChoiceChip(
-                  label: Text(context.s('today.reminder_none')),
-                  selected: _reminderMinutesBefore == null,
-                  onSelected: (_) => setState(() {
-                    _reminderMinutesBefore = null;
-                    _userPickedReminder = true;
-                  }),
-                ),
-                ..._reminderPresets.map((m) => ChoiceChip(
-                      label: Text(_reminderLabel(context, m)),
-                      selected: _reminderMinutesBefore == m,
-                      onSelected: (_) => setState(() {
-                        _reminderMinutesBefore = m;
-                        _userPickedReminder = true;
-                      }),
-                    )),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Повтор (серия). Для виртуального повтора серии контрол правила не
+            // 8. Повтор (серия). Для виртуального повтора серии контрол правила не
             // показываем — правки одного дня материализуются, а правило меняется
             // через серийные действия ниже.
             if (!_isVirtualOccurrence) ...[
@@ -1480,19 +1550,50 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
               const SizedBox(height: 16),
             ],
 
-            // Привязка к модулю — необязательный выбор (только для task/event)
-            _ModuleLinkPicker(
-              value: _moduleLink,
-              onChanged: (v) => setState(() => _moduleLink = v),
-            ),
-            const SizedBox(height: 16),
-
-            // Цвет-метка задачи — палитра пресетов + «нет цвета».
-            Text(context.s('today.color_label'), style: textTheme.labelMedium),
+            // 9. Напоминание — «Нет» + пресеты из reminderPresetsProvider + «Свой».
+            // Один горизонтально прокручиваемый ряд (не переносится).
+            Text(context.s('today.reminder_label'), style: textTheme.labelMedium),
             const SizedBox(height: 8),
-            _ColorPicker(
-              value: _color,
-              onChanged: (v) => setState(() => _color = v),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: Text(context.s('today.reminder_none')),
+                    selected: _reminderMinutesBefore == null,
+                    onSelected: (_) => setState(() {
+                      _reminderMinutesBefore = null;
+                      _userPickedReminder = true;
+                    }),
+                  ),
+                  const SizedBox(width: 8),
+                  for (final m in reminderPresets) ...[
+                    ChoiceChip(
+                      label: Text(_reminderLabel(context, m)),
+                      selected: _reminderMinutesBefore == m,
+                      onSelected: (_) => setState(() {
+                        _reminderMinutesBefore = m;
+                        _userPickedReminder = true;
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  // Чип «Свой» — диалог ввода минут «за N минут до».
+                  ChoiceChip(
+                    label: Text(
+                      (_reminderMinutesBefore != null &&
+                              !reminderPresets.contains(_reminderMinutesBefore))
+                          ? '${context.s('today.custom_chip')} · '
+                              '${_reminderLabel(context, _reminderMinutesBefore)}'
+                          : context.s('today.custom_chip'),
+                    ),
+                    avatar: const Icon(Icons.tune, size: 16),
+                    selected: _reminderMinutesBefore != null &&
+                        !reminderPresets.contains(_reminderMinutesBefore),
+                    onSelected: (_) => _showCustomReminderDialog(),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -1515,78 +1616,111 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Вложения (фото / видео)
-            Row(
-              children: [
-                Text(context.s('today.attachments_label'), style: textTheme.labelMedium),
-                const Spacer(),
-                TextButton.icon(
-                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
-                  label: Text(context.s('btn.add')),
-                  onPressed: _showPickerMenu,
-                ),
-              ],
-            ),
-            if (_attachments.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 88,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _attachments.length,
-                  separatorBuilder: (context2, index2) => const SizedBox(width: 8),
-                  itemBuilder: (ctx, i) {
-                    final a = _attachments[i];
-                    return GestureDetector(
-                      onTap: () => _viewAttachment(a),
-                      onLongPress: () => _deleteAttachment(a),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 80,
-                          height: 88,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              a.type == 'photo'
-                                  ? Image.file(File(a.localPath),
-                                      fit: BoxFit.cover)
-                                  : Builder(
-                                      builder: (ctx) {
-                                        // surfaceElevated для модального контента (01-color.md)
-                                        final ext = Theme.of(ctx).extension<FocusThemeExtension>();
-                                        return Container(
-                                          color: ext?.surfaceElevated ?? colorScheme.surface,
-                                          child: Icon(Icons.play_circle_outline,
-                                              size: 36,
-                                              color: colorScheme.onSurface),
-                                        );
-                                      },
-                                    ),
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: GestureDetector(
-                                  onTap: () => _deleteAttachment(a),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(Icons.close,
-                                        size: 16, color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+            // 10. «▸ Ещё» — сворачиваемый блок (по умолчанию свёрнут):
+            // Модуль, Цвет, Вложения.
+            InkWell(
+              onTap: () => setState(() => _moreExpanded = !_moreExpanded),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      _moreExpanded
+                          ? Icons.keyboard_arrow_down
+                          : Icons.keyboard_arrow_right,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(context.s('today.more_section'),
+                        style: textTheme.labelMedium),
+                  ],
                 ),
               ),
-            ],
+            ),
+            if (_moreExpanded) ...[
+              const SizedBox(height: 12),
+
+              // Привязка к модулю — необязательный выбор.
+              _ModuleLinkPicker(
+                value: _moduleLink,
+                onChanged: (v) => setState(() {
+                  _moduleLink = v;
+                  // Ручной выбор → NL больше не перетирает модуль.
+                  _userPickedModuleLink = true;
+                }),
+              ),
+              const SizedBox(height: 16),
+
+              // Цвет-метка задачи — палитра пресетов + «нет цвета».
+              Text(context.s('today.color_label'), style: textTheme.labelMedium),
+              const SizedBox(height: 8),
+              _ColorPicker(
+                value: _color,
+                onChanged: (v) => setState(() => _color = v),
+              ),
+              const SizedBox(height: 16),
+
+              // Вложения (фото / видео): подпись + 3 способа добавления
+              // (камера / галерея / видео) + сетка миниатюр-превью.
+              Text(context.s('today.attachments_label'),
+                  style: textTheme.labelMedium),
+              const SizedBox(height: 8),
+              // Кнопки добавления — три явных способа, иконка + подпись.
+              Row(
+                children: [
+                  Expanded(
+                    child: _AttachAddButton(
+                      icon: Icons.photo_camera_outlined,
+                      label: context.s('today.attach_camera'),
+                      onTap: () => _pickAttachment(ImageSource.camera),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _AttachAddButton(
+                      icon: Icons.photo_library_outlined,
+                      label: context.s('today.attach_gallery'),
+                      onTap: () => _pickAttachment(ImageSource.gallery),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _AttachAddButton(
+                      icon: Icons.videocam_outlined,
+                      label: context.s('today.attach_video'),
+                      onTap: () =>
+                          _pickAttachment(ImageSource.gallery, isVideo: true),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_attachments.isEmpty)
+                Text(
+                  context.s('today.attachments_empty'),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context)
+                            .extension<FocusThemeExtension>()
+                            ?.textMuted ??
+                        colorScheme.onSurface.withAlpha(160),
+                  ),
+                )
+              else
+                // Сетка квадратных миниатюр (~72dp), переносится на строки.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final a in _attachments)
+                      _AttachmentThumb(
+                        attachment: a,
+                        onTap: () => _viewAttachment(a),
+                        onDelete: () => _deleteAttachment(a),
+                      ),
+                  ],
+                ),
+            ], // конец сворачиваемого блока «Ещё»
             const SizedBox(height: 24),
 
             // Сохранить
@@ -1772,6 +1906,131 @@ class _NlHintChip extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Видеоплеер в диалоге.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Кнопка одного способа добавления вложения (камера / галерея / видео):
+// иконка над короткой подписью, нейтральная рамка как у остальной формы.
+// ---------------------------------------------------------------------------
+
+class _AttachAddButton extends StatelessWidget {
+  const _AttachAddButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final muted = ext?.textMuted ?? colorScheme.onSurface.withAlpha(160);
+
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        foregroundColor: colorScheme.onSurface,
+        side: BorderSide(color: ext?.border ?? colorScheme.outline),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 22, color: muted),
+          const SizedBox(height: 4),
+          Text(label, style: textTheme.labelSmall, textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Квадратная миниатюра одного вложения: фото через Image.file, видео — кадр-
+// заглушка с иконкой ▶. Тап — просмотр на весь экран; крестик в углу — удаление.
+// ---------------------------------------------------------------------------
+
+class _AttachmentThumb extends StatelessWidget {
+  const _AttachmentThumb({
+    required this.attachment,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final ItemAttachmentsTableData attachment;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  static const double _size = 72;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final isVideo = attachment.type != 'photo';
+
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: Stack(
+        children: [
+          // Превью (фото или кадр-заглушка видео).
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: onTap,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: isVideo
+                    ? Container(
+                        color: ext?.surfaceElevated ?? colorScheme.surface,
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.play_circle_outline,
+                          size: 30,
+                          color: colorScheme.onSurface,
+                        ),
+                      )
+                    : Image.file(
+                        File(attachment.localPath),
+                        fit: BoxFit.cover,
+                        // Если файл недоступен — нейтральная заглушка, не падаем.
+                        errorBuilder: (ctx, _, _) => Container(
+                          color: ext?.surfaceElevated ?? colorScheme.surface,
+                          alignment: Alignment.center,
+                          child: Icon(Icons.broken_image_outlined,
+                              size: 24, color: colorScheme.onSurface),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          // Кнопка удаления — крестик в правом верхнем углу.
+          Positioned(
+            top: 2,
+            right: 2,
+            child: GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _VideoDialog extends StatefulWidget {
   const _VideoDialog({required this.controller});
@@ -2215,59 +2474,111 @@ class _MonthDayPicker extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Quick templates — горизонтальный скролл, заполняют поля одним тапом.
+// Быстрый выбор — один горизонтальный ряд: переведённые шаблоны (l10n) +
+// недавние названия задач пользователя. Тап заполняет название (+ тип/модуль
+// для шаблона). Шаблоны переосмыслены (учёба/задание/тренировка/лекция/встреча/
+// чтение). Недавние подмешиваются после шаблонов, дубли по названию убираются.
 // ---------------------------------------------------------------------------
 
-class _TemplatesRow extends StatelessWidget {
-  const _TemplatesRow({required this.onSelect});
+/// Описание шаблона быстрого выбора. [labelKey] — ключ l10n ярлыка;
+/// [type] — задаваемый тип; [moduleLink] — необязательная привязка к модулю.
+class _QuickTemplate {
+  const _QuickTemplate({
+    required this.emoji,
+    required this.labelKey,
+    required this.type,
+    this.moduleLink,
+  });
 
-  final void Function(String title, String type) onSelect;
+  final String emoji;
+  final String labelKey;
+  final String type;
+  final String? moduleLink;
+}
 
-  static const _templates = [
-    (emoji: '📚', title: 'Study session', type: 'task'),
-    (emoji: '📝', title: 'Assignment due', type: 'deadline'),
-    (emoji: '🏋️', title: 'Workout', type: 'task'),
-    (emoji: '📖', title: 'Read chapter', type: 'task'),
-    (emoji: '💻', title: 'Coding practice', type: 'task'),
-    (emoji: '🧘', title: 'Meditation', type: 'task'),
-    (emoji: '📞', title: 'Call parents', type: 'task'),
-    (emoji: '🛒', title: 'Groceries', type: 'task'),
-    (emoji: '🎓', title: 'Lecture', type: 'event'),
-    (emoji: '👥', title: 'Group meeting', type: 'event'),
-  ];
+const List<_QuickTemplate> _kQuickTemplates = [
+  _QuickTemplate(emoji: '📚', labelKey: 'today.template_study', type: 'task'),
+  _QuickTemplate(
+      emoji: '📝', labelKey: 'today.template_assignment', type: 'deadline'),
+  _QuickTemplate(
+      emoji: '🏋️',
+      labelKey: 'today.template_workout',
+      type: 'task',
+      moduleLink: 'workout'),
+  _QuickTemplate(
+      emoji: '🎓', labelKey: 'today.template_lecture', type: 'event'),
+  _QuickTemplate(
+      emoji: '👥', labelKey: 'today.template_meeting', type: 'event'),
+  _QuickTemplate(emoji: '📖', labelKey: 'today.template_reading', type: 'task'),
+];
+
+class _QuickPickRow extends StatelessWidget {
+  const _QuickPickRow({
+    required this.recentTitles,
+    required this.onSelectTemplate,
+    required this.onSelectRecent,
+  });
+
+  final List<String> recentTitles;
+
+  /// (title, type, moduleLink) — шаблон задаёт тип и (опц.) модуль.
+  final void Function(String title, String type, String? moduleLink)
+      onSelectTemplate;
+
+  /// Недавняя задача — заполняет только название.
+  final void Function(String title) onSelectRecent;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    // accentMuted для фона шаблонов — нейтральный chip-fill (01-color.md §accentMuted)
+    // accentMuted для фона чипов быстрого выбора — нейтральный chip-fill.
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final chipFill = ext?.accentMuted ?? colorScheme.surface;
 
+    // Названия шаблонов (для дедупликации недавних, регистронезависимо).
+    final templateLabels = {
+      for (final t in _kQuickTemplates) context.s(t.labelKey).toLowerCase(),
+    };
+    final recents = recentTitles
+        .where((r) => !templateLabels.contains(r.toLowerCase()))
+        .toList();
+
+    Widget chip({required String text, required VoidCallback onTap}) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: chipFill,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          alignment: Alignment.center,
+          child: Text(text, style: textTheme.bodySmall),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 40,
-      child: ListView.separated(
+      child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        itemCount: _templates.length,
-        separatorBuilder: (context2, index2) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final t = _templates[i];
-          return GestureDetector(
-            onTap: () => onSelect(t.title, t.type),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                // accentMuted: selection highlight / chip fill (01-color.md)
-                color: chipFill,
-                borderRadius: BorderRadius.circular(20),
+        child: Row(
+          children: [
+            for (final t in _kQuickTemplates) ...[
+              chip(
+                text: '${t.emoji} ${context.s(t.labelKey)}',
+                onTap: () =>
+                    onSelectTemplate(context.s(t.labelKey), t.type, t.moduleLink),
               ),
-              child: Text(
-                '${t.emoji} ${t.title}',
-                style: textTheme.bodySmall,
-              ),
-            ),
-          );
-        },
+              const SizedBox(width: 8),
+            ],
+            for (final r in recents) ...[
+              chip(text: '🕘 $r', onTap: () => onSelectRecent(r)),
+              const SizedBox(width: 8),
+            ],
+          ],
+        ),
       ),
     );
   }

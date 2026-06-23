@@ -32,6 +32,8 @@ class NlDateTimeResult {
     this.priority,
     this.recurrenceRule,
     this.reminderMinutesBefore,
+    this.moduleLink,
+    this.type,
   });
 
   /// null — дата/время не распознаны.
@@ -53,6 +55,20 @@ class NlDateTimeResult {
   /// Час → 60 минут. Распознаётся только рядом со словом-маркером
   /// «напомни/напоминание/remind/reminder» (защита от ложных срабатываний).
   final int? reminderMinutesBefore;
+
+  /// Ссылка на модуль, распознанная по ключевым словам названия, или null.
+  /// Значения совпадают с пикером «Открыть в модуле» в add_task_sheet.dart:
+  /// 'workout' | 'meal:breakfast' | 'meal:lunch' | 'meal:dinner' | 'sleep'.
+  /// Ключевые слова (RU + базовый EN) НЕ вырезаются из [cleanedTitle] —
+  /// это смысловые слова названия, которые пользователь видит как есть.
+  final String? moduleLink;
+
+  /// Тип задачи, распознанный по ключевым словам названия, или null.
+  /// Значения совпадают с чипами типа в add_task_sheet.dart:
+  /// 'event' (пара/лекция/семинар) | 'deadline' (сдать/дедлайн/срок) |
+  /// 'exam' (экзамен/зачёт). null = не распознано → вызывающий код подставит
+  /// дефолт 'task'. Ключевые слова НЕ вырезаются из [cleanedTitle].
+  final String? type;
 }
 
 /// Парсит временные/датовые фразы из [text] относительно [now].
@@ -100,11 +116,27 @@ NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
     working = _eraseSpans(working, [reminder.span]);
   }
 
-  final dur = _parseDuration(working);
+  // Диапазон времени → длительность: «с 7 до 9», «700-900», «до 900» (с началом).
+  // Должен идти ДО _parseDuration, иначе «900» в «700-900» может зацепиться
+  // обычным разбором. Сам диапазон вырезаем из текста; его старт применяем
+  // ПОСЛЕ разбора даты (Шаг 2) — так дата берётся из «завтра»/словесной даты,
+  // если она есть, а время = старт диапазона. ВАЖНО: к старту диапазона НЕ
+  // применяем _futureOrTomorrow — явный блок остаётся на опорном дне (сегодня),
+  // даже если старт чуть в прошлом относительно now. durationMinutes от
+  // диапазона приоритетнее явной длительности — диапазон задаёт старт и конец.
+  final range = _parseTimeRange(working);
   int? durationMinutes;
-  if (dur != null) {
-    durationMinutes = dur.minutes;
-    working = _eraseSpans(working, [dur.span]);
+  if (range != null) {
+    durationMinutes = range.minutes;
+    working = _eraseSpans(working, [range.span]);
+  }
+
+  if (durationMinutes == null) {
+    final dur = _parseDuration(working);
+    if (dur != null) {
+      durationMinutes = dur.minutes;
+      working = _eraseSpans(working, [dur.span]);
+    }
   }
 
   final prio = _parsePriority(working);
@@ -115,12 +147,31 @@ NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
   }
 
   // --- Шаг 2: дата/время на оставшемся тексте (существующее поведение). ---
-  final dt = _tryRelativeHours(working, now) ??
+  var dt = _tryRelativeHours(working, now) ??
       _tryTomorrowTime(working, now) ??
       _tryTodayTime(working, now) ??
       _tryWeekdayTime(working, now) ??
+      _tryWordDate(working, now) ??
       _tryBareTime(working, now) ??
       NlDateTimeResult(when: null, cleanedTitle: working);
+
+  // Диапазон задаёт стартовое время: дата — от распознанного ключевого слова
+  // («завтра»/словесная дата/день недели), если оно есть; иначе опорный день
+  // (now), БЕЗ сдвига на завтра (явный блок остаётся на сегодня).
+  if (range != null) {
+    final base = dt.when ?? now;
+    dt = NlDateTimeResult(
+      when: _withTime(base, range.startHour, range.startMinute),
+      cleanedTitle: dt.cleanedTitle,
+    );
+  }
+
+  // --- Шаг 3: модуль / тип по ключевым словам названия. ---
+  // Распознаём по ИСХОДНОМУ тексту (не по обрезанному working), т.к. дата/время
+  // могли вырезать слова. Ключевые слова НЕ вырезаем из cleanedTitle — это
+  // смысловые слова названия, пользователь видит заголовок как есть.
+  final moduleLink = _detectModuleLink(input);
+  final type = _detectType(input);
 
   return NlDateTimeResult(
     when: dt.when,
@@ -129,7 +180,71 @@ NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
     priority: priority,
     recurrenceRule: recurrenceRule,
     reminderMinutesBefore: reminderMinutesBefore,
+    moduleLink: moduleLink,
+    type: type,
   );
+}
+
+// ---------------------------------------------------------------------------
+// РАСШИРЕНИЕ: модуль / тип по ключевым словам названия.
+//
+// В отличие от времени/длительности/приоритета/повтора — эти распознаватели
+// НЕ возвращают _Span и НЕ вырезают слова из заголовка: ключевые слова
+// (тренировка, обед, лекция, сдать…) — это смысловое ядро названия, которое
+// пользователь должен видеть как есть. Поиск — по подстрокам (а не по целым
+// словам), чтобы ловить словоформы: «трен» → «тренировка/тренить», «лекци» →
+// «лекция/лекции/лекцию», «дедлайн» внутри текста и т.п.
+// ---------------------------------------------------------------------------
+
+/// Карта ключевая-подстрока → значение moduleLink (в порядке проверки).
+/// Значения совпадают с пикером в add_task_sheet.dart (meal-модули — с
+/// префиксом 'meal:'). Поиск регистронезависимый, по подстроке.
+const List<(List<String>, String)> _moduleKeywords = [
+  // «зал» как отдельное слово — но НЕ голая подстрока 'зал' (иначе ложно
+  // ловит «залить», «завал», «вокзал»). «спортзал» покрывает основной кейс.
+  (
+    ['тренировк', 'трен', 'качалк', 'спортзал', 'workout', 'gym'],
+    'workout',
+  ),
+  (['завтрак', 'breakfast'], 'meal:breakfast'),
+  (['обед', 'lunch'], 'meal:lunch'),
+  (['ужин', 'dinner', 'supper'], 'meal:dinner'),
+  (['поспать', 'выспат', 'спать', 'сон', 'sleep'], 'sleep'),
+];
+
+/// Карта ключевая-подстрока → значение type (в порядке проверки).
+/// Значения совпадают с чипами типа в add_task_sheet.dart.
+/// Порядок специфичности: exam/deadline проверяем до event, т.к. экзамен/
+/// дедлайн «весомее» обычного занятия.
+const List<(List<String>, String)> _typeKeywords = [
+  (['экзамен', 'зачёт', 'зачет', 'exam'], 'exam'),
+  (['сдать', 'сдача', 'дедлайн', 'срок', 'deadline', 'due'], 'deadline'),
+  (['пара', 'лекци', 'семинар', 'занятие', 'lecture', 'class'], 'event'),
+];
+
+/// Определяет moduleLink по ключевым словам в [text] (регистронезависимо,
+/// по подстроке). Возвращает первое совпадение или null.
+String? _detectModuleLink(String text) {
+  final lower = text.toLowerCase();
+  for (final (keys, value) in _moduleKeywords) {
+    for (final k in keys) {
+      if (lower.contains(k)) return value;
+    }
+  }
+  return null;
+}
+
+/// Определяет тип задачи по ключевым словам в [text] (регистронезависимо,
+/// по подстроке). Возвращает первое совпадение или null
+/// (вызывающий код подставит дефолт 'task').
+String? _detectType(String text) {
+  final lower = text.toLowerCase();
+  for (final (keys, value) in _typeKeywords) {
+    for (final k in keys) {
+      if (lower.contains(k)) return value;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +478,80 @@ NlDateTimeResult? _tryWeekdayTime(String text, DateTime now) {
   );
 }
 
+/// Русские даты словом: «18 июня», «5 мая», «1 сентября», «июня 18».
+/// Месяцы — в родительном падеже (января…декабря). Выставляет [when] на
+/// ближайшую такую дату: если она уже прошла в этом году — следующий год
+/// (согласованно с логикой _futureOrTomorrow). Время сохраняется, если оно
+/// тоже распознано (через _parseTime). Иначе — 09:00.
+NlDateTimeResult? _tryWordDate(String text, DateTime now) {
+  final lower = text.toLowerCase();
+
+  // Родительный падеж месяцев → номер месяца.
+  const months = <String, int>{
+    'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
+    'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
+    'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12,
+  };
+
+  _Span? monthSpan;
+  int? month;
+  for (final entry in months.entries) {
+    final pos = _findWord(lower, entry.key);
+    if (pos != null) {
+      monthSpan = pos;
+      month = entry.value;
+      break;
+    }
+  }
+  if (monthSpan == null || month == null) return null;
+
+  // Число дня: «18 июня» (день перед месяцем) или «июня 18» (после месяца).
+  // Берём ближайший отдельно стоящий 1–2-значный токен 1..31, примыкающий
+  // к слову месяца (через пробел/предлог), сначала слева, затем справа.
+  final dayBefore = RegExp(r'(\d{1,2})\s+$')
+      .firstMatch(lower.substring(0, monthSpan.start));
+  final dayAfter = RegExp(r'^\s+(\d{1,2})')
+      .firstMatch(lower.substring(monthSpan.end));
+
+  int? day;
+  int spanStart = monthSpan.start;
+  int spanEnd = monthSpan.end;
+
+  if (dayBefore != null) {
+    final d = int.parse(dayBefore.group(1)!);
+    if (d >= 1 && d <= 31) {
+      day = d;
+      spanStart = monthSpan.start - dayBefore.group(0)!.length;
+    }
+  }
+  if (day == null && dayAfter != null) {
+    final d = int.parse(dayAfter.group(1)!);
+    if (d >= 1 && d <= 31) {
+      day = d;
+      spanEnd = monthSpan.end + dayAfter.group(0)!.length;
+    }
+  }
+  if (day == null) return null; // месяц без числа — слишком неопределённо
+
+  // Опциональное время в исходном тексте.
+  final timeSpan = _parseTime(text);
+  final hour = timeSpan?.hour ?? 9;
+  final minute = timeSpan?.minute ?? 0;
+
+  // Ближайшая дата: этот год, иначе следующий (если уже прошла).
+  var candidate = DateTime(now.year, month, day, hour, minute);
+  if (!candidate.isAfter(now)) {
+    candidate = DateTime(now.year + 1, month, day, hour, minute);
+  }
+
+  final toErase = <_Span>[_Span(spanStart, spanEnd)];
+  if (timeSpan != null) toErase.add(timeSpan.span);
+  return NlDateTimeResult(
+    when: candidate,
+    cleanedTitle: _eraseSpans(text, toErase),
+  );
+}
+
 /// Голое время (без контекста даты): "17:00", "5pm" → сегодня/завтра.
 NlDateTimeResult? _tryBareTime(String text, DateTime now) {
   // HH:MM
@@ -509,6 +698,93 @@ _DurationMatch? _parseDuration(String text) {
     }
   }
 
+  return null;
+}
+
+// --- Диапазон времени → длительность ---------------------------------------
+
+class _TimeRangeMatch {
+  const _TimeRangeMatch(
+      this.startHour, this.startMinute, this.minutes, this.span);
+
+  /// Час/минута старта (для нормализации в «HH:MM»).
+  final int startHour;
+  final int startMinute;
+
+  /// Длительность (конец − старт) в минутах, 1..1440.
+  final int minutes;
+
+  /// Диапазон в тексте, покрывающий всю конструкцию (включая «с»/«до»/тире).
+  final _Span span;
+}
+
+/// Парсит одиночное время в строке-токене ([HH:MM] / [HHMM] / [H]).
+/// Возвращает (hour, minute) или null. Чисто числовой токен: «9», «900», «9:00».
+({int hour, int minute})? _parseTimeToken(String token) {
+  final t = token.trim();
+  // HH:MM
+  var m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(t);
+  if (m != null) {
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    if (h <= 23 && min <= 59) return (hour: h, minute: min);
+    return null;
+  }
+  // Компактное ЧЧММ: 3–4 цифры.
+  m = RegExp(r'^(\d{3,4})$').firstMatch(t);
+  if (m != null) {
+    final d = m.group(1)!;
+    final h = int.parse(d.substring(0, d.length - 2));
+    final min = int.parse(d.substring(d.length - 2));
+    if (h <= 23 && min <= 59) return (hour: h, minute: min);
+    return null;
+  }
+  // Голый час: 1–2 цифры.
+  m = RegExp(r'^(\d{1,2})$').firstMatch(t);
+  if (m != null) {
+    final h = int.parse(m.group(1)!);
+    if (h <= 23) return (hour: h, minute: 0);
+    return null;
+  }
+  return null;
+}
+
+/// Распознаёт диапазон времени и возвращает старт + длительность (конец−старт).
+///
+/// Поддерживаемые формы (RU):
+///   • «с 7 до 9», «с 7:00 до 9:30», «с 700 до 900»;
+///   • «7 до 9», «700 до 900», «7:00 до 9:00» (без «с»);
+///   • «700-900», «7:00-9:00», «7:00–9:00» (тире/дефис/en-dash/em-dash).
+///
+/// Требует И старт, И конец, причём конец позже старта (иначе → null, игнор).
+/// «до 900» (только конец) НЕ распознаётся как диапазон — старта нет.
+_TimeRangeMatch? _parseTimeRange(String text) {
+  // Токен времени: HH:MM | ЧЧММ(3-4) | голый час(1-2).
+  const tk = r'(\d{1,2}:\d{2}|\d{3,4}|\d{1,2})';
+
+  // 1) «с <старт> до <конец>» (предлоги RU).
+  final re = RegExp('(?:(?<![а-яё])с\\s+)?$tk\\s*(?:до|по)\\s*$tk',
+      caseSensitive: false, unicode: true);
+  // 2) «<старт> - <конец>» (тире). Разделитель: -, –, —.
+  final dashRe = RegExp('$tk\\s*[\\-–—]\\s*$tk',
+      caseSensitive: false, unicode: true);
+
+  for (final candidate in [re.firstMatch(text), dashRe.firstMatch(text)]) {
+    if (candidate == null) continue;
+    final startTok = _parseTimeToken(candidate.group(1)!);
+    final endTok = _parseTimeToken(candidate.group(2)!);
+    if (startTok == null || endTok == null) continue;
+
+    final startMin = startTok.hour * 60 + startTok.minute;
+    final endMin = endTok.hour * 60 + endTok.minute;
+    final diff = endMin - startMin;
+    if (diff < 1 || diff > 1440) continue; // конец не позже старта → игнор
+
+    // candidate.start уже включает предлог «с » при наличии (он в group 0).
+    return _TimeRangeMatch(
+        startTok.hour, startTok.minute, diff,
+        _Span(candidate.start, candidate.end));
+  }
   return null;
 }
 

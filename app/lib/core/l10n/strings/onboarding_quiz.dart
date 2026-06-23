@@ -1288,4 +1288,47 @@ const Map<String, Map<String, String>> onboardingQuizStrings = {
     'ko': '{cur}/{total}',
     'es': '{cur}/{total}',
   },
+
+  // ---------------------------------------------------------------------------
+  // Объяснение приоритетов (врезка на экране «первая задача», экран 12)
+  // ---------------------------------------------------------------------------
+  'onboarding_quiz.priorities_title': {
+    'en': 'How priorities work',
+    'ru': 'Как работают приоритеты',
+    'de': 'Wie Prioritäten funktionieren',
+    'fr': 'Comment fonctionnent les priorités',
+    'it': 'Come funzionano le priorità',
+    'pt': 'Como funcionam as prioridades',
+    'es': 'Cómo funcionan las prioridades',
+    'id': 'Cara kerja prioritas',
+    'hi': 'प्राथमिकताएं कैसे काम करती हैं',
+    'ja': '優先度のしくみ',
+    'ko': '우선순위 작동 방식',
+  },
+  'onboarding_quiz.priorities_main': {
+    'en': 'Main — your 1–3 key things for the day. Protected from auto-carry-over, and your streak is built on them.',
+    'ru': '«Главное» — 1–3 ключевых дела дня. Защищены от авто-переноса, и по ним считается твоя серия.',
+    'de': '«Wichtig» — deine 1–3 Schlüsselaufgaben des Tages. Vor automatischem Verschieben geschützt, und deine Serie zählt nach ihnen.',
+    'fr': '«Principale» — tes 1 à 3 choses clés du jour. Protégées du report automatique, et ta série se construit dessus.',
+    'it': '«Principale» — le tue 1–3 cose chiave del giorno. Protette dal rinvio automatico, e la tua serie si basa su di esse.',
+    'pt': '«Principal» — suas 1–3 coisas-chave do dia. Protegidas do adiamento automático, e sua sequência é contada por elas.',
+    'es': '«Principal» — tus 1–3 cosas clave del día. Protegidas del aplazamiento automático, y tu racha se cuenta por ellas.',
+    'id': '«Utama» — 1–3 hal kunci harimu. Terlindung dari pemindahan otomatis, dan rentetanmu dihitung darinya.',
+    'hi': '«मुख्य» — दिन की 1–3 अहम चीज़ें। ऑटो-कैरी-ओवर से सुरक्षित, और तुम्हारी सीरीज़ इन्हीं से बनती है।',
+    'ja': '「重要」— その日の最重要な1〜3件。自動繰り越しから守られ、連続記録もこれで決まる。',
+    'ko': '«핵심» — 하루의 핵심 1~3가지. 자동 이월에서 보호되고, 연속 기록도 이걸로 쌓여요.',
+  },
+  'onboarding_quiz.priorities_other': {
+    'en': 'Important and Normal just affect the order things get moved if you don’t finish them.',
+    'ru': '«Важная» и «Обычная» влияют только на порядок переноса несделанного.',
+    'de': '«Wichtig» und «Normal» beeinflussen nur die Reihenfolge, in der Unerledigtes verschoben wird.',
+    'fr': '«Importante» et «Normale» influencent juste l’ordre de report de ce qui n’est pas terminé.',
+    'it': '«Importante» e «Normale» influenzano solo l’ordine con cui viene rinviato ciò che non finisci.',
+    'pt': '«Importante» e «Normal» só afetam a ordem de adiamento do que não terminar.',
+    'es': '«Importante» y «Normal» solo afectan el orden en que se aplaza lo que no terminas.',
+    'id': '«Penting» dan «Biasa» hanya memengaruhi urutan pemindahan yang belum selesai.',
+    'hi': '«महत्वपूर्ण» और «सामान्य» सिर्फ़ यह तय करते हैं कि अधूरे काम किस क्रम में आगे बढ़ें।',
+    'ja': '「重要」と「通常」は、終わらなかった分の繰り越し順だけに影響する。',
+    'ko': '«중요»와 «일반»은 못 끝낸 일이 옮겨지는 순서에만 영향을 줘요.',
+  },
 };

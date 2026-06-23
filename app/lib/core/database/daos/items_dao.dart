@@ -59,9 +59,15 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
         .watch();
   }
 
-  /// Просроченные невыполненные задачи: status=pending и scheduledAt раньше
-  /// начала сегодняшнего дня. Используется карточкой утреннего разбора
-  /// (перенос несделанного с подтверждением). Сортировка по времени.
+  /// Просроченные невыполненные ЗАДАЧИ (type='task'): status=pending и
+  /// scheduledAt раньше начала сегодняшнего дня. Используется карточкой
+  /// утреннего разбора (перенос несделанного с подтверждением).
+  ///
+  /// Фильтруем по type='task' намеренно: только обычные задачи имеет смысл
+  /// переносить на сегодня. События (event) и дедлайны/экзамены
+  /// (deadline/exam) привязаны к конкретному времени/дате — пара прошла,
+  /// дедлайн просто наступил, переносить их бессмысленно, поэтому в утреннем
+  /// разборе они НЕ показываются. Сортировка по времени.
   Stream<List<ItemsTableData>> watchOverduePending(DateTime now) {
     final todayStart = localDayStart(now);
 
@@ -69,6 +75,7 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
           ..where(
             (t) =>
                 t.status.equals('pending') &
+                t.type.equals('task') &
                 t.scheduledAt.isSmallerThanValue(todayStart) &
                 t.recurrenceRule.isNull(),
           )
@@ -299,6 +306,32 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
           ))
         .get();
     return rows.length;
+  }
+
+  /// Последние [limit] уникальных (по title) названий задач из истории.
+  /// Используется формой создания задачи для ряда «быстрый выбор» (недавние).
+  /// Дедупликация по title: берём самую свежую запись каждого названия,
+  /// сортируем по createdAt убывающе, исключаем якоря серий (recurrenceRule).
+  /// Читаем больше строк, чем нужно, и схлопываем дубликаты в Dart, чтобы не
+  /// зависеть от отсутствующего в Drift DISTINCT ON.
+  Future<List<String>> recentDistinctTitles({int limit = 8}) async {
+    final rows = await (select(itemsTable)
+          ..where((t) => t.recurrenceRule.isNull())
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+          ..limit(limit * 8))
+        .get();
+    final seen = <String>{};
+    final result = <String>[];
+    for (final row in rows) {
+      final title = row.title.trim();
+      if (title.isEmpty) continue;
+      final key = title.toLowerCase();
+      if (seen.add(key)) {
+        result.add(title);
+        if (result.length >= limit) break;
+      }
+    }
+    return result;
   }
 
   // ---------------------------------------------------------------------------

@@ -254,6 +254,41 @@ void main() {
         reason: 'клонирование недели не должно создавать вторую серию');
   });
 
+  test(
+      'watchOverduePending показывает только type=task; '
+      'event/deadline/exam исключаются', () async {
+    // Просрочка: раньше начала сегодняшнего дня (локальная полночь), pending.
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final overdueAt = todayStart.subtract(const Duration(hours: 3));
+
+    Future<void> insertOverdue(String id, String type) {
+      return dao.insertItem(ItemsTableCompanion(
+        id: Value(id),
+        userId: const Value('local'),
+        title: Value(type),
+        type: Value(type),
+        priority: const Value('medium'),
+        status: const Value('pending'),
+        scheduledAt: Value(overdueAt),
+        durationMinutes: const Value(30),
+        isProtected: const Value(false),
+        createdAt: Value(now),
+        updatedAt: Value(now),
+      ));
+    }
+
+    await insertOverdue('o-task', 'task');
+    await insertOverdue('o-event', 'event');
+    await insertOverdue('o-deadline', 'deadline');
+    await insertOverdue('o-exam', 'exam');
+
+    final overdue = await dao.watchOverduePending(DateTime.now()).first;
+    expect(overdue.map((i) => i.id).toList(), ['o-task'],
+        reason: 'только незавершённую ЗАДАЧУ предлагаем к переносу; '
+            'событие/дедлайн/экзамен привязаны ко времени и исключены');
+  });
+
   test('stopSeries sets UNTIL to day before given day', () async {
     final anchorId = await insertAnchor(
       scheduledAt: DateTime(2026, 6, 1, 9, 0),

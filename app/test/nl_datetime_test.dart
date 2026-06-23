@@ -590,6 +590,100 @@ void main() {
     });
   });
 
+  group('Time range → durationMinutes (start as when)', () {
+    test('"тренировка в 700 до 900" → start 07:00 today, duration 120', () {
+      final r = parseNaturalDateTime('тренировка в 700 до 900', now);
+      // Явный диапазон-блок остаётся на опорном дне (сегодня), даже если старт
+      // 07:00 уже в прошлом относительно now=14:30. НЕ сдвигаем на завтра.
+      expect(r.when, DateTime(2026, 6, 17, 7, 0));
+      expect(r.durationMinutes, 120);
+      expect(r.cleanedTitle, 'тренировка');
+    });
+
+    test('"с 14 до 15:30" → duration 90', () {
+      final r = parseNaturalDateTime('пара с 14 до 15:30', now);
+      expect(r.when, DateTime(2026, 6, 17, 14, 0)); // future today
+      expect(r.durationMinutes, 90);
+      expect(r.cleanedTitle, 'пара');
+    });
+
+    test('"700-900" dash → start 07:00 today, duration 120', () {
+      final r = parseNaturalDateTime('лекция 700-900', now);
+      expect(r.when, DateTime(2026, 6, 17, 7, 0)); // блок остаётся на сегодня
+      expect(r.durationMinutes, 120);
+      expect(r.cleanedTitle, 'лекция');
+    });
+
+    test('"7:00–9:00" en-dash → start 07:00 today, duration 120', () {
+      final r = parseNaturalDateTime('встреча 7:00–9:00', now);
+      expect(r.when, DateTime(2026, 6, 17, 7, 0));
+      expect(r.durationMinutes, 120);
+      expect(r.cleanedTitle, 'встреча');
+    });
+
+    test('"с 7 до 9" → start 07:00 today, duration 120', () {
+      final r = parseNaturalDateTime('зарядка с 7 до 9', now);
+      expect(r.when, DateTime(2026, 6, 17, 7, 0));
+      expect(r.durationMinutes, 120);
+      expect(r.cleanedTitle, 'зарядка');
+    });
+
+    test('range combines with "завтра": "завтра с 18 до 20"', () {
+      final r = parseNaturalDateTime('тренировка завтра с 18 до 20', now);
+      expect(r.when, DateTime(2026, 6, 18, 18, 0));
+      expect(r.durationMinutes, 120);
+      expect(r.cleanedTitle, 'тренировка');
+    });
+
+    test('negative: "до 900" only end → no duration (need both)', () {
+      final r = parseNaturalDateTime('дедлайн до 900', now);
+      expect(r.durationMinutes, isNull);
+    });
+
+    test('negative: end <= start → ignored ("с 9 до 7")', () {
+      final r = parseNaturalDateTime('смена с 9 до 7', now);
+      expect(r.durationMinutes, isNull);
+    });
+  });
+
+  group('Russian word dates', () {
+    test('"18 июня" → 2026-06-18 09:00', () {
+      final r = parseNaturalDateTime('экзамен 18 июня', now);
+      expect(r.when, DateTime(2026, 6, 18, 9, 0));
+      expect(r.cleanedTitle, 'экзамен');
+    });
+
+    test('"5 мая" already past → next year 2027-05-05', () {
+      final r = parseNaturalDateTime('праздник 5 мая', now);
+      expect(r.when, DateTime(2027, 5, 5, 9, 0));
+      expect(r.cleanedTitle, 'праздник');
+    });
+
+    test('"1 сентября" → 2026-09-01 09:00', () {
+      final r = parseNaturalDateTime('линейка 1 сентября', now);
+      expect(r.when, DateTime(2026, 9, 1, 9, 0));
+      expect(r.cleanedTitle, 'линейка');
+    });
+
+    test('"июня 18" (month-first) → 2026-06-18', () {
+      final r = parseNaturalDateTime('встреча июня 18', now);
+      expect(r.when, DateTime(2026, 6, 18, 9, 0));
+      expect(r.cleanedTitle, 'встреча');
+    });
+
+    test('word date + time: "18 июня 17:00" → 2026-06-18 17:00', () {
+      final r = parseNaturalDateTime('сдать 18 июня 17:00', now);
+      expect(r.when, DateTime(2026, 6, 18, 17, 0));
+      expect(r.cleanedTitle, 'сдать');
+    });
+
+    test('negative: month without day "купить в мае" → no word date', () {
+      final r = parseNaturalDateTime('купить в мае', now);
+      // "мая" нет, "мае" — другой падеж, не распознаём как дату.
+      expect(r.when, isNull);
+    });
+  });
+
   group('Backward-compat — new fields null when only time present', () {
     test('"Сдать лабу завтра 17:00" → duration/priority/recurrence null', () {
       final r = parseNaturalDateTime('Сдать лабу завтра 17:00', now);

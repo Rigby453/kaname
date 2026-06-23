@@ -3,7 +3,8 @@
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, FilteringTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -17,8 +18,10 @@ import '../mascot/kai_mascot.dart';
 import '../../core/settings/food_preferences_provider.dart';
 import '../../core/settings/health_profile_provider.dart';
 import '../../core/settings/mascot_provider.dart';
+import '../../core/settings/reminder_default_provider.dart';
 import '../../core/settings/sound_provider.dart';
 import '../../core/settings/swipe_action_provider.dart';
+import '../../core/settings/task_presets_provider.dart';
 import '../../core/settings/text_scale_provider.dart';
 import '../../core/settings/timezone_provider.dart';
 import '../../core/widgets/voice_text_field.dart';
@@ -243,6 +246,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // Секция «Пищевые предпочтения»
         const SizedBox(height: 28),
         const _FoodPreferencesSection(),
+
+        // Секция «Задачи по умолчанию»
+        const SizedBox(height: 28),
+        const _TaskDefaultsSection(),
 
         // Секция «Внешний вид»
         const SizedBox(height: 28),
@@ -1261,6 +1268,225 @@ class _FoodPreferencesView extends StatelessWidget {
           row(context.s('food_prefs.view_dislikes'), prefs.dislikes),
         if (prefs.likes.trim().isNotEmpty)
           row(context.s('food_prefs.view_likes'), prefs.likes),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Task defaults section
+// ---------------------------------------------------------------------------
+
+/// Секция «Задачи по умолчанию»: глобальное напоминание по умолчанию + редактор
+/// пресетов длительности и пресетов напоминаний. Пишет в reminderDefaultProvider,
+/// durationPresetsProvider, reminderPresetsProvider.
+class _TaskDefaultsSection extends ConsumerWidget {
+  const _TaskDefaultsSection();
+
+  /// Локализованная подпись минут: «N мин» либо «в момент» для 0 в режиме
+  /// напоминаний.
+  static String _minutesLabel(BuildContext context, int minutes,
+      {bool reminder = false}) {
+    if (reminder && minutes == 0) {
+      return context.s('profile.reminder_at_start');
+    }
+    return '$minutes ${context.s('profile.minutes_short')}';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final reminderDefault = ref.watch(reminderDefaultProvider);
+    final reminderPresets = ref.watch(reminderPresetsProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.s('profile.section_task_defaults'),
+          style: textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          context.s('profile.task_defaults_note'),
+          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+        ),
+        const SizedBox(height: 16),
+
+        // ---- Напоминание по умолчанию: режим ----
+        Text(
+          context.s('profile.reminder_default_label'),
+          style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment(
+              value: 'none',
+              label: Text(context.s('profile.reminder_mode_none')),
+            ),
+            ButtonSegment(
+              value: 'main',
+              label: Text(context.s('profile.reminder_mode_main')),
+            ),
+            ButtonSegment(
+              value: 'all',
+              label: Text(context.s('profile.reminder_mode_all')),
+            ),
+          ],
+          selected: {reminderDefault.mode},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) =>
+              ref.read(reminderDefaultProvider.notifier).setMode(s.first),
+        ),
+
+        // ---- Напоминание по умолчанию: за сколько (если не «Нет») ----
+        if (reminderDefault.mode != 'none') ...[
+          const SizedBox(height: 16),
+          Text(
+            context.s('profile.reminder_when_label'),
+            style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: reminderPresets.map((minutes) {
+              return ChoiceChip(
+                label: Text(_minutesLabel(context, minutes, reminder: true)),
+                selected: reminderDefault.minutes == minutes,
+                onSelected: (_) => ref
+                    .read(reminderDefaultProvider.notifier)
+                    .setMinutes(minutes),
+              );
+            }).toList(),
+          ),
+        ],
+
+        const SizedBox(height: 20),
+
+        // ---- Пресеты длительности ----
+        _PresetEditor(
+          label: context.s('profile.duration_presets_label'),
+          presets: ref.watch(durationPresetsProvider),
+          reminder: false,
+          onChanged: (list) =>
+              ref.read(durationPresetsProvider.notifier).setPresets(list),
+        ),
+
+        const SizedBox(height: 20),
+
+        // ---- Пресеты напоминаний ----
+        _PresetEditor(
+          label: context.s('profile.reminder_presets_label'),
+          presets: reminderPresets,
+          reminder: true,
+          onChanged: (list) =>
+              ref.read(reminderPresetsProvider.notifier).setPresets(list),
+        ),
+      ],
+    );
+  }
+}
+
+/// Редактор списка пресетов (минут): чипы с возможностью удаления (тап по чипу
+/// убирает его) + кнопка «Добавить» (диалог ввода минут). Используется для
+/// длительностей и для напоминаний (флаг [reminder] меняет подпись 0 минут).
+class _PresetEditor extends StatelessWidget {
+  const _PresetEditor({
+    required this.label,
+    required this.presets,
+    required this.reminder,
+    required this.onChanged,
+  });
+
+  final String label;
+  final List<int> presets;
+  final bool reminder;
+  final ValueChanged<List<int>> onChanged;
+
+  String _chipLabel(BuildContext context, int minutes) {
+    if (reminder && minutes == 0) {
+      return context.s('profile.reminder_at_start');
+    }
+    return '$minutes ${context.s('profile.minutes_short')}';
+  }
+
+  Future<void> _addPreset(BuildContext context) async {
+    final controller = TextEditingController();
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final entered = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: ext.surfaceElevated,
+          title: Text(ctx.s('profile.presets_add_minutes_title')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              labelText: ctx.s('profile.presets_minutes_hint'),
+            ),
+            onSubmitted: (v) =>
+                Navigator.of(ctx).pop(int.tryParse(v.trim())),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(ctx.s('btn.cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx)
+                  .pop(int.tryParse(controller.text.trim())),
+              child: Text(ctx.s('profile.presets_add')),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (entered == null) return;
+    // Нормализацию/валидацию выполнит провайдер; здесь просто добавляем.
+    onChanged([...presets, entered]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ...presets.map((minutes) {
+              return InputChip(
+                label: Text(_chipLabel(context, minutes)),
+                onDeleted: presets.length > 1
+                    ? () => onChanged(
+                        presets.where((m) => m != minutes).toList())
+                    : null,
+              );
+            }),
+            ActionChip(
+              avatar: Icon(Icons.add, size: 16, color: ext.textMuted),
+              label: Text(context.s('profile.presets_add')),
+              onPressed: () => _addPreset(context),
+            ),
+          ],
+        ),
       ],
     );
   }

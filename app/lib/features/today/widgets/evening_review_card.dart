@@ -34,11 +34,16 @@ DateTime _tomorrow() {
   return DateTime(t.year, t.month, t.day);
 }
 
-/// Сегодняшние невыполненные задачи (кандидаты на перенос на завтра).
+/// Сегодняшние невыполненные ЗАДАЧИ (кандидаты на перенос на завтра).
+/// Фильтруем по type=='task': события (event) и дедлайны (deadline/exam)
+/// привязаны ко времени, их на завтра не переносим — как в watchOverduePending
+/// (утренний разбор уже так фильтрует).
 final _todayPendingProvider =
     StreamProvider.autoDispose<List<ItemsTableData>>((ref) {
   return ref.watch(itemsDaoProvider).watchTodayItems(DateTime.now()).map(
-        (items) => items.where((i) => i.status == 'pending').toList(),
+        (items) => items
+            .where((i) => i.status == 'pending' && i.type == 'task')
+            .toList(),
       );
 });
 

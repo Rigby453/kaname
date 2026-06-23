@@ -1032,6 +1032,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             maxLines: 2,
           ),
 
+          // Короткое объяснение приоритетов (врезка). Наименее инвазивно:
+          // не добавляет экран, не трогает счётчик шагов.
+          const SizedBox(height: 20),
+          _PriorityExplainer(),
+
           // Ошибка
           if (_taskError) ...[
             const SizedBox(height: 8),
@@ -1442,6 +1447,58 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Врезка: краткое объяснение приоритетов (экран «первая задача»)
+// ---------------------------------------------------------------------------
+
+/// Компактная карточка-объяснение системы приоритетов:
+/// «Главное» защищено от авто-переноса и держит серию; «Важная»/«Обычная»
+/// влияют только на порядок переноса несделанного.
+class _PriorityExplainer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ext.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.star_rounded, color: colorScheme.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  context.s('onboarding_quiz.priorities_title'),
+                  style: textTheme.titleSmall,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            context.s('onboarding_quiz.priorities_main'),
+            style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            context.s('onboarding_quiz.priorities_other'),
+            style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+          ),
+        ],
       ),
     );
   }
