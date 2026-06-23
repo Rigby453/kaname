@@ -38,8 +38,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = DateTime(now.year, now.month, now.day - 1);
-    if (date == today) return context.s('plan.today');
-    if (date == yesterday) return context.s('plan.yesterday');
+    if (isSameDate(date, today)) return context.s('plan.today');
+    if (isSameDate(date, yesterday)) return context.s('plan.yesterday');
     // Год показываем только если не текущий
     if (date.year == now.year) return DateFormat('d MMM').format(date);
     return DateFormat('d MMM y').format(date);
@@ -54,7 +54,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
       lastDate: DateTime(2099),
     );
     if (picked != null && mounted) {
-      ref.read(selectedDayProvider.notifier).state = picked;
+      ref.read(selectedDayProvider.notifier).state = dateOnly(picked);
     }
   }
 
@@ -181,7 +181,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                     Builder(builder: (ctx) {
                       final now = DateTime.now();
                       final today = DateTime(now.year, now.month, now.day);
-                      if (selectedDay != today) {
+                      if (!isSameDate(selectedDay, today)) {
                         return TextButton(
                           onPressed: () {
                             ref.read(selectedDayProvider.notifier).state =
@@ -307,7 +307,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final isToday = selectedDay == today;
+    final isToday = isSameDate(selectedDay, today);
 
     return Padding(
       // 16dp слева, компактно справа под иконки (02-type-space.md §4.1)

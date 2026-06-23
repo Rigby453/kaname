@@ -193,7 +193,11 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
           ..where(
             (t) =>
                 t.scheduledAt.isBiggerOrEqualValue(weekStartUtc) &
-                t.scheduledAt.isSmallerThanValue(weekEnd),
+                t.scheduledAt.isSmallerThanValue(weekEnd) &
+                // Исключаем якоря серий (recurrenceRule != null): клонировать их
+                // строкой создало бы вторую активную серию-дубль. Конкретные
+                // (материализованные) дни серий клонируются как обычные строки.
+                t.recurrenceRule.isNull(),
           ))
         .get();
 
@@ -346,6 +350,41 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
           anchorTime.minute,
         );
 
+    // Идемпотентность по (anchorId, date): если день УЖЕ материализован (дата в
+    // EXDATE якоря), значит concrete-строка для него создана ранее. Быстрый
+    // повторный свайп виртуала (done/skip/snooze возвращают confirmDismiss=false,
+    // карточка живёт до ребилда стрима) мог бы вызвать materializeOccurrence
+    // второй раз → дубль concrete-строки. Вместо вставки находим существующую
+    // строку и применяем к ней статус/правки, возвращая её id.
+    if (rule.exDates.contains(_dateOnly(date))) {
+      final existing = await _findMaterializedOccurrence(anchor, date);
+      if (existing != null) {
+        final companion = ItemsTableCompanion(
+          title: title != null ? Value(title) : const Value.absent(),
+          type: type != null ? Value(type) : const Value.absent(),
+          priority: priority != null ? Value(priority) : const Value.absent(),
+          status: status != null ? Value(status) : const Value.absent(),
+          scheduledAt:
+              scheduledAt != null ? Value(scheduledAt) : const Value.absent(),
+          durationMinutes: durationMinutes != null
+              ? Value(durationMinutes)
+              : const Value.absent(),
+          isProtected:
+              isProtected != null ? Value(isProtected) : const Value.absent(),
+          color: color != null ? Value(color) : const Value.absent(),
+          updatedAt: Value(DateTime.now()),
+        );
+        await updateItem(existing.id, companion);
+        if (status == 'done') {
+          unawaited(CompletionSoundService.instance.playIfEnabled());
+        }
+        return existing.id;
+      }
+      // EXDATE есть, но concrete-строку не нашли (её могли удалить) — не плодим
+      // новую материализацию: день осознанно исключён из серии.
+      return null;
+    }
+
     final newId = uuidV4();
     final now = DateTime.now();
     await into(itemsTable).insert(
@@ -383,8 +422,11 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
           id: Value(uuidV4()),
           itemId: Value(newId),
           title: Value(st.title),
-          // Шаблон материализуется как ещё-не-выполненный чеклист на день.
-          done: const Value(false),
+          // Сохраняем done из шаблона (баг 7): превью прогресса дня (бейдж N/M)
+          // читает подзадачи якоря; если на шаблоне подзадача отмечена done,
+          // материализация со сбросом в false показала бы расхождение «превью
+          // врёт». Обычно шаблон весь не-done, так что поведение не меняется.
+          done: Value(st.done),
           sortOrder: Value(st.sortOrder),
         ),
       );
@@ -408,6 +450,39 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
     }
 
     return newId;
+  }
+
+  /// Нормализует дату к полуночи (для сравнения по Y/M/D, как EXDATE в правиле).
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Ищет уже материализованную concrete-строку серии [anchor] для дня [date]
+  /// (для идемпотентности materializeOccurrence). Concrete-строки не хранят
+  /// ссылку на якорь, поэтому матчим по: НЕ-серия (recurrenceRule=null), тот же
+  /// userId, и scheduledAt попадает в календарный день [date] (канонический слот
+  /// материализации done/skip-правок). Берём самую раннюю при коллизии.
+  Future<ItemsTableData?> _findMaterializedOccurrence(
+    ItemsTableData anchor,
+    DateTime date,
+  ) async {
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final rows = await (select(itemsTable)
+          ..where(
+            (t) =>
+                t.recurrenceRule.isNull() &
+                t.userId.equals(anchor.userId) &
+                t.scheduledAt.isBiggerOrEqualValue(dayStart) &
+                t.scheduledAt.isSmallerThanValue(dayEnd),
+          )
+          ..orderBy([(t) => OrderingTerm.asc(t.scheduledAt)]))
+        .get();
+    if (rows.isEmpty) return null;
+    // Предпочитаем строку с тем же заголовком, что и якорь (правки могли его
+    // изменить — тогда берём первую попавшуюся строку дня как лучший кандидат).
+    for (final r in rows) {
+      if (r.title == anchor.title) return r;
+    }
+    return rows.first;
   }
 
   /// Останавливает серию [anchorId]: ставит UNTIL = день ПЕРЕД [day]

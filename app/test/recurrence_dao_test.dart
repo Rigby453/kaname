@@ -128,7 +128,7 @@ void main() {
 
   test(
       'materializeOccurrence копирует подзадачи-шаблон якоря в новый день; '
-      'копии независимы от якоря', () async {
+      'копии независимы от якоря и сохраняют done шаблона', () async {
     final anchorId = await insertAnchor(
       scheduledAt: DateTime(2026, 6, 22, 9, 0),
       rule: 'FREQ=DAILY',
@@ -136,7 +136,8 @@ void main() {
     // Шаблон серии: две подзадачи на якоре.
     final tplA = await subtasksDao.addSubtask(anchorId, 'Warm up');
     await subtasksDao.addSubtask(anchorId, 'Cool down');
-    // Помечаем одну в шаблоне done — материализация должна сбросить в false.
+    // Помечаем одну в шаблоне done — материализация ДОЛЖНА сохранить done
+    // шаблона (баг 7), чтобы превью прогресса дня не расходилось с реальностью.
     await subtasksDao.setDone(tplA, true);
 
     final newId = await dao.materializeOccurrence(
@@ -145,11 +146,13 @@ void main() {
     );
     expect(newId, isNotNull);
 
-    // У concrete-строки своя копия: те же тексты/порядок, но новые id и done=false.
+    // У concrete-строки своя копия: те же тексты/порядок, новые id, done из шаблона.
     final copied = await subtasksDao.getSubtasks(newId!);
     expect(copied.map((s) => s.title).toList(), ['Warm up', 'Cool down']);
-    expect(copied.every((s) => !s.done), isTrue,
-        reason: 'материализованный день начинается с невыполненного чеклиста');
+    expect(copied.firstWhere((s) => s.title == 'Warm up').done, isTrue,
+        reason: 'done шаблона сохраняется при материализации (превью не врёт)');
+    expect(copied.firstWhere((s) => s.title == 'Cool down').done, isFalse,
+        reason: 'не-выполненная подзадача шаблона остаётся не-выполненной');
     final anchorSubs = await subtasksDao.getSubtasks(anchorId);
     final anchorIds = anchorSubs.map((s) => s.id).toSet();
     for (final c in copied) {
@@ -167,6 +170,88 @@ void main() {
         reason: 'шаблон якоря не изменился после правки дня');
     expect(anchorAfter.firstWhere((s) => s.id == tplA).done, isTrue,
         reason: 'done якоря не затронут');
+  });
+
+  test(
+      'materializeOccurrence идемпотентна по (anchorId, date): повторный вызов '
+      'не создаёт второй concrete-строки, а применяет статус к существующей',
+      () async {
+    final anchorId = await insertAnchor(
+      scheduledAt: DateTime(2026, 6, 22, 9, 0),
+      rule: 'FREQ=DAILY',
+    );
+    final day = DateTime(2026, 6, 23);
+
+    // Первый свайп: материализуем день как pending (как snooze/skip/done путь).
+    final firstId = await dao.materializeOccurrence(anchorId, day);
+    expect(firstId, isNotNull);
+
+    // Второй (быстрый повторный) свайп на ту же дату — теперь со статусом done.
+    final secondId =
+        await dao.materializeOccurrence(anchorId, day, status: 'done');
+
+    // Вернулся id ТОЙ ЖЕ строки (не создана вторая concrete-строка).
+    expect(secondId, firstId);
+
+    // В БД ровно одна concrete-строка на этот день, и её статус обновлён.
+    final dayStart = DateTime(2026, 6, 23);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final concrete = await dao.itemsInRange(dayStart, dayEnd);
+    expect(concrete, hasLength(1),
+        reason: 'повторная материализация не должна плодить дубли');
+    expect(concrete.single.status, 'done');
+  });
+
+  test(
+      'materializeOccurrence: если день в EXDATE, но concrete-строка удалена — '
+      'не материализуем заново (день осознанно исключён)', () async {
+    final anchorId = await insertAnchor(
+      scheduledAt: DateTime(2026, 6, 22, 9, 0),
+      rule: 'FREQ=DAILY',
+    );
+    final day = DateTime(2026, 6, 23);
+    final firstId = await dao.materializeOccurrence(anchorId, day);
+    await dao.deleteItem(firstId!);
+
+    // Повторный вызов на исключённую дату без живой concrete-строки → null.
+    final res = await dao.materializeOccurrence(anchorId, day, status: 'done');
+    expect(res, isNull);
+  });
+
+  test('cloneWeekEvents НЕ дублирует серию (исключает якоря recurrenceRule!=null)',
+      () async {
+    // Неделя: понедельник 2026-06-22 .. 2026-06-29 (UTC-полночь как в DAO).
+    final weekStart = DateTime.utc(2026, 6, 22);
+    // Якорь серии внутри недели.
+    await insertAnchor(
+      scheduledAt: DateTime.utc(2026, 6, 23, 9, 0),
+      rule: 'FREQ=DAILY',
+      title: 'Series anchor',
+    );
+    // Обычная (не-серийная) задача внутри недели.
+    final now = DateTime.now();
+    await dao.insertItem(ItemsTableCompanion(
+      id: const Value('plain-1'),
+      userId: const Value('local'),
+      title: const Value('Plain task'),
+      type: const Value('task'),
+      priority: const Value('medium'),
+      status: const Value('pending'),
+      scheduledAt: Value(DateTime.utc(2026, 6, 24, 10, 0)),
+      durationMinutes: const Value(30),
+      isProtected: const Value(false),
+      createdAt: Value(now),
+      updatedAt: Value(now),
+    ));
+
+    final cloned = await dao.cloneWeekEvents(weekStart);
+    // Клонируется только обычная задача; якорь серии пропущен.
+    expect(cloned, 1, reason: 'якорь серии не клонируется (иначе дубль серии)');
+
+    // Проверяем: на следующей неделе нет второй серии (anchors всё ещё один).
+    final anchors = await dao.watchSeriesAnchors().first;
+    expect(anchors, hasLength(1),
+        reason: 'клонирование недели не должно создавать вторую серию');
   });
 
   test('stopSeries sets UNTIL to day before given day', () async {

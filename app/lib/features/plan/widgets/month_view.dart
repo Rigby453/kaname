@@ -13,7 +13,7 @@ import '../../../core/database/database.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
 import 'plan_providers.dart';
-import 'week_strip.dart' show selectedDayProvider;
+import 'week_strip.dart' show selectedDayProvider, dateOnly, isSameDate;
 
 /// Ключи локализованных подписей дней недели (Пн..Вс).
 const List<String> _weekdayKeys = [
@@ -39,7 +39,7 @@ class MonthView extends ConsumerWidget {
   }
 
   void _selectDay(WidgetRef ref, DateTime day) {
-    ref.read(selectedDayProvider.notifier).state = day;
+    ref.read(selectedDayProvider.notifier).state = dateOnly(day);
     ref.read(planViewProvider.notifier).state = PlanView.day;
   }
 
@@ -82,8 +82,8 @@ class MonthView extends ConsumerWidget {
         _DayCell(
           day: d,
           hasItems: daysWithItems.contains(d),
-          isToday: DateTime(year, month, d) == todayNorm,
-          isSelected: DateTime(year, month, d) == sel,
+          isToday: isSameDate(DateTime(year, month, d), todayNorm),
+          isSelected: isSameDate(DateTime(year, month, d), sel),
           onTap: () => _selectDay(ref, DateTime(year, month, d)),
         ),
     ];
@@ -198,15 +198,28 @@ class _DayCell extends StatelessWidget {
               ? Border.all(color: colorScheme.primary, width: 1.0)
               : null,
         ),
+        // mainAxisSize.min + Flexible/FittedBox: при крупном тексте (scale 1.5+)
+        // число дня масштабируется внутрь ячейки, а не выталкивает колонку за её
+        // пределы (иначе RenderFlex overflow в тесных ячейках GridView).
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              '$day',
-              style: textTheme.bodyMedium?.copyWith(
-                color: textColor,
-                fontWeight:
-                    isSelected || isToday ? FontWeight.w700 : FontWeight.w400,
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '$day',
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.visible,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: textColor,
+                    fontWeight: isSelected || isToday
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 2),

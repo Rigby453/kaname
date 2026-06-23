@@ -11,6 +11,16 @@ import 'package:intl/intl.dart';
 import '../../../core/animations/constants.dart';
 import '../../../core/theme/app_theme.dart';
 
+/// Возвращает [date] нормализованной до полуночи локального времени
+/// (отбрасывает компонент времени). Используется при записи в
+/// [selectedDayProvider], чтобы сравнения дат по `==` работали надёжно.
+DateTime dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
+/// Сравнивает две даты по году/месяцу/дню, игнорируя время и таймзону-сдвиг
+/// в часах. Надёжнее, чем `a == b`, если в одну из дат случайно попало время.
+bool isSameDate(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
 /// Выбранный день в плане. Нормализован до полуночи локального времени.
 /// По умолчанию — сегодня.
 final selectedDayProvider = StateProvider<DateTime>((ref) {

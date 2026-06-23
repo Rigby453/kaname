@@ -124,4 +124,33 @@ void main() {
     // Подзадачи второй задачи целы
     expect(await dao.getSubtasks(id2), hasLength(1));
   });
+
+  test(
+      'Undo удаления восстанавливает подзадачи (баг 4): снимок до удаления + '
+      'replaceForItem после re-insert строки', () async {
+    final itemId = await insertItem(id: 'item-undo');
+    await dao.addSubtask(itemId, 'Step 1');
+    final s2 = await dao.addSubtask(itemId, 'Step 2');
+    await dao.setDone(s2, true);
+
+    // Снимок ДО удаления (как делает _doDelete/_confirmDelete).
+    final snapshot = await dao.getSubtasks(itemId);
+    expect(snapshot, hasLength(2));
+
+    // Каскадное удаление задачи стирает подзадачи.
+    await itemsDao.deleteItem(itemId);
+    expect(await dao.getSubtasks(itemId), isEmpty);
+
+    // Undo: восстанавливаем строку (re-insert) и подзадачи под тем же itemId.
+    await insertItem(id: itemId);
+    await dao.replaceForItem(
+      itemId,
+      snapshot.map((s) => s.toCompanion(false)).toList(),
+    );
+
+    final restored = await dao.getSubtasks(itemId);
+    expect(restored.map((s) => s.title).toList(), ['Step 1', 'Step 2']);
+    expect(restored.firstWhere((s) => s.title == 'Step 2').done, isTrue,
+        reason: 'статус done подзадачи сохраняется при восстановлении');
+  });
 }

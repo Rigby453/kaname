@@ -62,6 +62,12 @@ class _TaskListState extends ConsumerState<TaskList>
   // только она получает трансформ нёджа.
   int? _nudgeItemIndex;
 
+  // Защита от двойного срабатывания свайп-действия (баг 6): для done/skip/snooze
+  // confirmDismiss возвращает false, карточка живёт до ребилда стрима и её можно
+  // свайпнуть ещё раз → второй materializeOccurrence создал бы дубль. Пока
+  // действие по ключу карточки выполняется, повторный свайп игнорируем.
+  final Set<String> _inFlightActions = {};
+
   @override
   void initState() {
     super.initState();
@@ -267,19 +273,29 @@ class _TaskListState extends ConsumerState<TaskList>
     ItemsTableData item,
     SwipeAction action,
   ) async {
-    switch (action) {
-      case SwipeAction.done:
-        await _doDone(context, item);
-        return false;
-      case SwipeAction.skip:
-        await _doSkip(item);
-        return false;
-      case SwipeAction.snooze:
-        await _doSnooze(context, item);
-        return false;
-      case SwipeAction.delete:
-        await _doDelete(context, item);
-        return true;
+    // Баг 6: для done/skip/snooze карточка не исчезает (confirmDismiss=false) до
+    // ребилда стрима. Без защиты повторный быстрый свайп виртуального повтора
+    // вызвал бы второй materializeOccurrence (дубль concrete-строки). Игнорируем
+    // повторный запуск, пока действие по этому ключу ещё в процессе.
+    if (_inFlightActions.contains(item.id)) return false;
+    _inFlightActions.add(item.id);
+    try {
+      switch (action) {
+        case SwipeAction.done:
+          await _doDone(context, item);
+          return false;
+        case SwipeAction.skip:
+          await _doSkip(item);
+          return false;
+        case SwipeAction.snooze:
+          await _doSnooze(context, item);
+          return false;
+        case SwipeAction.delete:
+          await _doDelete(context, item);
+          return true;
+      }
+    } finally {
+      _inFlightActions.remove(item.id);
     }
   }
 
@@ -337,11 +353,14 @@ class _TaskListState extends ConsumerState<TaskList>
   /// Тост-подтверждение (без Undo).
   Future<void> _doSnooze(BuildContext context, ItemsTableData item) async {
     final dao = ref.read(itemsDaoProvider);
+    final notifications = ref.read(notificationServiceProvider);
     final tomorrow = item.scheduledAt.add(const Duration(days: 1));
+    // id строки, для которой нужно пересчитать напоминание после сдвига даты.
+    String? rescheduledId;
     if (isVirtualOccurrenceId(item.id)) {
       // Материализуем повтор сразу на завтрашнее время — день анкера получает
       // EXDATE, а concrete-строка встаёт на завтра в pending.
-      await dao.materializeOccurrence(
+      rescheduledId = await dao.materializeOccurrence(
         anchorIdFromVirtual(item.id),
         dateFromVirtual(item.id) ?? item.scheduledAt,
         scheduledAt: tomorrow,
@@ -354,6 +373,25 @@ class _TaskListState extends ConsumerState<TaskList>
           updatedAt: Value(DateTime.now()),
         ),
       );
+      rescheduledId = item.id;
+    }
+    // Перепланируем локальное напоминание под новый scheduledAt: старое
+    // напоминание (на сегодняшнее время) выстрелило бы не вовремя. Сначала
+    // снимаем прежнее, затем — если у задачи задан reminderMinutesBefore —
+    // планируем новое на tomorrow − N (scheduleTaskReminder сам отменит старое
+    // и пропустит планирование, если момент уже в прошлом).
+    if (rescheduledId != null) {
+      final minutes = item.reminderMinutesBefore;
+      if (minutes == null) {
+        await notifications.cancelTaskReminder(rescheduledId);
+      } else {
+        final fireAt = tomorrow.subtract(Duration(minutes: minutes));
+        await notifications.scheduleTaskReminder(
+          rescheduledId,
+          item.title,
+          fireAt,
+        );
+      }
     }
     if (context.mounted) {
       showAppToast(
@@ -378,8 +416,12 @@ class _TaskListState extends ConsumerState<TaskList>
       );
     }
     if (deletedId == null) return;
-    // Снимок строки для Undo (восстановление через re-insert).
+    // Полный снимок для Undo: строка (toCompanion(false) включает
+    // reminderMinutesBefore/moduleLink/color) + подзадачи (deleteItem удаляет их
+    // каскадно — без снимка Undo вернул бы задачу без чеклиста, баг 4).
     final snapshot = await dao.getItemById(deletedId);
+    final subtasksDao = ref.read(subtasksDaoProvider);
+    final subtasksSnapshot = await subtasksDao.getSubtasks(deletedId);
     await dao.deleteItem(deletedId);
     // Снимаем запланированное напоминание удалённой задачи (если было).
     await ref.read(notificationServiceProvider).cancelTaskReminder(deletedId);
@@ -392,9 +434,18 @@ class _TaskListState extends ConsumerState<TaskList>
         onUndo: snapshot == null
             ? null
             : () async {
+                // Восстанавливаем строку с тем же id (она затумбстоунена, но
+                // повторная вставка вернёт её локально; синк разрулит LWW).
                 await ref.read(itemsDaoProvider).insertItem(
                       snapshot.toCompanion(false),
                     );
+                // Восстанавливаем подзадачи под тот же itemId.
+                await subtasksDao.replaceForItem(
+                  snapshot.id,
+                  subtasksSnapshot
+                      .map((s) => s.toCompanion(false))
+                      .toList(),
+                );
               },
       );
     }

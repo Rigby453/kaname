@@ -11,6 +11,7 @@
 // Бакетинг «дня с задачами» согласован с MonthView/watchTodayItems:
 // день задачи = UTC-дата scheduledAt (.toUtc()).
 
+import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,7 +21,7 @@ import '../../../core/animations/constants.dart';
 import '../../../core/database/database.dart';
 import '../../../core/theme/app_theme.dart';
 import 'plan_providers.dart';
-import 'week_strip.dart' show selectedDayProvider;
+import 'week_strip.dart' show selectedDayProvider, dateOnly, isSameDate;
 
 /// Высота одной строки календаря (неделя). Свёрнутый календарь = одна такая
 /// строка; развёрнутый = [_rows] строк.
@@ -50,6 +51,13 @@ class _ExpandableWeekCalendarState
   int _rows = 6;
   int _rowOfSelected = 0;
 
+  // Slop для вертикального drag: пока суммарное смещение пальца не превысит
+  // [_kDragSlop], не двигаем _controller.value. Это убирает «дрожь» раскрытия
+  // при тапе со смазом (микро-движение по вертикали уже не трогает анимацию).
+  static const double _kDragSlop = kTouchSlop; // ~18 lp
+  double _dragAccum = 0;
+  bool _dragActive = false;
+
   @override
   void initState() {
     super.initState();
@@ -71,14 +79,30 @@ class _ExpandableWeekCalendarState
   /// Доп. высота, на которую раскрывается сетка (для маппинга drag → value).
   double get _expandExtent => (_rows - 1) * _kRowHeight;
 
+  void _onVerticalDragStart(DragStartDetails details) {
+    _dragAccum = 0;
+    _dragActive = false;
+  }
+
   void _onVerticalDragUpdate(DragUpdateDetails details) {
     final extent = _expandExtent;
     if (extent <= 0) return;
+    final delta = details.primaryDelta ?? 0;
+    // Пока не набрали slop — копим дельту, но не двигаем анимацию: так тап со
+    // смазом по вертикали не вызывает дрожь раскрытия.
+    if (!_dragActive) {
+      _dragAccum += delta;
+      if (_dragAccum.abs() < _kDragSlop) return;
+      _dragActive = true;
+    }
     // Тянем вниз (+delta) — раскрываем; вверх — сворачиваем.
-    _controller.value += (details.primaryDelta ?? 0) / extent;
+    _controller.value += delta / extent;
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
+    // Жест не преодолел slop (фактически тап) — анимацию не трогаем.
+    if (!_dragActive) return;
+    _dragActive = false;
     final v = details.primaryVelocity ?? 0;
     final bool expand;
     if (v.abs() > 300) {
@@ -127,7 +151,7 @@ class _ExpandableWeekCalendarState
   }
 
   void _onDayTap(DateTime day) {
-    ref.read(selectedDayProvider.notifier).state = day;
+    ref.read(selectedDayProvider.notifier).state = dateOnly(day);
     // Тап в развёрнутом месяце — сворачиваемся к неделе выбранного дня.
     if (_controller.value > 0.5) _settle(false);
   }
@@ -190,6 +214,7 @@ class _ExpandableWeekCalendarState
 
     return GestureDetector(
       // Вертикальный drag — раскрытие/сворачивание; горизонтальный — листание.
+      onVerticalDragStart: _onVerticalDragStart,
       onVerticalDragUpdate: _onVerticalDragUpdate,
       onVerticalDragEnd: _onVerticalDragEnd,
       onHorizontalDragEnd: _onHorizontalDragEnd,
@@ -292,8 +317,8 @@ class _ExpandableWeekCalendarState
                                         return Expanded(
                                           child: _DayCell(
                                             day: d,
-                                            isSelected: d == sel,
-                                            isToday: d == todayNorm,
+                                            isSelected: isSameDate(d, sel),
+                                            isToday: isSameDate(d, todayNorm),
                                             isOutsideMonth: d.month != month,
                                             hasItems: daysWithItems.contains(
                                                 '${d.year}-${d.month}-${d.day}'),

@@ -43,6 +43,10 @@ const List<String> _priorities = ['low', 'medium', 'high', 'main'];
 const List<int> _durations = [15, 30, 45, 60, 90, 120];
 const int _maxMainPerDay = 3;
 
+/// Дефолтная длительность задачи (минут). Совпадает с пресетом из [_durations],
+/// чтобы при пустом поле ручного ввода подсвеченный чип == сохраняемому значению.
+const int _kDefaultDurationMinutes = 30;
+
 /// Пресеты напоминания перед задачей (минут до scheduledAt).
 /// 0 = «в момент» (за 0 минут). Вариант «Нет» = _reminderMinutesBefore == null.
 const List<int> _reminderPresets = [0, 5, 10, 15, 30, 60];
@@ -192,6 +196,13 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   final _imagePicker = ImagePicker();
 
   // --- NL datetime ---
+  // Кэш последнего разбора заголовка. Парсим РОВНО один раз в _onTitleChanged
+  // (с одним DateTime.now()), результат переиспользуем в _save/_cleanedTitle —
+  // иначе повторный parseNaturalDateTime с новым now давал нестабильность у
+  // полуночи / для относительных фраз (баг 2). Текст, по которому получен кэш,
+  // храним рядом для защиты, если _cleanedTitle вызовут до первого listener'а.
+  NlDateTimeResult? _lastParseResult;
+  String? _lastParsedText;
   // Дата/время, определённая NL-парсером из заголовка. null = не распознано.
   DateTime? _nlDetectedDateTime;
   // Флаг: пользователь вручную изменил дату/время → не перезаписываем.
@@ -221,7 +232,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _type = existing?.type ?? 'task';
     _priority = existing?.priority ?? 'medium';
     _scheduledAt = existing?.scheduledAt ?? _defaultScheduledAt();
-    _durationMinutes = existing?.durationMinutes ?? 30;
+    _durationMinutes = existing?.durationMinutes ?? _kDefaultDurationMinutes;
     _moduleLink = existing?.moduleLink;
     _color = existing?.color;
     _reminderMinutesBefore = existing?.reminderMinutesBefore;
@@ -264,6 +275,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   void _onTitleChanged() {
     final text = _titleController.text;
     final result = parseNaturalDateTime(text, DateTime.now());
+    // Кэшируем разбор: _save/_cleanedTitle переиспользуют его без второго
+    // parseNaturalDateTime(DateTime.now()) (баг 2 — двойной парсинг у полуночи).
+    _lastParseResult = result;
+    _lastParsedText = text;
 
     // --- Дата/время ---
     if (!_userPickedDateTime) {
@@ -331,7 +346,11 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   /// повтор — иначе оставляем исходный текст без изменений.
   String get _cleanedTitle {
     final text = _titleController.text;
-    final result = parseNaturalDateTime(text, DateTime.now());
+    // Переиспользуем кэш из _onTitleChanged (один парсинг с одним now). Если
+    // текст изменился без срабатывания listener'а (теоретически) — парсим заново.
+    final result = (_lastParseResult != null && _lastParsedText == text)
+        ? _lastParseResult!
+        : parseNaturalDateTime(text, DateTime.now());
     final recognizedSomething = result.when != null ||
         result.durationMinutes != null ||
         result.priority != null ||
@@ -580,6 +599,16 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (parsed != null && parsed > 0) {
       setState(() {
         _durationMinutes = parsed;
+        _userPickedDuration = true;
+      });
+    } else {
+      // Поле очищено (или 0/невалидно): пресет-чип в build подсвечивается по
+      // пустоте текста, поэтому реальное значение ДОЛЖНО совпасть с тем, что
+      // покажется выбранным. Сбрасываем длительность к дефолтному пресету
+      // (_kDefaultDurationMinutes), иначе сохранилось бы прежнее «кастомное»
+      // число при подсвеченном дефолтном чипе (рассинхрон UI и значения).
+      setState(() {
+        _durationMinutes = _kDefaultDurationMinutes;
         _userPickedDuration = true;
       });
     }
@@ -970,6 +999,10 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     );
     if (confirmed != true) return;
     final dao = ref.read(itemsDaoProvider);
+    final subtasksDao = ref.read(subtasksDaoProvider);
+    // Полный снимок ДО удаления: подзадачи (deleteItem удаляет их каскадно —
+    // без снимка Undo вернул бы задачу без чеклиста, баг 4).
+    final subtasksSnapshot = await subtasksDao.getSubtasks(existing.id);
     await dao.deleteItem(existing.id);
     // Снимаем запланированное напоминание удаляемой задачи (если было).
     await ref.read(notificationServiceProvider).cancelTaskReminder(existing.id);
@@ -984,11 +1017,14 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       context,
       variant: AppToastVariant.removed,
       message: context.s('today.task_removed'),
-      onUndo: () {
+      onUndo: () async {
         final now = DateTime.now();
-        dao.insertItem(
+        final newId = uuidV4();
+        // Полный companion (включая reminderMinutesBefore/moduleLink/color,
+        // которые раньше терялись, баг 4). Восстанавливаем под НОВЫЙ id.
+        await dao.insertItem(
           ItemsTableCompanion(
-            id: Value(uuidV4()),
+            id: Value(newId),
             userId: Value(existing.userId),
             title: Value(existing.title),
             type: Value(existing.type),
@@ -998,9 +1034,25 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             durationMinutes: Value(existing.durationMinutes),
             isProtected: Value(existing.isProtected),
             recurrenceRule: Value(existing.recurrenceRule),
+            reminderMinutesBefore: Value(existing.reminderMinutesBefore),
+            moduleLink: Value(existing.moduleLink),
+            color: Value(existing.color),
             createdAt: Value(now),
             updatedAt: Value(now),
           ),
+        );
+        // Восстанавливаем подзадачи под новый itemId (новые uuid).
+        await subtasksDao.replaceForItem(
+          newId,
+          subtasksSnapshot
+              .map((s) => SubtasksTableCompanion(
+                    id: Value(uuidV4()),
+                    itemId: Value(newId),
+                    title: Value(s.title),
+                    done: Value(s.done),
+                    sortOrder: Value(s.sortOrder),
+                  ))
+              .toList(),
         );
       },
     );
