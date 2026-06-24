@@ -99,6 +99,21 @@ const Map<String, Map<String, String>> foodStrings = {
   // ---------------------------------------------------------------------------
   // Баланс рациона
   // ---------------------------------------------------------------------------
+  // Заголовок секции «Баланс» — отображается над карточкой баланса после списка
+  // приёмов пищи, чтобы визуально отделить её от записей о еде.
+  'food.balance_section_header': {
+    'en': 'Nutrition balance',
+    'ru': 'Баланс питания',
+    'de': 'Nährstoffbilanz',
+    'fr': 'Bilan nutritionnel',
+    'it': 'Bilancio nutrizionale',
+    'pt': 'Balanço nutricional',
+    'es': 'Balance nutricional',
+    'id': 'Keseimbangan gizi',
+    'hi': 'पोषण संतुलन',
+    'ja': '栄養バランス',
+    'ko': '영양 균형',
+  },
   'food.balance_title': {
     'en': 'Balance',
     'ru': 'Баланс',

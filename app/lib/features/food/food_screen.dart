@@ -237,11 +237,6 @@ class _FoodScreenState extends ConsumerState<FoodScreen> {
         children: [
           _TotalsCard(totals: totals),
           const SizedBox(height: 16),
-          // Баланс рациона (SPEC C5, rule-based) — только если что-то съедено
-          if (logs.isNotEmpty) ...[
-            _BalanceCard(totals: totals),
-            const SizedBox(height: 16),
-          ],
           // «Собрать ИИ» (SPEC C5, premium): меню дня из рецептов и недавних
           // продуктов; числа пересчитывает код, пользователь подтверждает.
           Align(
@@ -278,8 +273,15 @@ class _FoodScreenState extends ConsumerState<FoodScreen> {
                 ),
               ),
             )
-          else
+          else ...[
             ..._buildMealSections(context, logs),
+            // Баланс рациона (SPEC C5, rule-based) — ПОСЛЕ списка приёмов пищи,
+            // отделён заголовком секции чтобы не читаться как часть меню.
+            const SizedBox(height: 24),
+            _BalanceSectionHeader(),
+            const SizedBox(height: 8),
+            _BalanceCard(totals: totals),
+          ],
         ],
       ),
     );
@@ -376,6 +378,40 @@ class _MealSectionHeader extends StatelessWidget {
   }
 }
 
+/// Заголовок секции «Баланс рациона» — визуально отделяет карточку баланса
+/// от списка приёмов пищи выше, чтобы она не читалась как часть меню.
+/// Стиль аналогичен _MealSectionHeader (titleSmall + textMuted) но без ключа
+/// и без подсветки — это статичный разделительный заголовок.
+class _BalanceSectionHeader extends StatelessWidget {
+  const _BalanceSectionHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor =
+        ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
+    return Padding(
+      // Небольшой левый отступ, как у _MealSectionHeader (horizontal: 4)
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Icon(Icons.insights_outlined, size: 16, color: mutedColor),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              context.s('food.balance_section_header'),
+              style: textTheme.titleSmall?.copyWith(color: mutedColor),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Карточка «Баланс рациона» — мягкий вердикт + конкретные подсказки (C5).
 class _BalanceCard extends ConsumerWidget {
   const _BalanceCard({required this.totals});
@@ -402,8 +438,20 @@ class _BalanceCard extends ConsumerWidget {
     final daySeed =
         DateTime.now().millisecondsSinceEpoch ~/ Duration.millisecondsPerDay;
 
+    // Карточка баланса визуально отличается от карточек приёмов пищи:
+    // левая цветная полоса (success / textMuted) сигнализирует «итоговый вывод»,
+    // а не «запись о продукте». Card используется без elevation (из темы) для
+    // единообразия, но Container внутри добавляет левый border-accent.
+    final borderColor = balance.balanced ? successColor : mutedColor;
     return Card(
-      child: Padding(
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: borderColor, width: 3),
+          ),
+          borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+        ),
+        child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,8 +499,9 @@ class _BalanceCard extends ConsumerWidget {
               ),
           ],
         ),
-      ),
-    );
+        ),  // Padding
+      ),    // Container
+    );      // Card
   }
 }
 
