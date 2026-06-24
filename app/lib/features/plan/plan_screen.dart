@@ -120,7 +120,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ),
         // Тонкий разделитель (hairline 0.5dp, убираем лишнюю высоту)
         Divider(height: 0.5, thickness: 0.5, color: border),
-        Expanded(child: _bodyContent(view, layout)),
+        Expanded(child: _bodyContent(view, layout, searchVisible: searchVisible)),
       ],
     );
   }
@@ -282,9 +282,11 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   }
 
   /// Строит панель инструментов в ОДНУ строку (для mobile).
-  /// Слева направо: компактный выпадающий список вида `[День ▾]` → «Today»
-  /// (только если выбран не сегодня) → дата (тап → DatePicker) → Spacer →
-  /// поиск (Day) → тумблер раскладки (Day/Week) → overflow «⋮» (цели, импорт).
+  /// Слева направо: `[День ▾]` → дата (тап → DatePicker, Expanded с ellipsis)
+  /// → «Today» (только если выбран не сегодня, справа рядом с иконками)
+  /// → поиск (Day) → тумблер раскладки (Day/Week).
+  /// «Today» находится СПРАВА (не между dropdown и датой) — использует пустое
+  /// правое пространство и не сталкивается с текстом даты.
   /// Гарантированно влезает на 320px при textScale 1.3 за счёт Flexible/ellipsis
   /// на дате и компактных контролов вместо SegmentedButton.
   Widget _buildToolbar(
@@ -310,26 +312,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           // --- Компактный выпадающий список вида: [День ▾] ---
           // Заменяет SegmentedButton из 3 кнопок (не влезает в один ряд).
           _ViewDropdown(view: view),
-          // --- Кнопка «Today» — только когда выбран не сегодня (компактная) ---
-          if (!isToday)
-            TextButton(
-              onPressed: () {
-                ref.read(selectedDayProvider.notifier).state = today;
-              },
-              style: TextButton.styleFrom(
-                minimumSize: const Size(0, 36),
-                // Компактный padding: экономит ширину на 320px, чтобы тулбар с
-                // видимой кнопкой «Today» помещался без overflow.
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
-              child: Text(context.s('plan.today')),
-            ),
           // --- Дата: тап открывает DatePicker. Expanded забирает всё свободное
-          // место (заменяет прежний Spacer, прижимая иконки вправо) и при нехватке
-          // ширины ужимает дату с ellipsis вместо RenderFlex overflow.
-          // Это и есть фикс overflow на 320px при видимой кнопке «Today». ---
+          // место (прижимая иконки вправо) и при нехватке ширины ужимает дату
+          // с ellipsis вместо RenderFlex overflow. ---
           Expanded(
             child: GestureDetector(
               onTap: () => _pickDate(selectedDay),
@@ -358,6 +343,22 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               ),
             ),
           ),
+          // --- Кнопка «Today» справа — только когда выбран не сегодня.
+          // Размещена правее даты, рядом с иконками, чтобы не сталкиваться
+          // с текстом даты слева и использовать пустое правое пространство. ---
+          if (!isToday)
+            TextButton(
+              onPressed: () {
+                ref.read(selectedDayProvider.notifier).state = today;
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(context.s('plan.today')),
+            ),
           // --- Иконка поиска (только в режиме Day) — нейтральный цвет. ---
           if (view == PlanView.day)
             IconButton(
@@ -390,7 +391,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
   /// Содержимое тела в mobile (с WeekStrip внутри для Day/Week).
   /// При [layout] == grid в режимах Day/Week показываем сетку времени
   /// (Google-Calendar-стиль) вместо списка; Month всегда календарь.
-  Widget _bodyContent(PlanView view, PlanLayout layout) {
+  /// [searchVisible] — когда true и вид Day, прячем ExpandableWeekCalendar,
+  /// чтобы клавиатура поиска не вызывала RenderFlex overflow (keyboard rule).
+  Widget _bodyContent(PlanView view, PlanLayout layout, {bool searchVisible = false}) {
     final ext = Theme.of(context).extension<FocusThemeExtension>();
     final border = ext?.border ?? Theme.of(context).colorScheme.outline;
     final isGrid = layout == PlanLayout.grid;
@@ -431,7 +434,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
         return Column(
           children: [
             // Раскрывающийся календарь: потяни вниз — развернётся месяц.
-            const ExpandableWeekCalendar(),
+            // Скрываем когда открыт поиск — клавиатура уже занимает нижнюю
+            // часть экрана, высокий календарь вызывает RenderFlex overflow.
+            if (!searchVisible) const ExpandableWeekCalendar(),
             Divider(height: 0.5, thickness: 0.5, color: border),
             // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
             const PinnedExamCard(),
