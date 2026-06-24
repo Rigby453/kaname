@@ -256,9 +256,10 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(context.s('today.carry_over'), style: textTheme.headlineSmall),
+                Expanded(
+                  child: Text(context.s('today.carry_over'), style: textTheme.headlineSmall),
+                ),
                 if (overdue.isNotEmpty)
                   TextButton(
                     onPressed: () async {
@@ -273,6 +274,12 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
                     },
                     child: Text(context.s('today.move_all_today')),
                   ),
+                // Крестик закрытия — видимый аффорданс (всегда присутствует)
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
               ],
             ),
             const SizedBox(height: 8),

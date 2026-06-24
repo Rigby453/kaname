@@ -216,7 +216,7 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок листа — headlineSmall (22sp, display font) с иконкой
+            // Заголовок листа — headlineSmall (22sp, display font) с иконкой + крестик закрытия
             Row(
               children: [
                 Icon(
@@ -225,7 +225,14 @@ class _AiMenuSheetState extends ConsumerState<_AiMenuSheet> {
                   color: mutedColor,
                 ),
                 const SizedBox(width: 8),
-                Text(context.s('food.ai_menu_title'), style: textTheme.headlineSmall),
+                Expanded(
+                  child: Text(context.s('food.ai_menu_title'), style: textTheme.headlineSmall),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
               ],
             ),
             const SizedBox(height: 16),

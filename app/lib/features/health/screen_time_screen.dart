@@ -595,8 +595,20 @@ class _LimitBottomSheetState extends ConsumerState<_LimitBottomSheet> {
           ),
           const SizedBox(height: 20),
 
-          // Заголовок шита — headlineSmall, display font (серифный)
-          Text(widget.categoryName, style: textTheme.headlineSmall),
+          // Заголовок шита — headlineSmall + крестик закрытия.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(widget.categoryName, style: textTheme.headlineSmall),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: context.s('btn.close'),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           Text(
             context.s('screentime.set_daily_time_limit'),

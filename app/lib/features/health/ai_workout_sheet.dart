@@ -222,7 +222,7 @@ class _AiWorkoutSheetState extends ConsumerState<_AiWorkoutSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок листа — headlineSmall + иконка.
+            // Заголовок листа — headlineSmall + иконка + крестик закрытия.
             Row(
               children: [
                 Icon(Icons.fitness_center, size: 20, color: mutedColor),
@@ -232,6 +232,11 @@ class _AiWorkoutSheetState extends ConsumerState<_AiWorkoutSheet> {
                     context.s('workout.ai_title'),
                     style: textTheme.headlineSmall,
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ],
             ),

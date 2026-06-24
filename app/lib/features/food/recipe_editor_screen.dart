@@ -466,7 +466,19 @@ class _IngredientSearchSheetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(context.s('food.add_ingredient'), style: textTheme.headlineSmall),
+            // Заголовок + крестик закрытия (видимый аффорданс)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(context.s('food.add_ingredient'), style: textTheme.headlineSmall),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _controller,

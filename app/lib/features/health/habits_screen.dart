@@ -772,7 +772,7 @@ class _HabitDetailSheet extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Заголовок — эмодзи + имя.
+              // Заголовок — эмодзи + имя + крестик закрытия.
               Row(
                 children: [
                   if (habit.emoji.isNotEmpty) ...[
@@ -781,6 +781,11 @@ class _HabitDetailSheet extends ConsumerWidget {
                   ],
                   Expanded(
                     child: Text(habit.name, style: textTheme.headlineSmall),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: context.s('btn.close'),
+                    onPressed: () => Navigator.of(context).maybePop(),
                   ),
                 ],
               ),

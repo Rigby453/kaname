@@ -953,8 +953,19 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок листа — headlineSmall (22sp, display font)
-            Text(context.s('food.add'), style: textTheme.headlineSmall),
+            // Заголовок листа — headlineSmall (22sp, display font) + крестик закрытия
+            Row(
+              children: [
+                Expanded(
+                  child: Text(context.s('food.add'), style: textTheme.headlineSmall),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _controller,

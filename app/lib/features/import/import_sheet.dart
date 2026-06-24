@@ -406,10 +406,21 @@ class _ImportSheetState extends ConsumerState<ImportSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок: headlineSmall (display font, 22sp, w600)
-            Text(
-              context.s('import.title'),
-              style: textTheme.headlineSmall,
+            // Заголовок + крестик закрытия (видимый аффорданс для шита)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    context.s('import.title'),
+                    style: textTheme.headlineSmall,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             // Подсказка: bodySmall (textMuted)

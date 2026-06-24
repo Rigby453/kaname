@@ -776,10 +776,21 @@ class _TimezoneSetting extends ConsumerWidget {
               shrinkWrap: true,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-                  child: Text(
-                    ctx.s('profile.timezone_select'),
-                    style: Theme.of(ctx).textTheme.titleMedium,
+                  padding: const EdgeInsets.fromLTRB(24, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          ctx.s('profile.timezone_select'),
+                          style: Theme.of(ctx).textTheme.titleMedium,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: ctx.s('btn.close'),
+                        onPressed: () => Navigator.of(ctx).maybePop(),
+                      ),
+                    ],
                   ),
                 ),
                 // Авто (устройство)
@@ -2783,8 +2794,9 @@ class _PlanSheetContent extends StatelessWidget {
           ),
           // Заголовок
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.fromLTRB(24, 0, 16, 0),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Column(
@@ -2801,6 +2813,12 @@ class _PlanSheetContent extends StatelessWidget {
                         ),
                     ],
                   ),
+                ),
+                // Крестик закрытия — видимый аффорданс шита
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ],
             ),

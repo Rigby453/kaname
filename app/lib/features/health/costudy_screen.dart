@@ -792,7 +792,22 @@ class _GroupDetailSheetState extends ConsumerState<_GroupDetailSheet> {
                   final code = detail['code'] as String? ?? '';
 
                   return <Widget>[
-                    Text(detail['name'] as String? ?? '', style: textTheme.titleMedium),
+                    // Заголовок + крестик закрытия (видимый аффорданс шита)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            detail['name'] as String? ?? '',
+                            style: textTheme.titleMedium,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: context.s('btn.close'),
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
 
                     // Постоянный код приглашения — виден любому участнику группы,

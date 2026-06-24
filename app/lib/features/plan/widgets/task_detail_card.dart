@@ -200,7 +200,7 @@ class TaskDetailCard extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок с цветной полосой-меткой.
+            // Заголовок с цветной полосой-меткой + крестик закрытия.
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -222,6 +222,14 @@ class TaskDetailCard extends ConsumerWidget {
                           isDone ? TextDecoration.lineThrough : null,
                     ),
                   ),
+                ),
+                // Крестик закрытия — видимый аффорданс шита
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: context.s('btn.close'),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ],
             ),
