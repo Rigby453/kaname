@@ -7,13 +7,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/breakpoints.dart';
-import '../import/import_sheet.dart';
 import '../today/widgets/add_task_sheet.dart';
 import 'widgets/day_timeline.dart';
 import 'widgets/expandable_week_calendar.dart';
@@ -72,32 +70,6 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     // чтобы избежать Hero-коллизии при смене раскладки.
     final isTablet = MediaQuery.sizeOf(context).width >= Breakpoints.tablet;
     return Scaffold(
-      // AppBar только ради ПОСТОЯННЫХ действий «Цели» и «Импорт» справа сверху —
-      // одно и то же место во ВСЕХ раскладках (мобайл/планшет/веб), чтобы они не
-      // «скакали» между overflow-меню (мобайл) и левой колонкой (планшет).
-      // Две компактные иконки-кнопки без подписей: на 320px заголовка нет
-      // (нижняя/боковая навигация даёт его), так что overflow исключён.
-      appBar: AppBar(
-        // Прозрачный/без своего фона: лежит поверх таба, не дублирует заголовок —
-        // заголовок таба «Plan» уже в общей оболочке (ScaffoldWithNavBar).
-        automaticallyImplyLeading: false,
-        toolbarHeight: kToolbarHeight,
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flag_outlined),
-            tooltip: context.s('plan.goals_tooltip'),
-            onPressed: () => context.push('/goals'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.upload_file_outlined),
-            tooltip: context.s('plan.import_tooltip'),
-            onPressed: () => showImportSheet(context, day: selectedDay),
-          ),
-        ],
-      ),
       floatingActionButton: isTablet
           ? FloatingActionButton(
               heroTag: 'plan_add_fab_tablet',

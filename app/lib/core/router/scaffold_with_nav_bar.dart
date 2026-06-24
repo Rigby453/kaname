@@ -6,15 +6,25 @@
 // нативно рендерит accent-«пилюлю» (indicator) под активным табом через
 // NavigationBarThemeData — что требует UX-LAYOUT.md §3 и 03-components.md §9.
 // Никакого дополнительного кода для pill-индикатора не нужно.
+//
+// Контекстные действия таба Plan (Цели, Импорт) встроены в ЕДИНСТВЕННЫЙ AppBar
+// (этот файл), видны только когда currentIndex == 1 (Plan). Второй AppBar
+// в plan_screen.dart удалён — экономим целую строку высоты (UX).
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/import/import_sheet.dart';
+import '../../features/plan/widgets/week_strip.dart' show selectedDayProvider;
 import '../l10n/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../utils/breakpoints.dart';
 
-class ScaffoldWithNavBar extends StatelessWidget {
+// Индекс таба Plan в StatefulShellRoute (Today=0, Plan=1, Health=2, Diary=3).
+const _kPlanTabIndex = 1;
+
+class ScaffoldWithNavBar extends ConsumerWidget {
   const ScaffoldWithNavBar({
     required this.navigationShell,
     super.key,
@@ -23,24 +33,52 @@ class ScaffoldWithNavBar extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth >= Breakpoints.tablet) {
-          return _buildWideLayout(context);
+          return _buildWideLayout(context, ref);
         }
-        return _buildMobileLayout(context);
+        return _buildMobileLayout(context, ref);
       },
     );
   }
 
-  /// Wide layout (≥600px): NavigationRail + no bottom bar.
-  Widget _buildWideLayout(BuildContext context) {
+  /// Контекстные действия таба Plan — отображаются только на табе Plan.
+  /// Читает selectedDayProvider через ref (уже StateProvider, не локальный state).
+  List<Widget> _planActions(BuildContext context, WidgetRef ref) {
+    if (navigationShell.currentIndex != _kPlanTabIndex) return const [];
+    final selectedDay = ref.watch(selectedDayProvider);
+    return [
+      IconButton(
+        icon: const Icon(Icons.flag_outlined),
+        tooltip: context.s('plan.goals_tooltip'),
+        onPressed: () => context.push('/goals'),
+      ),
+      IconButton(
+        icon: const Icon(Icons.upload_file_outlined),
+        tooltip: context.s('plan.import_tooltip'),
+        onPressed: () => showImportSheet(context, day: selectedDay),
+      ),
+    ];
+  }
+
+  /// Wide layout (≥600px): AppBar + NavigationRail + нет нижнего бара.
+  /// AppBar показывает контекстные действия таба Plan справа.
+  Widget _buildWideLayout(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
+      // AppBar на wide-layout: profile вынесен в leading NavigationRail,
+      // поэтому здесь — только заголовок + контекстные действия (Plan).
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Text(_tabTitle(context, navigationShell.currentIndex)),
+        centerTitle: false,
+        actions: _planActions(context, ref),
+      ),
       body: Row(
         children: [
           NavigationRail(
@@ -113,7 +151,8 @@ class ScaffoldWithNavBar extends StatelessWidget {
   }
 
   /// Mobile layout (<600px): AppBar + M3 NavigationBar с pill-индикатором.
-  Widget _buildMobileLayout(BuildContext context) {
+  /// AppBar: profile слева, заголовок по центру, контекстные действия Plan справа.
+  Widget _buildMobileLayout(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
@@ -124,6 +163,9 @@ class ScaffoldWithNavBar extends StatelessWidget {
         // Заголовок меняется в зависимости от активного таба
         title: Text(_tabTitle(context, navigationShell.currentIndex)),
         centerTitle: true,
+        // Контекстные действия: только на табе Plan (Goals + Import).
+        // На остальных табах список пустой — AppBar без лишних иконок.
+        actions: _planActions(context, ref),
       ),
       body: navigationShell,
       // M3 NavigationBar: нативный pill-индикатор (03-components.md §9)
