@@ -11,15 +11,40 @@ import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/theme/app_theme.dart';
+import 'shopping_suggestions.dart';
 
 // ---------------------------------------------------------------------------
-// Провайдер — реактивный список покупок
+// Провайдеры
 // ---------------------------------------------------------------------------
 
 /// Реактивный список всех позиций (unchecked сверху, checked снизу).
 final _shoppingListProvider =
     StreamProvider.autoDispose<List<ShoppingItemsTableData>>((ref) {
   return ref.watch(shoppingDaoProvider).watchAll();
+});
+
+/// Провайдер предложений: следит за корзиной и историей еды,
+/// возвращает отсортированный список рекомендуемых имён продуктов.
+/// autoDispose — освобождается при уходе с экрана.
+final _shoppingSuggestionsProvider =
+    FutureProvider.autoDispose<List<String>>((ref) async {
+  // Читаем текущую корзину реактивно (следим через AsyncValue)
+  final basketAsync = ref.watch(_shoppingListProvider);
+  final basket = basketAsync.valueOrNull ?? const [];
+  final basketNames = basket.map((i) => i.name).toSet();
+
+  // Одноразово читаем последние 30 дней логов еды (Future, не Stream)
+  final dao = ref.read(foodLogsDaoProvider);
+  final rawLogs = await dao.recentLogs(kSuggestionDays);
+
+  final entries = rawLogs
+      .map((l) => FoodLogEntry(name: l.name, date: l.date))
+      .toList();
+
+  return computeShoppingSuggestions(
+    logs: entries,
+    basketNames: basketNames,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -137,6 +162,9 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
             color: ext?.border,
           ),
 
+          // --- Секция «Рекомендуется» (скрыта, если предложений нет) ---
+          const _SuggestedSection(),
+
           // --- Список / пустое состояние ---
           Expanded(
             child: items.isEmpty
@@ -224,6 +252,105 @@ class _ShoppingTile extends ConsumerWidget {
               .setChecked(item.id, !item.checked);
         },
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Секция «Предложения на основе истории»
+// ---------------------------------------------------------------------------
+
+/// Показывает раздел «Recommended for you» с чипами продуктов из истории питания.
+/// Если предложений нет (история пустая / всё уже в корзине) — скрыта целиком.
+class _SuggestedSection extends ConsumerWidget {
+  const _SuggestedSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final suggestionsAsync = ref.watch(_shoppingSuggestionsProvider);
+
+    // Пока загружается или нет предложений — ничего не показываем
+    final suggestions = suggestionsAsync.valueOrNull;
+    if (suggestions == null || suggestions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final ext = theme.extension<FocusThemeExtension>();
+    final mutedColor =
+        ext?.textMuted ?? theme.colorScheme.onSurface.withAlpha(153);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Заголовок секции — стиль titleSmall muted, как в _SectionHeader task_list
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 6),
+          child: Text(
+            context.s('food.suggested_section'),
+            style: theme.textTheme.titleSmall?.copyWith(color: mutedColor),
+          ),
+        ),
+        // Горизонтально прокручиваемый ряд чипов
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+            itemCount: suggestions.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final name = suggestions[index];
+              return _SuggestionChip(name: name);
+            },
+          ),
+        ),
+        // Нижний разделитель перед основным списком
+        const SizedBox(height: 8),
+        Divider(
+          height: 1,
+          thickness: 0.5,
+          color: ext?.border,
+        ),
+      ],
+    );
+  }
+}
+
+/// Один чип предложения. По тапу добавляет продукт в корзину.
+class _SuggestionChip extends ConsumerWidget {
+  const _SuggestionChip({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final ext = theme.extension<FocusThemeExtension>();
+    final mutedColor =
+        ext?.textMuted ?? theme.colorScheme.onSurface.withAlpha(153);
+
+    return ActionChip(
+      // Иконка «+» как affordance
+      avatar: Icon(
+        Icons.add,
+        size: 16,
+        color: mutedColor,
+      ),
+      label: Text(
+        name,
+        style: theme.textTheme.bodySmall?.copyWith(color: mutedColor),
+      ),
+      // Визуально лёгкий: нет заливки, тонкая рамка border-цвета темы
+      backgroundColor: Colors.transparent,
+      side: BorderSide(
+        color: ext?.border ?? theme.colorScheme.outline.withAlpha(80),
+        width: 0.8,
+      ),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onPressed: () {
+        ref.read(shoppingDaoProvider).insertItem(name: name);
+      },
     );
   }
 }
