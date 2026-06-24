@@ -240,6 +240,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: 8),
         const _SharedWithMeCard(),
 
+        // Кнопка «Изменить цели» — вес/рост/активность/питание/вода
+        const SizedBox(height: 16),
+        const _EditGoalsTile(),
+
         // Секция «Профиль здоровья»
         const SizedBox(height: 28),
         const _HealthProfileSection(),
@@ -1568,6 +1572,39 @@ class _PresetEditor extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Edit goals tile
+// ---------------------------------------------------------------------------
+
+/// Строка «Изменить цели» — ведёт на EditGoalsScreen.
+/// Размещается в профиле перед секцией «Профиль здоровья».
+class _EditGoalsTile extends StatelessWidget {
+  const _EditGoalsTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(Icons.tune_rounded, color: ext.textMuted),
+      title: Text(
+        context.s('profile.edit_goals'),
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        context.s('profile.edit_goals_subtitle'),
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: ext.textMuted),
+      ),
+      trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+      onTap: () => context.push('/profile/edit-goals'),
     );
   }
 }
