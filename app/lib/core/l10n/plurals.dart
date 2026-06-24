@@ -584,7 +584,7 @@ String _secondOther(String lang, int n) {
 // ---------------------------------------------------------------------------
 
 /// Строка длительности для упражнения осанки (секунды или минуты).
-/// Заменяет PostureExercise.durationLabel при наличии контекста.
+/// Используется в _ExerciseTile (posture_screen.dart) — context.s() не нужен.
 String plPostureDuration(BuildContext context, int seconds) {
   if (seconds < 60) return plSeconds(context, seconds);
   return plMinutes(context, seconds ~/ 60);

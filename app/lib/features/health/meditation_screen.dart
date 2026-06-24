@@ -16,211 +16,97 @@ import '../../core/theme/app_theme.dart';
 // Модель данных
 // ---------------------------------------------------------------------------
 
+// Шаг сессии: textKey — l10n-ключ текста инструкции.
 class _Step {
-  const _Step({required this.text, required this.seconds});
-  final String text;
+  const _Step({required this.textKey, required this.seconds});
+  final String textKey;
   final int seconds;
 }
 
+// Сессия медитации: nameKey/descKey/steps — l10n-ключи; id и duration — стабильные.
 class _Session {
   const _Session({
     required this.id,
-    required this.name,
+    required this.nameKey,
     required this.duration,
-    required this.description,
+    required this.descKey,
     required this.steps,
   });
   final String id;
-  final String name;
+  final String nameKey;
   final int duration; // минуты
-  final String description;
+  final String descKey;
   final List<_Step> steps;
 }
 
 const _sessions = <_Session>[
   _Session(
     id: 'body_scan',
-    name: 'Body Scan',
+    nameKey: 'meditation.body_scan.name',
     duration: 10,
-    description: 'Release tension from head to toe',
+    descKey: 'meditation.body_scan.desc',
     steps: [
-      _Step(
-        text:
-            'Find a comfortable position — sitting or lying down. Close your eyes gently and take three slow, deep breaths. Let your body settle.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Bring your attention to the top of your head. Notice any sensations — tingling, warmth, or pressure. Simply observe without judgment.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Slowly move your awareness down through your face, neck, and shoulders. If you feel tension, breathe into that area and let it soften on the exhale.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Scan through your chest, belly, and lower back. Notice the gentle rise and fall of your breath. You don\'t need to change anything.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Move your attention down through your legs, ankles, and feet. Feel each toe. Your whole body is now relaxed and at ease.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Rest in this state of calm awareness for a moment. When you\'re ready, gently wiggle your fingers and toes and slowly open your eyes.',
-        seconds: 90,
-      ),
+      _Step(textKey: 'meditation.body_scan.step1', seconds: 60),
+      _Step(textKey: 'meditation.body_scan.step2', seconds: 90),
+      _Step(textKey: 'meditation.body_scan.step3', seconds: 90),
+      _Step(textKey: 'meditation.body_scan.step4', seconds: 90),
+      _Step(textKey: 'meditation.body_scan.step5', seconds: 90),
+      _Step(textKey: 'meditation.body_scan.step6', seconds: 90),
     ],
   ),
   _Session(
     id: 'focus_reset',
-    name: 'Focus Reset',
+    nameKey: 'meditation.focus_reset.name',
     duration: 5,
-    description: 'Clear mental fog between study blocks',
+    descKey: 'meditation.focus_reset.desc',
     steps: [
-      _Step(
-        text:
-            'Sit upright, feet flat on the floor. Set your intention: you are clearing your mind to return to peak focus.',
-        seconds: 30,
-      ),
-      _Step(
-        text:
-            'Take a deep breath in for 4 counts, hold for 4, and exhale for 4. Repeat this twice more at your own pace.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Picture a blank, white screen in your mind. If any thoughts appear, gently acknowledge them and let them drift off the screen.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Bring to mind one clear goal for your next work session. See it briefly, then release the image.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Take one final deep breath. Open your eyes. You are ready to focus.',
-        seconds: 30,
-      ),
+      _Step(textKey: 'meditation.focus_reset.step1', seconds: 30),
+      _Step(textKey: 'meditation.focus_reset.step2', seconds: 60),
+      _Step(textKey: 'meditation.focus_reset.step3', seconds: 60),
+      _Step(textKey: 'meditation.focus_reset.step4', seconds: 60),
+      _Step(textKey: 'meditation.focus_reset.step5', seconds: 30),
     ],
   ),
   _Session(
     id: 'exam_calm',
-    name: 'Exam Calm',
+    nameKey: 'meditation.exam_calm.name',
     duration: 7,
-    description: 'Ease anxiety before tests and presentations',
+    descKey: 'meditation.exam_calm.desc',
     steps: [
-      _Step(
-        text:
-            'Acknowledge that some nervousness is normal — it means you care. Take a slow breath and remind yourself: you have prepared for this.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Inhale deeply through your nose for 4 counts. Hold gently for 4 counts. Exhale slowly through your mouth for 6 counts. Repeat three times.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Name five things you can see around you. Four things you can touch. Three things you can hear. This grounds you in the present moment.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Recall one moment when you succeeded despite feeling anxious. Feel that memory in your body — the relief, the confidence that followed.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Silently tell yourself: "I am calm, I am clear, I know what to do." Take one final deep breath and step forward with confidence.',
-        seconds: 60,
-      ),
+      _Step(textKey: 'meditation.exam_calm.step1', seconds: 60),
+      _Step(textKey: 'meditation.exam_calm.step2', seconds: 90),
+      _Step(textKey: 'meditation.exam_calm.step3', seconds: 90),
+      _Step(textKey: 'meditation.exam_calm.step4', seconds: 60),
+      _Step(textKey: 'meditation.exam_calm.step5', seconds: 60),
     ],
   ),
   _Session(
     id: 'sleep_prep',
-    name: 'Sleep Prep',
+    nameKey: 'meditation.sleep_prep.name',
     duration: 15,
-    description: 'Wind down and ease into restful sleep',
+    descKey: 'meditation.sleep_prep.desc',
     steps: [
-      _Step(
-        text:
-            'Lie down in a comfortable position. Dim any remaining lights. Let your arms rest at your sides and allow your body to feel heavy and supported.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Take five long, slow breaths. With each exhale, feel yourself sinking a little deeper into the mattress. There is nothing you need to do right now.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Relax your face completely — forehead, eyes, jaw. Let your tongue rest softly on the floor of your mouth. Release any held expression.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Soften your shoulders, chest, and arms. Feel warmth spreading through your hands and fingers as your muscles let go.',
-        seconds: 90,
-      ),
-      _Step(
-        text:
-            'Let your legs become heavy. Release your thighs, calves, and feet. Imagine the tension flowing down and out through your toes.',
-        seconds: 120,
-      ),
-      _Step(
-        text:
-            'Picture a quiet, safe place — a forest path, a calm shore, a cozy room. You are safe, warm, and completely at rest. Let sleep come naturally.',
-        seconds: 120,
-      ),
-      _Step(
-        text:
-            'There is nowhere to be, nothing to do. Your only task now is to rest. Breathe slowly... and drift...',
-        seconds: 120,
-      ),
+      _Step(textKey: 'meditation.sleep_prep.step1', seconds: 60),
+      _Step(textKey: 'meditation.sleep_prep.step2', seconds: 90),
+      _Step(textKey: 'meditation.sleep_prep.step3', seconds: 90),
+      _Step(textKey: 'meditation.sleep_prep.step4', seconds: 90),
+      _Step(textKey: 'meditation.sleep_prep.step5', seconds: 120),
+      _Step(textKey: 'meditation.sleep_prep.step6', seconds: 120),
+      _Step(textKey: 'meditation.sleep_prep.step7', seconds: 120),
     ],
   ),
   _Session(
     id: 'stress_relief',
-    name: 'Stress Relief',
+    nameKey: 'meditation.stress_relief.name',
     duration: 8,
-    description: 'Release tension and restore balance',
+    descKey: 'meditation.stress_relief.desc',
     steps: [
-      _Step(
-        text:
-            'Stop what you\'re doing. Sit or stand comfortably. Acknowledge: right now, in this moment, you are safe.',
-        seconds: 40,
-      ),
-      _Step(
-        text:
-            'Breathe in through your nose for 4 counts. Hold for 2. Breathe out through your mouth for 6. Feel your nervous system begin to slow.',
-        seconds: 80,
-      ),
-      _Step(
-        text:
-            'Tense every muscle in your body for 5 seconds — fists, shoulders, face, legs. Then release all at once. Notice the flood of relaxation.',
-        seconds: 80,
-      ),
-      _Step(
-        text:
-            'Observe what is stressing you from a distance — as if watching clouds pass across a sky. The clouds are not the sky. The stress is not you.',
-        seconds: 80,
-      ),
-      _Step(
-        text:
-            'Think of one small action you can take after this session. Just one. Set everything else aside for now.',
-        seconds: 60,
-      ),
-      _Step(
-        text:
-            'Take three final deep breaths. With each exhale, release a little more tension. You are more resilient than you know.',
-        seconds: 60,
-      ),
+      _Step(textKey: 'meditation.stress_relief.step1', seconds: 40),
+      _Step(textKey: 'meditation.stress_relief.step2', seconds: 80),
+      _Step(textKey: 'meditation.stress_relief.step3', seconds: 80),
+      _Step(textKey: 'meditation.stress_relief.step4', seconds: 80),
+      _Step(textKey: 'meditation.stress_relief.step5', seconds: 60),
+      _Step(textKey: 'meditation.stress_relief.step6', seconds: 60),
     ],
   ),
 ];
@@ -303,10 +189,10 @@ class _SessionCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Название сессии — titleMedium
-                    Text(session.name, style: textTheme.titleMedium),
+                    Text(context.s(session.nameKey), style: textTheme.titleMedium),
                     const SizedBox(height: 2),
                     // Описание — bodyMedium (основной текст)
-                    Text(session.description, style: textTheme.bodyMedium),
+                    Text(context.s(session.descKey), style: textTheme.bodyMedium),
                     const SizedBox(height: 6),
                     // Мета-строка: длительность + шаги — bodySmall + textFaint
                     Text(
@@ -435,7 +321,7 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen>
           icon: Icon(Icons.spa_outlined, size: 40, color: ext.success),
           title: Text(dialogContext.s('meditation.session_complete')),
           content: Text(
-            '"${widget.session.name}" — '
+            '"${dialogContext.s(widget.session.nameKey)}" — '
             '${dialogContext.s('meditation.session_complete_body')}',
           ),
           actions: [
@@ -462,7 +348,7 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.session.name),
+        title: Text(context.s(widget.session.nameKey)),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -539,7 +425,7 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen>
                       Flexible(
                         child: Center(
                           child: Text(
-                            _currentStep.text,
+                            context.s(_currentStep.textKey),
                             style: textTheme.bodyLarge,
                             textAlign: TextAlign.center,
                           ),

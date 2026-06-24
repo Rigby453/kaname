@@ -156,7 +156,7 @@ class _ExerciseTile extends StatelessWidget {
           color: ext.textMuted,
         ),
         // Название упражнения — titleSmall (название задачи/сессии)
-        title: Text(exercise.name, style: textTheme.titleSmall),
+        title: Text(context.s(exercise.nameKey), style: textTheme.titleSmall),
         // Длительность — bodySmall + textFaint (мета-данные)
         trailing: Text(
           plPostureDuration(context, exercise.seconds),
@@ -166,7 +166,7 @@ class _ExerciseTile extends StatelessWidget {
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Шаги — bodyMedium
-          Text(exercise.steps, style: textTheme.bodyMedium),
+          Text(context.s(exercise.stepsKey), style: textTheme.bodyMedium),
         ],
       ),
     );

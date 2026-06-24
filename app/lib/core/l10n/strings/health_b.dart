@@ -1196,6 +1196,321 @@ const Map<String, Map<String, String>> healthBStrings = {
   },
 
   // ---------------------------------------------------------------------------
+  // posture.* exercise content  —  posture_exercises.dart
+  // ---------------------------------------------------------------------------
+
+  'posture.chin_tucks.name': {
+    'en': 'Chin tucks',
+    'ru': 'Подтягивание подбородка',
+  },
+  'posture.chin_tucks.steps': {
+    'en':
+        'Sit tall and gently pull your chin straight back, making a slight double chin. '
+        'Hold for 2 seconds, then release slowly. '
+        'Keep your eyes level and shoulders relaxed throughout.',
+    'ru':
+        'Сядьте ровно и мягко потяните подбородок прямо назад, слегка образовав второй подбородок. '
+        'Удерживайте 2 секунды, затем медленно отпустите. '
+        'На протяжении всего упражнения смотрите прямо, плечи расслаблены.',
+  },
+  'posture.shoulder_blade_squeeze.name': {
+    'en': 'Shoulder blade squeeze',
+    'ru': 'Сведение лопаток',
+  },
+  'posture.shoulder_blade_squeeze.steps': {
+    'en':
+        'Sit or stand with arms at your sides. '
+        'Draw your shoulder blades together as if you were trying to hold a pencil between them. '
+        'Hold for 3 seconds, then slowly release and repeat.',
+    'ru':
+        'Сядьте или встаньте, руки вдоль тела. '
+        'Сведите лопатки вместе, словно пытаетесь зажать карандаш между ними. '
+        'Удерживайте 3 секунды, затем медленно расслабьтесь и повторите.',
+  },
+  'posture.wall_angels.name': {
+    'en': 'Wall angels',
+    'ru': 'Ангел у стены',
+  },
+  'posture.wall_angels.steps': {
+    'en':
+        'Stand with your back against a wall, feet a few inches from the base. '
+        'Press your lower back, upper back, and head to the wall, then slide your arms up and down like a snow angel. '
+        'Move slowly and keep contact with the wall throughout.',
+    'ru':
+        'Встаньте спиной к стене, стопы на несколько сантиметров от плинтуса. '
+        'Прижмите поясницу, верхнюю часть спины и голову к стене, затем плавно поднимайте и опускайте руки, как при рисовании ангела на снегу. '
+        'Двигайтесь медленно, не теряя контакта со стеной.',
+  },
+  'posture.doorway_chest_stretch.name': {
+    'en': 'Doorway chest stretch',
+    'ru': 'Растяжка грудных в дверном проёме',
+  },
+  'posture.doorway_chest_stretch.steps': {
+    'en':
+        'Stand in a doorway and place your forearms on the door frame, elbows at shoulder height. '
+        'Lean forward gently until you feel a mild stretch across your chest. '
+        'Breathe steadily and hold, then step back to release.',
+    'ru':
+        'Встаньте в дверном проёме и опритесь предплечьями о косяки, локти на уровне плеч. '
+        'Плавно наклонитесь вперёд, пока не почувствуете лёгкое растяжение в груди. '
+        'Дышите ровно и удерживайте позицию, затем шагните назад.',
+  },
+  'posture.upper_trap_stretch.name': {
+    'en': 'Upper trap stretch',
+    'ru': 'Растяжка верхней трапеции',
+  },
+  'posture.upper_trap_stretch.steps': {
+    'en':
+        'Sit or stand tall and tilt your right ear toward your right shoulder. '
+        'Place your right hand lightly on your head for a gentle added stretch — never pull. '
+        'Hold, then repeat on the other side.',
+    'ru':
+        'Сядьте или встаньте ровно и наклоните правое ухо к правому плечу. '
+        'Слегка положите правую руку на голову для мягкого дополнительного растяжения — не тяните резко. '
+        'Удерживайте, затем повторите на другую сторону.',
+  },
+  'posture.cat_cow.name': {
+    'en': 'Cat-cow',
+    'ru': 'Кошка-корова',
+  },
+  'posture.cat_cow.steps': {
+    'en':
+        'Get on your hands and knees with a neutral spine. '
+        'Inhale as you drop your belly and lift your gaze (cow); exhale as you round your back toward the ceiling (cat). '
+        'Move slowly and let your breath guide the rhythm.',
+    'ru':
+        'Встаньте на четвереньки, спина в нейтральном положении. '
+        'На вдохе опустите живот и поднимите взгляд (корова); на выдохе округлите спину к потолку (кошка). '
+        'Двигайтесь медленно, пусть дыхание задаёт ритм.',
+  },
+
+  // ---------------------------------------------------------------------------
+  // meditation.* session content  —  meditation_screen.dart
+  // ---------------------------------------------------------------------------
+
+  // — Body Scan (10 min, 6 steps) —
+  'meditation.body_scan.name': {
+    'en': 'Body Scan',
+    'ru': 'Сканирование тела',
+  },
+  'meditation.body_scan.desc': {
+    'en': 'Release tension from head to toe',
+    'ru': 'Снимите напряжение с головы до пят',
+  },
+  'meditation.body_scan.step1': {
+    'en':
+        'Find a comfortable position — sitting or lying down. Close your eyes gently and take three slow, deep breaths. Let your body settle.',
+    'ru':
+        'Примите удобное положение — сидя или лёжа. Мягко закройте глаза и сделайте три медленных, глубоких вдоха. Позвольте телу расслабиться.',
+  },
+  'meditation.body_scan.step2': {
+    'en':
+        'Bring your attention to the top of your head. Notice any sensations — tingling, warmth, or pressure. Simply observe without judgment.',
+    'ru':
+        'Перенесите внимание на макушку головы. Замечайте любые ощущения — покалывание, тепло или давление. Просто наблюдайте, не оценивая.',
+  },
+  'meditation.body_scan.step3': {
+    'en':
+        'Slowly move your awareness down through your face, neck, and shoulders. If you feel tension, breathe into that area and let it soften on the exhale.',
+    'ru':
+        'Медленно перемещайте внимание вниз — по лицу, шее и плечам. Если чувствуете напряжение, направьте туда дыхание и позвольте ему раствориться на выдохе.',
+  },
+  'meditation.body_scan.step4': {
+    'en':
+        'Scan through your chest, belly, and lower back. Notice the gentle rise and fall of your breath. You don\'t need to change anything.',
+    'ru':
+        'Сканируйте грудь, живот и поясницу. Замечайте мягкий подъём и опускание при дыхании. Вам ничего не нужно менять.',
+  },
+  'meditation.body_scan.step5': {
+    'en':
+        'Move your attention down through your legs, ankles, and feet. Feel each toe. Your whole body is now relaxed and at ease.',
+    'ru':
+        'Переведите внимание вниз — по ногам, лодыжкам и ступням. Почувствуйте каждый палец. Всё ваше тело теперь расслаблено и спокойно.',
+  },
+  'meditation.body_scan.step6': {
+    'en':
+        'Rest in this state of calm awareness for a moment. When you\'re ready, gently wiggle your fingers and toes and slowly open your eyes.',
+    'ru':
+        'Побудьте в этом состоянии спокойной осознанности. Когда будете готовы, мягко пошевелите пальцами рук и ног и медленно откройте глаза.',
+  },
+
+  // — Focus Reset (5 min, 5 steps) —
+  'meditation.focus_reset.name': {
+    'en': 'Focus Reset',
+    'ru': 'Перезапуск фокуса',
+  },
+  'meditation.focus_reset.desc': {
+    'en': 'Clear mental fog between study blocks',
+    'ru': 'Разгоните туман в голове между блоками учёбы',
+  },
+  'meditation.focus_reset.step1': {
+    'en':
+        'Sit upright, feet flat on the floor. Set your intention: you are clearing your mind to return to peak focus.',
+    'ru':
+        'Сядьте прямо, стопы плоско на полу. Поставьте намерение: вы очищаете разум, чтобы вернуться к максимальной концентрации.',
+  },
+  'meditation.focus_reset.step2': {
+    'en':
+        'Take a deep breath in for 4 counts, hold for 4, and exhale for 4. Repeat this twice more at your own pace.',
+    'ru':
+        'Сделайте глубокий вдох на 4 счёта, задержите на 4, выдохните на 4. Повторите ещё дважды в своём темпе.',
+  },
+  'meditation.focus_reset.step3': {
+    'en':
+        'Picture a blank, white screen in your mind. If any thoughts appear, gently acknowledge them and let them drift off the screen.',
+    'ru':
+        'Представьте в уме чистый белый экран. Если появляются мысли, мягко признайте их и позвольте им уплыть с экрана.',
+  },
+  'meditation.focus_reset.step4': {
+    'en':
+        'Bring to mind one clear goal for your next work session. See it briefly, then release the image.',
+    'ru':
+        'Представьте одну чёткую цель для следующего рабочего блока. Увидьте её на мгновение, затем отпустите образ.',
+  },
+  'meditation.focus_reset.step5': {
+    'en': 'Take one final deep breath. Open your eyes. You are ready to focus.',
+    'ru': 'Сделайте последний глубокий вдох. Откройте глаза. Вы готовы сосредоточиться.',
+  },
+
+  // — Exam Calm (7 min, 5 steps) —
+  'meditation.exam_calm.name': {
+    'en': 'Exam Calm',
+    'ru': 'Спокойствие перед экзаменом',
+  },
+  'meditation.exam_calm.desc': {
+    'en': 'Ease anxiety before tests and presentations',
+    'ru': 'Снимите тревогу перед тестами и выступлениями',
+  },
+  'meditation.exam_calm.step1': {
+    'en':
+        'Acknowledge that some nervousness is normal — it means you care. Take a slow breath and remind yourself: you have prepared for this.',
+    'ru':
+        'Признайте, что небольшое волнение — это нормально: значит, вам важно. Сделайте медленный вдох и напомните себе: вы готовились к этому.',
+  },
+  'meditation.exam_calm.step2': {
+    'en':
+        'Inhale deeply through your nose for 4 counts. Hold gently for 4 counts. Exhale slowly through your mouth for 6 counts. Repeat three times.',
+    'ru':
+        'Глубоко вдохните через нос на 4 счёта. Мягко задержите на 4 счёта. Медленно выдохните через рот на 6 счётов. Повторите трижды.',
+  },
+  'meditation.exam_calm.step3': {
+    'en':
+        'Name five things you can see around you. Four things you can touch. Three things you can hear. This grounds you in the present moment.',
+    'ru':
+        'Назовите пять вещей, которые вы видите вокруг. Четыре вещи, которые можно потрогать. Три звука, которые слышите. Это возвращает вас в настоящий момент.',
+  },
+  'meditation.exam_calm.step4': {
+    'en':
+        'Recall one moment when you succeeded despite feeling anxious. Feel that memory in your body — the relief, the confidence that followed.',
+    'ru':
+        'Вспомните момент, когда вы справились, несмотря на тревогу. Почувствуйте это воспоминание в теле — облегчение, уверенность, которая пришла следом.',
+  },
+  'meditation.exam_calm.step5': {
+    'en':
+        'Silently tell yourself: "I am calm, I am clear, I know what to do." Take one final deep breath and step forward with confidence.',
+    'ru':
+        'Тихо скажите себе: «Я спокоен, я ясен, я знаю, что делать». Сделайте последний глубокий вдох и уверенно двигайтесь вперёд.',
+  },
+
+  // — Sleep Prep (15 min, 7 steps) —
+  'meditation.sleep_prep.name': {
+    'en': 'Sleep Prep',
+    'ru': 'Подготовка ко сну',
+  },
+  'meditation.sleep_prep.desc': {
+    'en': 'Wind down and ease into restful sleep',
+    'ru': 'Успокойтесь и плавно погрузитесь в спокойный сон',
+  },
+  'meditation.sleep_prep.step1': {
+    'en':
+        'Lie down in a comfortable position. Dim any remaining lights. Let your arms rest at your sides and allow your body to feel heavy and supported.',
+    'ru':
+        'Лягте в удобное положение. Приглушите оставшийся свет. Позвольте рукам лечь вдоль тела и ощутите, как тело тяжелеет и расслабляется.',
+  },
+  'meditation.sleep_prep.step2': {
+    'en':
+        'Take five long, slow breaths. With each exhale, feel yourself sinking a little deeper into the mattress. There is nothing you need to do right now.',
+    'ru':
+        'Сделайте пять длинных, медленных вдохов. С каждым выдохом ощущайте, как всё глубже погружаетесь в матрас. Прямо сейчас вам ничего не нужно делать.',
+  },
+  'meditation.sleep_prep.step3': {
+    'en':
+        'Relax your face completely — forehead, eyes, jaw. Let your tongue rest softly on the floor of your mouth. Release any held expression.',
+    'ru':
+        'Полностью расслабьте лицо — лоб, глаза, челюсть. Пусть язык мягко ляжет на дно рта. Отпустите любое напряжение в мимике.',
+  },
+  'meditation.sleep_prep.step4': {
+    'en':
+        'Soften your shoulders, chest, and arms. Feel warmth spreading through your hands and fingers as your muscles let go.',
+    'ru':
+        'Расслабьте плечи, грудь и руки. Почувствуйте тепло, распространяющееся по ладоням и пальцам, по мере того как мышцы отпускают.',
+  },
+  'meditation.sleep_prep.step5': {
+    'en':
+        'Let your legs become heavy. Release your thighs, calves, and feet. Imagine the tension flowing down and out through your toes.',
+    'ru':
+        'Пусть ноги потяжелеют. Расслабьте бёдра, икры и ступни. Представьте, как напряжение стекает вниз и уходит через кончики пальцев.',
+  },
+  'meditation.sleep_prep.step6': {
+    'en':
+        'Picture a quiet, safe place — a forest path, a calm shore, a cozy room. You are safe, warm, and completely at rest. Let sleep come naturally.',
+    'ru':
+        'Представьте тихое, безопасное место — лесная тропинка, спокойный берег, уютная комната. Вы в безопасности, вам тепло, вы полностью расслаблены. Позвольте сну прийти естественно.',
+  },
+  'meditation.sleep_prep.step7': {
+    'en':
+        'There is nowhere to be, nothing to do. Your only task now is to rest. Breathe slowly... and drift...',
+    'ru':
+        'Вам некуда спешить, нечего делать. Ваша единственная задача сейчас — отдыхать. Дышите медленно... и drift...',
+  },
+
+  // — Stress Relief (8 min, 6 steps) —
+  'meditation.stress_relief.name': {
+    'en': 'Stress Relief',
+    'ru': 'Снятие стресса',
+  },
+  'meditation.stress_relief.desc': {
+    'en': 'Release tension and restore balance',
+    'ru': 'Снимите напряжение и восстановите равновесие',
+  },
+  'meditation.stress_relief.step1': {
+    'en':
+        'Stop what you\'re doing. Sit or stand comfortably. Acknowledge: right now, in this moment, you are safe.',
+    'ru':
+        'Остановитесь. Сядьте или встаньте удобно. Признайте: прямо сейчас, в эту минуту, вы в безопасности.',
+  },
+  'meditation.stress_relief.step2': {
+    'en':
+        'Breathe in through your nose for 4 counts. Hold for 2. Breathe out through your mouth for 6. Feel your nervous system begin to slow.',
+    'ru':
+        'Вдохните через нос на 4 счёта. Задержите на 2. Выдохните через рот на 6. Почувствуйте, как нервная система начинает замедляться.',
+  },
+  'meditation.stress_relief.step3': {
+    'en':
+        'Tense every muscle in your body for 5 seconds — fists, shoulders, face, legs. Then release all at once. Notice the flood of relaxation.',
+    'ru':
+        'Напрягите все мышцы тела на 5 секунд — кулаки, плечи, лицо, ноги. Затем отпустите всё сразу. Почувствуйте волну расслабления.',
+  },
+  'meditation.stress_relief.step4': {
+    'en':
+        'Observe what is stressing you from a distance — as if watching clouds pass across a sky. The clouds are not the sky. The stress is not you.',
+    'ru':
+        'Наблюдайте за источником стресса издалека — словно смотрите на облака, плывущие по небу. Облака — не небо. Стресс — не вы.',
+  },
+  'meditation.stress_relief.step5': {
+    'en':
+        'Think of one small action you can take after this session. Just one. Set everything else aside for now.',
+    'ru':
+        'Подумайте об одном небольшом действии, которое сделаете после этой сессии. Всего одно. Всё остальное пока отложите в сторону.',
+  },
+  'meditation.stress_relief.step6': {
+    'en':
+        'Take three final deep breaths. With each exhale, release a little more tension. You are more resilient than you know.',
+    'ru':
+        'Сделайте три последних глубоких вдоха. С каждым выдохом отпускайте чуть больше напряжения. Вы устойчивее, чем думаете.',
+  },
+
+  // ---------------------------------------------------------------------------
   // screentime.*  —  screen_time_screen.dart
   // ---------------------------------------------------------------------------
 
