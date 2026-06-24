@@ -122,14 +122,14 @@ void main() {
   group('blockContentLevel', () {
     test('низкий блок → только заголовок', () {
       expect(blockContentLevel(20), BlockContentLevel.titleOnly);
-      expect(blockContentLevel(33.9), BlockContentLevel.titleOnly);
+      expect(blockContentLevel(39.9), BlockContentLevel.titleOnly);
     });
     test('средний блок → заголовок + время', () {
-      expect(blockContentLevel(34), BlockContentLevel.titleAndTime);
-      expect(blockContentLevel(63.9), BlockContentLevel.titleAndTime);
+      expect(blockContentLevel(40), BlockContentLevel.titleAndTime);
+      expect(blockContentLevel(71.9), BlockContentLevel.titleAndTime);
     });
     test('высокий блок → заголовок + время + мета', () {
-      expect(blockContentLevel(64), BlockContentLevel.titleTimeAndMeta);
+      expect(blockContentLevel(72), BlockContentLevel.titleTimeAndMeta);
       expect(blockContentLevel(120), BlockContentLevel.titleTimeAndMeta);
     });
   });

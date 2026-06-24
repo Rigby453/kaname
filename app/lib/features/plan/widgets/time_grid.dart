@@ -11,6 +11,11 @@
 // через локальный DateTime(...), как в add_task_sheet.
 
 import 'package:drift/drift.dart' show Value;
+// gestures.dart нужен явно: VerticalDragGestureRecognizer, PointerDownEvent и
+// GestureDisposition НЕ ре-экспортируются material.dart (там только узкий show-
+// список из gesture_detector.dart). Без этого импорта _EagerVerticalDragRecognizer
+// не скомпилируется.
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -116,10 +121,13 @@ String formatBlockTimeRange(DateTime start, int durationMinutes) {
 /// заголовок (до 2 строк) + время + строка типа/повтора.
 enum BlockContentLevel { titleOnly, titleAndTime, titleTimeAndMeta }
 
-/// Пороги подобраны под labelSmall/высоту строки ~14px и паддинги блока.
+/// Пороги подобраны под крупный заголовок (bodyMedium ~14–16px) + время
+/// (labelMedium ~12px) и вертикальные паддинги блока (3+3). Низкий блок прячет
+/// время (overflow ellipsis по заголовку), средний показывает время, высокий —
+/// ещё строку меты.
 BlockContentLevel blockContentLevel(double height) {
-  if (height >= 64) return BlockContentLevel.titleTimeAndMeta;
-  if (height >= 34) return BlockContentLevel.titleAndTime;
+  if (height >= 72) return BlockContentLevel.titleTimeAndMeta;
+  if (height >= 40) return BlockContentLevel.titleAndTime;
   return BlockContentLevel.titleOnly;
 }
 
@@ -1041,9 +1049,12 @@ class _BlockContent extends StatelessWidget {
                       ? 2
                       : 1,
                   overflow: TextOverflow.ellipsis,
-                  style: textTheme.labelSmall?.copyWith(
+                  // Заголовок — читаемый размер из темы (bodyMedium ~14px вместо
+                  // мелкого labelSmall ~11px, особенно заметного в вебе).
+                  style: textTheme.bodyMedium?.copyWith(
                     color: colors.fg,
                     fontWeight: FontWeight.w700,
+                    height: 1.1,
                     decoration:
                         isDone ? TextDecoration.lineThrough : null,
                   ),
@@ -1053,7 +1064,9 @@ class _BlockContent extends StatelessWidget {
                     timeRange,
                     maxLines: 1,
                     overflow: TextOverflow.clip,
-                    style: textTheme.labelSmall?.copyWith(
+                    // Время — labelMedium (~12px) вместо labelSmall: крупнее и
+                    // читаемо, но мельче заголовка, чтобы держать иерархию.
+                    style: textTheme.labelMedium?.copyWith(
                       color: colors.fg.withValues(alpha: 0.85),
                     ),
                   ),
@@ -1073,16 +1086,49 @@ class _BlockContent extends StatelessWidget {
           ),
           // Нижняя ручка изменения длительности: видимая полоска + крупная
           // невидимая зона хвата (Закон Фиттса).
+          //
+          // Арена жестов: родительский блок слушает onLongPress* (перенос). Если
+          // ручку повесить на обычный GestureDetector с onVerticalDrag, то на
+          // ПЕРВОМ касании арена сначала отдаёт жест долгому нажатию родителя
+          // (вертикальный drag «проигрывает» по умолчанию), и ресайз срабатывал
+          // лишь со второго хвата. Поэтому здесь RawGestureDetector с
+          // _EagerVerticalDragRecognizer — он принимает жест в арене немедленно
+          // (resolve(accepted) на старте), стабильно выигрывая над long-press
+          // родителя уже на первый потяг. Вне зоны ручки перенос блока работает
+          // как прежде.
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
             height: handleHitHeight,
-            child: GestureDetector(
+            child: RawGestureDetector(
               behavior: HitTestBehavior.opaque,
-              onVerticalDragStart: (_) => onResizeStart(),
-              onVerticalDragUpdate: (d) => onResizeUpdate(d.delta.dy),
-              onVerticalDragEnd: (_) => onResizeEnd(),
+              gestures: <Type, GestureRecognizerFactory>{
+                _EagerVerticalDragRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                        _EagerVerticalDragRecognizer>(
+                  () => _EagerVerticalDragRecognizer(),
+                  (recognizer) {
+                    // Блочные тела (а не arrow): колбэки drag-распознавателя
+                    // возвращают void, и arrow `=> onResizeEnd()` «использовал»
+                    // бы void-результат (use_of_void_result). onStart/onUpdate/
+                    // onEnd принимают детали драга, onCancel — без аргументов.
+                    recognizer
+                      ..onStart = (_) {
+                        onResizeStart();
+                      }
+                      ..onUpdate = (d) {
+                        onResizeUpdate(d.delta.dy);
+                      }
+                      ..onEnd = (_) {
+                        onResizeEnd();
+                      }
+                      ..onCancel = () {
+                        onResizeEnd();
+                      };
+                  },
+                ),
+              },
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Container(
@@ -1101,6 +1147,28 @@ class _BlockContent extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Вертикальный drag-распознаватель, который выигрывает арену немедленно.
+///
+/// Стандартный [VerticalDragGestureRecognizer] ждёт, пока палец сдвинется на
+/// kTouchSlop, и только потом претендует на победу — за это время долгое
+/// нажатие родительского блока успевает заявить о себе, и на ПЕРВОМ касании
+/// нижней ручки арену выигрывал long-press (ресайз срабатывал лишь со второго
+/// хвата). Здесь мы вызываем [resolve(GestureDisposition.accepted)] прямо в
+/// [addAllowedPointer], то есть на нажатии в зоне ручки — так ресайз надёжно
+/// побеждает long-press родителя уже на первый потяг.
+class _EagerVerticalDragRecognizer extends VerticalDragGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    // Немедленно заявляем победу в арене за этот указатель: касание пришлось на
+    // зону ручки (translucent/opaque hit), значит пользователь целится в ресайз.
+    resolve(GestureDisposition.accepted);
+  }
+
+  @override
+  String get debugDescription => 'eager vertical drag';
 }
 
 /// Плавающая подсказка времени/длительности во время жеста.
