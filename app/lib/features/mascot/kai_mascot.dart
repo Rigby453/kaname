@@ -518,31 +518,43 @@ class _KaiMascotState extends State<KaiMascot>
     final quipIndex = (_tapCount - 1).clamp(0, _kTapQuipCount - 1) % _kTapQuipCount;
     final quipText = context.s('kai.tap_quip_$quipIndex');
 
-    // Пузырь: появляется выше Kai, overflow-safe через Column.
+    // Пузырь: всплывает ПОВЕРХ (через Stack + Positioned), не занимает layout-место.
     // AnimatedSwitcher даёт плавный fade при появлении/скрытии.
-    final bubbleWidget = AnimatedSwitcher(
-      duration: reduce ? Duration.zero : kDurationNormal,
-      switchInCurve: kCurveLift,
-      switchOutCurve: kCurveLift,
-      transitionBuilder: (child, anim) => FadeTransition(
-        opacity: anim,
-        child: child,
+    // Bubble позиционируется выше Kai через Positioned с отрицательным top —
+    // Stack имеет clipBehavior: Clip.none, поэтому пузырь рисуется вне bounds.
+    final bubbleWidget = Positioned(
+      // Располагаем пузырь непосредственно над Kai: bottom = widget.size + 4 отступ.
+      bottom: widget.size + 4,
+      // Горизонтально центрируем относительно Kai через left=0/right=0.
+      left: 0,
+      right: 0,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: AnimatedSwitcher(
+          duration: reduce ? Duration.zero : kDurationNormal,
+          switchInCurve: kCurveLift,
+          switchOutCurve: kCurveLift,
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: child,
+          ),
+          child: _showBubble
+              ? KaiSpeechBubble(
+                  key: ValueKey(quipIndex),
+                  message: quipText,
+                  animate: !reduce,
+                  tail: KaiBubbleTail.bottomCenter,
+                  maxWidth: (widget.size * 3).clamp(160.0, 240.0),
+                )
+              : SizedBox(key: const ValueKey('empty')),
+        ),
       ),
-      child: _showBubble
-          ? Padding(
-              key: ValueKey(quipIndex),
-              padding: const EdgeInsets.only(bottom: 8),
-              child: KaiSpeechBubble(
-                message: quipText,
-                animate: !reduce,
-                tail: KaiBubbleTail.bottomCenter,
-                maxWidth: (widget.size * 3).clamp(160.0, 240.0),
-              ),
-            )
-          : SizedBox(key: const ValueKey('empty')),
     );
 
     // Сам Kai с bounce + существующими анимациями.
+    // Размещается в Stack на позиции (0,0) — занимает весь SizedBox.
+    // OverflowBox позволяет Transform.scale выходить за границы SizedBox при баунсе,
+    // иначе tight SizedBox обрезал бы scale > 1.0 и баунс оставался невидимым.
     final kaiWidget = AnimatedBuilder(
       animation: Listenable.merge([
         _breathAnim,
@@ -557,6 +569,7 @@ class _KaiMascotState extends State<KaiMascot>
         // При reduce-motion: статичный нейтральный рендер без трансформов.
         if (reduce) {
           return CustomPaint(
+            size: Size(widget.size, widget.size),
             painter: _KaiPainter(
               state: _stateFor(_effectiveEmotion, widget.isHarsh),
               eyeColor: eyeColor,
@@ -602,6 +615,7 @@ class _KaiMascotState extends State<KaiMascot>
             child: Transform.translate(
               offset: Offset(jitter, 0),
               child: CustomPaint(
+                size: Size(widget.size, widget.size),
                 painter: _KaiPainter(
                   state: interpolated,
                   eyeColor: eyeColor,
@@ -620,21 +634,27 @@ class _KaiMascotState extends State<KaiMascot>
       },
     );
 
+    // Корневой виджет: SizedBox фиксирует footprint (widget.size × widget.size).
+    // Stack(clipBehavior: Clip.none) позволяет:
+    //   • пузырю рисоваться выше через Positioned(bottom: size+4) без layout-сдвига;
+    //   • bounce Transform.scale > 1 немного выходить за bounds (видимый баунс).
     return GestureDetector(
       // По тапу Kai успокаивается к neutral и показывает пузырь.
       // Внешний onTap вызывается всегда.
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          bubbleWidget,
-          SizedBox(
-            width: widget.size,
-            height: widget.size,
-            child: kaiWidget,
-          ),
-        ],
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Kai занимает всю площадь SizedBox.
+            Positioned.fill(child: kaiWidget),
+            // Пузырь плавает над Kai без влияния на layout.
+            bubbleWidget,
+          ],
+        ),
       ),
     );
   }
