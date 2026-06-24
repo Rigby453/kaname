@@ -305,6 +305,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /habits — трекер привычек (хорошие/плохие), вне оболочки
       GoRoute(path: '/habits', builder: (context, state) => const HabitsScreen()),
 
+      // /habits/archive — список заархивированных привычек (разархивировать/удалить)
+      GoRoute(
+        path: '/habits/archive',
+        builder: (context, state) => const HabitsArchiveScreen(),
+      ),
+
       // /costudy — совместная учёба с друзьями (Ф3), вне оболочки
       GoRoute(path: '/costudy', builder: (context, state) => const CoStudyScreen()),
 

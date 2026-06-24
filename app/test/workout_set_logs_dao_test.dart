@@ -98,4 +98,47 @@ void main() {
     expect(oneShot, hasLength(2));
     expect(oneShot.every((r) => r.exerciseId == 'e1'), isTrue);
   });
+
+  test(
+      'watchExercisesWithLogs возвращает уникальные упражнения с логами, '
+      'свежие первыми, с именем из шаблона', () async {
+    // Сидим два упражнения с известными id (для join по имени).
+    final wId = await dao.createWorkout('Push Day');
+    await db.into(db.workoutExercisesTable).insert(
+          WorkoutExercisesTableCompanion.insert(
+            id: 'e1',
+            workoutId: wId,
+            name: 'Bench Press',
+          ),
+        );
+    await db.into(db.workoutExercisesTable).insert(
+          WorkoutExercisesTableCompanion.insert(
+            id: 'e2',
+            workoutId: wId,
+            name: 'Squat',
+          ),
+        );
+
+    // e1 — два подхода (должно схлопнуться в одну запись).
+    await dao.logSet(sessionId: 's1', exerciseId: 'e1', setIndex: 0, reps: 10);
+    // Drift хранит время с точностью до секунды — разводим по секундам,
+    // чтобы e2 был свежее e1.
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    await dao.logSet(sessionId: 's1', exerciseId: 'e1', setIndex: 1, reps: 8);
+    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    await dao.logSet(sessionId: 's2', exerciseId: 'e2', setIndex: 0, reps: 5);
+
+    final result = await dao.watchExercisesWithLogs().first;
+    // Два уникальных упражнения, e2 свежее → первым.
+    expect(result, hasLength(2));
+    expect(result[0].exerciseId, 'e2');
+    expect(result[0].name, 'Squat');
+    expect(result[1].exerciseId, 'e1');
+    expect(result[1].name, 'Bench Press');
+  });
+
+  test('watchExercisesWithLogs пустой, если логов нет', () async {
+    final result = await dao.watchExercisesWithLogs().first;
+    expect(result, isEmpty);
+  });
 }

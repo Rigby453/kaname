@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/animations/constants.dart';
 import '../../core/database/database.dart';
@@ -396,6 +397,17 @@ class _WorkoutTrainerScreenState extends ConsumerState<WorkoutTrainerScreen>
           // Прогресс «Exercise 2 of 5» — AppBar title через display font
           title: Text(progressLabel),
           actions: [
+            // История текущего упражнения (Feature B) — прошлые подходы +
+            // динамика веса. Самая логичная точка входа: пользователь смотрит
+            // на упражнение прямо сейчас и хочет понять свой прогресс.
+            IconButton(
+              icon: const Icon(Icons.show_chart),
+              tooltip: context.s('workout.view_history'),
+              onPressed: () => context.push(
+                '/workouts/exercise/${ex.id}/history'
+                '?name=${Uri.encodeQueryComponent(ex.name)}',
+              ),
+            ),
             // TextButton — «Остановить» (вторичное лёгкое действие в AppBar)
             TextButton(
               onPressed: () async {

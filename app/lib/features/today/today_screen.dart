@@ -260,15 +260,15 @@ class TodayScreen extends ConsumerWidget {
             children: [
               const _UndoFab(),
               const SizedBox(width: 12),
-              FloatingActionButton.extended(
+              FloatingActionButton(
                 heroTag: 'today_add_fab_tablet',
                 onPressed: () => showAddTaskSheet(context, day: now),
-                icon: const Icon(Icons.add),
-                label: Text(context.s('today.fab_add')),
+                tooltip: context.s('today.fab_add'),
                 // Тень для визуальной отдельности FAB от контента (тема: elevation=0)
                 elevation: 4,
                 focusElevation: 6,
                 hoverElevation: 6,
+                child: const Icon(Icons.add),
               ),
             ],
           ),

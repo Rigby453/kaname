@@ -13,7 +13,6 @@ import 'package:intl/intl.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/breakpoints.dart';
-import '../../core/widgets/collapsing_fab.dart';
 import '../import/import_sheet.dart';
 import '../today/widgets/add_task_sheet.dart';
 import 'widgets/day_timeline.dart';
@@ -67,27 +66,53 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final searchVisible = ref.watch(planSearchVisibleProvider);
     final layout = ref.watch(planLayoutProvider);
 
+    // Единое главное действие «добавить» — крупный круглый «+» без подписи
+    // (как на остальных экранах). heroTag различается для tablet/mobile-веток,
+    // чтобы избежать Hero-коллизии при смене раскладки.
     final isTablet = MediaQuery.sizeOf(context).width >= Breakpoints.tablet;
-    // На планшете — две колонки прокручиваются независимо; CollapsingFab
-    // реагировал бы на случайную из них. Используем статичный extended FAB.
-    // На мобильном — одна колонка с чётко определённым скроллером → collapse.
     return Scaffold(
+      // AppBar только ради ПОСТОЯННЫХ действий «Цели» и «Импорт» справа сверху —
+      // одно и то же место во ВСЕХ раскладках (мобайл/планшет/веб), чтобы они не
+      // «скакали» между overflow-меню (мобайл) и левой колонкой (планшет).
+      // Две компактные иконки-кнопки без подписей: на 320px заголовка нет
+      // (нижняя/боковая навигация даёт его), так что overflow исключён.
+      appBar: AppBar(
+        // Прозрачный/без своего фона: лежит поверх таба, не дублирует заголовок —
+        // заголовок таба «Plan» уже в общей оболочке (ScaffoldWithNavBar).
+        automaticallyImplyLeading: false,
+        toolbarHeight: kToolbarHeight,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: context.s('plan.goals_tooltip'),
+            onPressed: () => context.push('/goals'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.upload_file_outlined),
+            tooltip: context.s('plan.import_tooltip'),
+            onPressed: () => showImportSheet(context, day: selectedDay),
+          ),
+        ],
+      ),
       floatingActionButton: isTablet
-          ? FloatingActionButton.extended(
+          ? FloatingActionButton(
               heroTag: 'plan_add_fab_tablet',
               onPressed: () => showAddTaskSheet(context, day: selectedDay),
-              icon: const Icon(Icons.add),
-              label: Text(context.s('today.fab_add')),
+              tooltip: context.s('today.fab_add'),
               // Тень для визуальной отдельности FAB от контента (тема: elevation=0)
               elevation: 4,
               focusElevation: 6,
               hoverElevation: 6,
+              child: const Icon(Icons.add),
             )
-          : CollapsingFab(
+          : FloatingActionButton(
               heroTag: 'plan_add_fab_mobile',
               onPressed: () => showAddTaskSheet(context, day: selectedDay),
-              icon: const Icon(Icons.add),
-              label: Text(context.s('today.fab_add')),
+              tooltip: context.s('today.fab_add'),
+              child: const Icon(Icons.add),
             ),
       body: isTablet
           ? _buildTabletLayout(context, selectedDay, view, searchVisible, layout)
@@ -264,19 +289,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                           ref.read(planSearchQueryProvider.notifier).state = v,
                     ),
                   ),
-                const SizedBox(height: 8),
-                // Дополнительные действия — нейтральные иконки (не accent)
-                IconButton(
-                  icon: Icon(Icons.flag_outlined, color: textMuted),
-                  tooltip: context.s('plan.goals_tooltip'),
-                  onPressed: () => context.push('/goals'),
-                ),
-                TextButton.icon(
-                  icon: Icon(Icons.upload_file_outlined, size: 18, color: textMuted),
-                  label: Text(context.s('plan.import_label')),
-                  onPressed: () =>
-                      showImportSheet(context, day: selectedDay),
-                ),
+                // «Цели» и «Импорт» перенесены в постоянные действия AppBar
+                // (справа сверху) — одинаково во всех раскладках, чтобы они не
+                // «скакали» между мобайл-меню и этой колонкой.
               ],
             ),
           ),
@@ -390,41 +405,9 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           // --- Тумблер раскладки (список ↔ сетка времени) — только Day/Week.
           // Для threeDay и month скрыт (всегда сетка/календарь). ---
           if (_supportsLayoutToggle(view)) _LayoutToggleButton(layout: layout),
-          // --- Overflow-меню для редких действий (цели, импорт). ---
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: textMuted),
-            tooltip: context.s('plan.more_tooltip'),
-            onSelected: (value) {
-              switch (value) {
-                case 'goals':
-                  context.push('/goals');
-                case 'import':
-                  showImportSheet(context, day: selectedDay);
-              }
-            },
-            itemBuilder: (ctx) => [
-              PopupMenuItem(
-                value: 'goals',
-                child: Row(
-                  children: [
-                    Icon(Icons.flag_outlined, size: 20, color: textMuted),
-                    const SizedBox(width: 12),
-                    Text(ctx.s('plan.goals_tooltip')),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'import',
-                child: Row(
-                  children: [
-                    Icon(Icons.upload_file_outlined, size: 20, color: textMuted),
-                    const SizedBox(width: 12),
-                    Text(ctx.s('plan.import_label')),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          // «Цели» и «Импорт» перенесены в постоянные действия AppBar (справа
+          // сверху) — одинаково во всех раскладках. Здесь overflow-меню больше
+          // не нужно: иных пунктов в нём не было.
         ],
       ),
     );

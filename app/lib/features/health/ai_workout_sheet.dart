@@ -118,7 +118,10 @@ class _AiWorkoutSheetState extends ConsumerState<_AiWorkoutSheet> {
       equipment: _equipment.toList(),
       daysPerWeek: _daysPerWeek,
     );
-    await _save(program);
+    // Шаблонная программа отдаёт КЛЮЧИ (слаги) — локализуем в display-строки
+    // активного языка ДО записи в БД (схема БД не меняется, текст финальный).
+    final localized = localizeWorkoutProgram(program, context.s);
+    await _save(localized);
   }
 
   /// PREMIUM: проверяет тариф, читает профиль атлета, зовёт бэкенд-тренера,

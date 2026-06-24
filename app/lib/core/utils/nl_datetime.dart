@@ -146,12 +146,19 @@ NlDateTimeResult parseNaturalDateTime(String text, DateTime now) {
     working = _eraseSpans(working, [prio.span]);
   }
 
-  // --- Шаг 2: дата/время на оставшемся тексте (существующее поведение). ---
+  // --- Шаг 2: дата/время на оставшемся тексте. ---
+  // Порядок специфичности: «через N дней» (содержит число) и «послезавтра» —
+  // ДО «завтра» (иначе «после[завтра]» словит «завтра») и ДО голого времени.
+  // Числовая дата (18.06) — до «через N» неважно, но перед bare-time, т.к.
+  // «18.06» иначе могло бы зацепиться компактным разбором цифр.
   var dt = _tryRelativeHours(working, now) ??
+      _tryRelativeDays(working, now) ??
+      _tryDayAfterTomorrow(working, now) ??
       _tryTomorrowTime(working, now) ??
       _tryTodayTime(working, now) ??
       _tryWeekdayTime(working, now) ??
       _tryWordDate(working, now) ??
+      _tryNumericDate(working, now) ??
       _tryBareTime(working, now) ??
       NlDateTimeResult(when: null, cleanedTitle: working);
 
@@ -343,6 +350,13 @@ String? _detectType(String text) {
 
 DateTime _withTime(DateTime base, int hour, int minute) =>
     DateTime(base.year, base.month, base.day, hour, minute);
+
+/// Заменяет [span] в [text] пробелами той же длины (сохраняя индексы остального
+/// текста). Используется датовыми ветками, чтобы убрать ключевое слово даты
+/// перед разбором времени — иначе компактное «1720 завтра» отклонится как
+/// «число + слово».
+String _maskSpan(String text, _Span span) =>
+    text.replaceRange(span.start, span.end, ' ' * (span.end - span.start));
 
 DateTime _futureOrTomorrow(DateTime dt, DateTime now) =>
     dt.isAfter(now) ? dt : dt.add(const Duration(days: 1));
@@ -554,14 +568,62 @@ _TimeSpan? _parseTime(String text) {
     if (h <= 23) return _TimeSpan(h, 0, _Span(m.start, m.end));
   }
 
-  // "в 9" / "at 9" / "um 9" — голый час с предлогом (включает предлог в span)
-  m = RegExp(r'(?:в|at|um)\s+(\d{1,2})(?!\s*:)', caseSensitive: false)
+  // Компактное ЧЧММ с явным темпоральным предлогом: «в 900», «к 1720», «в 0905».
+  // ВАЖНО (баг 3): здесь матчим 3-4 цифры ЦЕЛИКОМ, ДО голого «в N», иначе «в N»
+  // схватит только 2 цифры из «1720» (→ 17:00, минуты теряются). Предлог входит
+  // в span (чтобы _eraseSpans убрал «в»). Граница справа — не цифра и не «:».
+  m = RegExp(r'(?:^|(?<=\s))(?:в|во|к|ко|at|um)\s+(\d{3,4})(?![\d:])',
+          caseSensitive: false, unicode: true)
+      .firstMatch(text);
+  if (m != null) {
+    final d = m.group(1)!;
+    final h = int.parse(d.substring(0, d.length - 2));
+    final min = int.parse(d.substring(d.length - 2));
+    if (h <= 23 && min <= 59) return _TimeSpan(h, min, _Span(m.start, m.end));
+  }
+
+  // "в 9" / "at 9" / "um 9" — голый час с предлогом (включает предлог в span).
+  // (?![\d:]) — не середина длинного числа («в 900» уже обработан выше) и не
+  // часть HH:MM. Допускаем «к»/«ко»/«во» как темпоральные предлоги.
+  m = RegExp(r'(?:^|(?<=\s))(?:в|во|к|ко|at|um)\s+(\d{1,2})(?![\d:])',
+          caseSensitive: false, unicode: true)
       .firstMatch(text);
   if (m != null) {
     final h = int.parse(m.group(1)!);
     if (h <= 23) return _TimeSpan(h, 0, _Span(m.start, m.end));
   }
 
+  // Голое компактное ЧЧММ без предлога: «900», «1720» (Todoist-стиль). Отдельный
+  // числовой токен 3-4 цифры. КОНСЕРВАТИВНОСТЬ (анти-«700 листов», «100
+  // отжиманий», «1000 шагов»): голое число БЕЗ предлога-якоря не считается
+  // временем, если за ним идёт ЛЮБОЕ слово — тогда это количество/счёт. Сильный
+  // сигнал «время» — предлог («в 900»/«к 1720») — обработан ВЫШЕ отдельной
+  // веткой, ему хвост не мешает (баг 1). См. _bareCompactTimeSpan.
+  return _bareCompactTimeSpan(text);
+}
+
+/// Голое компактное ЧЧММ (3-4 цифры) БЕЗ предлога-якоря. Время ТОЛЬКО если за
+/// числом нет слова (конец строки / пунктуация) — иначе это количество
+/// («700 листов», «100 отжиманий»). Перед числом не должно быть «за»/«про».
+_TimeSpan? _bareCompactTimeSpan(String text) {
+  for (final cm in RegExp(r'\d{3,4}').allMatches(text)) {
+    final start = cm.start;
+    final end = cm.end;
+    final beforeOk = start == 0 || _isDigitBoundary(text[start - 1]);
+    final afterOk = end >= text.length || _isDigitBoundary(text[end]);
+    if (!beforeOk || !afterOk) continue;
+    // За числом сразу идёт слово → количество, не время.
+    if (RegExp(r'^\s+[а-яёa-z]', caseSensitive: false, unicode: true)
+        .hasMatch(text.substring(end))) {
+      continue;
+    }
+    if (_precededByNonTemporal(text, start)) continue;
+    final d = cm.group(0)!;
+    final h = int.parse(d.substring(0, d.length - 2));
+    final min = int.parse(d.substring(d.length - 2));
+    if (h > 23 || min > 59) continue;
+    return _TimeSpan(h, min, _Span(start, end));
+  }
   return null;
 }
 
@@ -595,8 +657,12 @@ NlDateTimeResult? _tryTomorrowTime(String text, DateTime now) {
 
   final tomorrow = now.add(const Duration(days: 1));
 
-  // Ищем время в ОРИГИНАЛЬНОМ тексте (до любых удалений).
-  final timeSpan = _parseTime(text);
+  // Ищем время на тексте С ВЫРЕЗАННЫМ «завтра» (маскируем пробелами): иначе
+  // компактное «1720 завтра» отклонится _bareCompactTimeSpan как «число + слово»
+  // (защита от «700 листов»), и минуты потеряются (баг 3/4). «завтра» — датовое
+  // ключевое слово, не счётное, поэтому его убираем до разбора времени.
+  final masked = _maskSpan(text, kwSpan);
+  final timeSpan = _parseTime(masked);
 
   if (timeSpan != null) {
     final cleaned = _eraseSpans(text, [kwSpan, timeSpan.span]);
@@ -609,6 +675,129 @@ NlDateTimeResult? _tryTomorrowTime(String text, DateTime now) {
   return NlDateTimeResult(when: _withTime(tomorrow, 9, 0), cleanedTitle: cleaned);
 }
 
+/// "послезавтра" / "übermorgen" / "day after tomorrow" [+ время] → +2 дня.
+NlDateTimeResult? _tryDayAfterTomorrow(String text, DateTime now) {
+  final lower = text.toLowerCase();
+  _Span? kwSpan;
+  for (final kw in ['послезавтра', 'übermorgen', 'uebermorgen']) {
+    kwSpan = _findWord(lower, kw);
+    if (kwSpan != null) break;
+  }
+  // EN-фраза «day after tomorrow» — отдельной фразой (несколько слов).
+  kwSpan ??= _findPhrase(lower, 'day after tomorrow');
+  if (kwSpan == null) return null;
+
+  final target = now.add(const Duration(days: 2));
+  // Маскируем «послезавтра» перед разбором времени (см. _tryTomorrowTime).
+  final timeSpan = _parseTime(_maskSpan(text, kwSpan));
+  if (timeSpan != null) {
+    final cleaned = _eraseSpans(text, [kwSpan, timeSpan.span]);
+    final dt = _withTime(target, timeSpan.hour, timeSpan.minute);
+    return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
+  }
+  final cleaned = _eraseSpans(text, [kwSpan]);
+  return NlDateTimeResult(when: _withTime(target, 9, 0), cleanedTitle: cleaned);
+}
+
+/// «через N дней/день/недели/неделю/месяц» / «in N days/weeks» [+ время].
+/// Сдвигает опорный день на N календарных дней (неделя = 7, месяц ≈ 30 дней —
+/// для простого относительного смещения этого достаточно). Время — 09:00, если
+/// явно не задано. ВАЖНО: идёт ПОСЛЕ _tryRelativeHours (часы), чтобы «через 2
+/// часа» не перехватывалось как 2 дня.
+NlDateTimeResult? _tryRelativeDays(String text, DateTime now) {
+  // RU: «через [N] (дн/день/дня/дней | недел.. | месяц..)». EN: «in [N] days/weeks».
+  // Число опционально: «через неделю»/«через месяц»/«in a week» → N=1.
+  final m = RegExp(
+    r'(?:через|in)\s+(?:(\d+)|a|an)?\s*'
+    r'(дней|дня|день|дн|недель|недели|неделю|неделя|месяц[аев]*|'
+    r'days?|weeks?|months?)'
+    r'(?![a-zа-яё])',
+    caseSensitive: false,
+    unicode: true,
+  ).firstMatch(text);
+  if (m == null) return null;
+
+  final n = m.group(1) != null ? int.tryParse(m.group(1)!) : 1;
+  if (n == null || n < 0 || n > 3650) return null;
+  final unit = m.group(2)!.toLowerCase();
+  final int days;
+  if (unit.startsWith('недел') || unit.startsWith('week')) {
+    days = n * 7;
+  } else if (unit.startsWith('месяц') || unit.startsWith('month')) {
+    days = n * 30;
+  } else {
+    days = n; // дни
+  }
+
+  final target = now.add(Duration(days: days));
+
+  // Время ищем ВНЕ фрагмента «через N дней»: иначе «3 дня» (genitive «дня»)
+  // ошибочно трактуется как «3 дня» = 15:00 (маркер части суток). Заменяем
+  // фрагмент пробелами по длине и парсим время на остатке.
+  final masked = text.replaceRange(
+      m.start, m.end, ' ' * (m.end - m.start));
+  final timeSpan = _parseTime(masked);
+  final hour = timeSpan?.hour ?? 9;
+  final minute = timeSpan?.minute ?? 0;
+  final toErase = <_Span>[_Span(m.start, m.end)];
+  if (timeSpan != null) toErase.add(timeSpan.span);
+  return NlDateTimeResult(
+    when: _withTime(target, hour, minute),
+    cleanedTitle: _eraseSpans(text, toErase),
+  );
+}
+
+/// Числовые даты: «18.06», «18.06.2026», «18/06», «18/06/2026», «18-06».
+/// День 1..31, месяц 1..12, год опционально (2-4 цифры, ≥ текущего века для
+/// 2-значного). Если год не указан — ближайшая будущая такая дата (этот год,
+/// иначе следующий). Время — из _parseTime или 09:00.
+NlDateTimeResult? _tryNumericDate(String text, DateTime now) {
+  // ДД<sep>ММ[<sep>ГГ(ГГ)] — sep ∈ {., /, -}. Разделители внутри согласованы
+  // не строго (на практике пользователь не мешает). Границы — не цифра.
+  final m = RegExp(
+    r'(?<![\d.])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?![\d])',
+    unicode: true,
+  ).firstMatch(text);
+  if (m == null) return null;
+
+  final day = int.parse(m.group(1)!);
+  final month = int.parse(m.group(2)!);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+
+  int? year;
+  if (m.group(3) != null) {
+    var y = int.parse(m.group(3)!);
+    if (y < 100) y += 2000; // «26» → 2026
+    year = y;
+  }
+
+  // Опциональное время — ВНЕ самой даты (маскируем дату пробелами, иначе «к 18»
+  // из «к 18.06» станет временем 18:00).
+  final masked = text.replaceRange(m.start, m.end, ' ' * (m.end - m.start));
+  final timeSpan = _parseTime(masked);
+  final hour = timeSpan?.hour ?? 9;
+  final minute = timeSpan?.minute ?? 0;
+
+  DateTime candidate;
+  if (year != null) {
+    candidate = DateTime(year, month, day, hour, minute);
+  } else {
+    candidate = DateTime(now.year, month, day, hour, minute);
+    if (!candidate.isAfter(now)) {
+      candidate = DateTime(now.year + 1, month, day, hour, minute);
+    }
+  }
+
+  final toErase = <_Span>[_Span(m.start, m.end)];
+  if (timeSpan != null) {
+    toErase.add(timeSpan.span);
+  }
+  return NlDateTimeResult(
+    when: candidate,
+    cleanedTitle: _eraseSpans(text, toErase),
+  );
+}
+
 /// "сегодня" / "today" / "heute" + время
 NlDateTimeResult? _tryTodayTime(String text, DateTime now) {
   final lower = text.toLowerCase();
@@ -619,7 +808,8 @@ NlDateTimeResult? _tryTodayTime(String text, DateTime now) {
   }
   if (kwSpan == null) return null;
 
-  final timeSpan = _parseTime(text);
+  // Маскируем «сегодня» перед разбором времени (см. _tryTomorrowTime).
+  final timeSpan = _parseTime(_maskSpan(text, kwSpan));
   if (timeSpan == null) return null; // "сегодня" без времени — слишком неопределённо
 
   final cleaned = _eraseSpans(text, [kwSpan, timeSpan.span]);
@@ -665,7 +855,12 @@ NlDateTimeResult? _tryWeekdayTime(String text, DateTime now) {
   if (daysAhead <= 0) daysAhead += 7; // тот же день → следующая неделя
   final targetDate = now.add(Duration(days: daysAhead));
 
-  final timeSpan = _parseTime(text);
+  // Время ищем ВНЕ слова дня недели (маскируем), для единообразия с другими
+  // датовыми ветками — день недели не число, но маска безвредна и защищает от
+  // редких коллизий.
+  final masked =
+      text.replaceRange(kwSpan.start, kwSpan.end, ' ' * (kwSpan.end - kwSpan.start));
+  final timeSpan = _parseTime(masked);
   final int hour;
   final int minute;
   final List<_Span> toErase;
@@ -741,8 +936,11 @@ NlDateTimeResult? _tryWordDate(String text, DateTime now) {
   }
   if (day == null) return null; // месяц без числа — слишком неопределённо
 
-  // Опциональное время в исходном тексте.
-  final timeSpan = _parseTime(text);
+  // Опциональное время — ищем ВНЕ фрагмента даты (день+месяц), иначе предлог-час
+  // «к 18» в «к 18 июня» ошибочно станет временем 18:00. Маскируем дату пробелами
+  // по длине, затем парсим время на остатке.
+  final masked = text.replaceRange(spanStart, spanEnd, ' ' * (spanEnd - spanStart));
+  final timeSpan = _parseTime(masked);
   final hour = timeSpan?.hour ?? 9;
   final minute = timeSpan?.minute ?? 0;
 
@@ -761,117 +959,29 @@ NlDateTimeResult? _tryWordDate(String text, DateTime now) {
 }
 
 /// Голое время (без контекста даты): "17:00", "5pm" → сегодня/завтра.
+///
+/// ЕДИНЫЙ источник распознавания времени — _parseTime (тот же, что используют
+/// датовые ветки «завтра»/«сегодня»/день недели). Это гарантирует, что любой
+/// формат, который ловит _parseTime (в т.ч. «в 900 на работе», «в 1720 завтра»,
+/// «в 905 …»), одинаково работает и без даты, и с датой — без дублирования
+/// логики и без расхождений (баги 1/3/4). Здесь добавляется только применение
+/// «сегодня/завтра» (_futureOrTomorrow) и вырезание распознанного фрагмента.
 NlDateTimeResult? _tryBareTime(String text, DateTime now) {
-  // RU пробельный формат «7 00» и маркеры «утра/вечера/дня/ночи» (вкл. предлог
-  // «в») — высший приоритет: ловит «в 7 00 утра», «7 утра», «в 8 вечера» и
-  // вырезает всю конструкцию (предлог + час + минуты + маркер) из названия.
-  final ru = _parseRuSpacedTime(text);
-  if (ru != null) {
-    var dt = _withTime(now, ru.hour, ru.minute);
-    dt = _futureOrTomorrow(dt, now);
-    final cleaned = _eraseSpans(text, [ru.span]);
-    return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
-  }
+  final ts = _parseTime(text);
+  if (ts == null) return null;
 
-  // HH:MM
-  var m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(text);
-  if (m != null) {
-    final h = int.parse(m.group(1)!);
-    final min = int.parse(m.group(2)!);
-    if (h <= 23 && min <= 59) {
-      var dt = _withTime(now, h, min);
-      dt = _futureOrTomorrow(dt, now);
-      final cleaned = _eraseSpans(text, [_Span(m.start, m.end)]);
-      return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
-    }
-  }
-
-  // 12h: "5pm", "9am"
-  m = RegExp(r'(\d{1,2})\s*(am|pm)', caseSensitive: false).firstMatch(text);
-  if (m != null) {
-    var h = int.parse(m.group(1)!);
-    final isPm = m.group(2)!.toLowerCase() == 'pm';
-    if (h == 12 && !isPm) h = 0;
-    if (h != 12 && isPm) h += 12;
-    if (h <= 23) {
-      var dt = _withTime(now, h, 0);
-      dt = _futureOrTomorrow(dt, now);
-      final cleaned = _eraseSpans(text, [_Span(m.start, m.end)]);
-      return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
-    }
-  }
-
-  // Голый час с ТЕМПОРАЛЬНЫМ предлогом: «в 7», «во 7», «к 9», «at 7», «um 9».
-  // Одиночное число становится временем ТОЛЬКО при явном предлоге-маркере —
-  // защита от «съесть 2 банана», «5 задач» (там предлога перед числом нет).
-  // «с 7» намеренно НЕ берём здесь: одиночное «с N» без «до N» неоднозначно
-  // (может быть «с 5 друзьями»); диапазон «с 7 до 9» ловит _parseTimeRange.
-  m = RegExp(r'(?:^|\s)(?:в|во|к|at|um)\s+(\d{1,2})(?!\s*[:\d])',
-          caseSensitive: false, unicode: true)
-      .firstMatch(text);
-  if (m != null) {
-    final h = int.parse(m.group(1)!);
-    if (h <= 23) {
-      var dt = _withTime(now, h, 0);
-      dt = _futureOrTomorrow(dt, now);
-      final cleaned = _eraseSpans(text, [_Span(m.start, m.end)]);
-      return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
-    }
-  }
-
-  // Голое ЧЧММ: 3-4 цифры подряд в духе Todoist ("700"→7:00, "1830"→18:30).
-  // Только отдельно стоящий числовой токен (границы — пробел/пунктуация/край),
-  // не часть длинного числа и не примыкает к ':' (чтобы не пересечь HH:MM).
-  // Невалидные часы/минуты не распознаём → токен трактуется как обычный текст.
-  final compact = _tryCompactDigits(text, now);
-  if (compact != null) return compact;
-
-  return null;
+  var dt = _withTime(now, ts.hour, ts.minute);
+  dt = _futureOrTomorrow(dt, now);
+  final cleaned = _eraseSpans(text, [ts.span]);
+  return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
 }
 
-/// Парсит отдельный токен из 3-4 цифр как ЧЧММ ("700"→7:00, "1830"→18:30).
-/// Возвращает null, если такого валидного токена нет.
-///
-/// КОНСЕРВАТИВНОСТЬ: компактное ЧЧММ принимается только когда число похоже на
-/// время, а не на количество/год. Отклоняем, если:
-///   • за числом сразу идёт СЛОВО («700 листов», «1000 шагов», «300 страниц») —
-///     это количество, а не время;
-///   • перед числом стоит нетемпоральный предлог «за»/«про» («за 2024» — год,
-///     не 20:24). Темпоральные предлоги (в/во/с/к…) число НЕ дисквалифицируют.
-NlDateTimeResult? _tryCompactDigits(String text, DateTime now) {
-  for (final m in RegExp(r'\d{3,4}').allMatches(text)) {
-    final start = m.start;
-    final end = m.end;
-    // Границы: только пробел/пунктуация по краям (не буква, не цифра, не ':').
-    final beforeOk = start == 0 || _isDigitBoundary(text[start - 1]);
-    final afterOk = end >= text.length || _isDigitBoundary(text[end]);
-    if (!beforeOk || !afterOk) continue;
-
-    // За числом сразу идёт слово (пробел(ы)+буква) → это количество, не время.
-    final rest = text.substring(end);
-    if (RegExp(r'^\s+[а-яёa-z]', caseSensitive: false, unicode: true)
-        .hasMatch(rest)) {
-      continue;
-    }
-    // Перед числом нетемпоральный предлог «за»/«про» → не время (год/счёт).
-    final head = text.substring(0, start);
-    if (RegExp(r'(?:^|\s)(?:за|про)\s+$', caseSensitive: false, unicode: true)
-        .hasMatch(head)) {
-      continue;
-    }
-
-    final digits = m.group(0)!;
-    // ЧЧММ: последние 2 цифры — минуты, остальное — часы.
-    final hour = int.parse(digits.substring(0, digits.length - 2));
-    final minute = int.parse(digits.substring(digits.length - 2));
-    if (hour > 23 || minute > 59) continue;
-
-    var dt = _withTime(now, hour, minute);
-    dt = _futureOrTomorrow(dt, now);
-    final cleaned = _eraseSpans(text, [_Span(start, end)]);
-    return NlDateTimeResult(when: dt, cleanedTitle: cleaned);
-  }
-  return null;
+/// true, если перед позицией [start] стоит нетемпоральный предлог «за»/«про»
+/// («за 2024» — год, «про 300» — счёт), который НЕ должен давать время.
+bool _precededByNonTemporal(String text, int start) {
+  final head = text.substring(0, start);
+  return RegExp(r'(?:^|\s)(?:за|про)\s+$', caseSensitive: false, unicode: true)
+      .hasMatch(head);
 }
 
 /// Граница для числового токена: НЕ буква, НЕ цифра, НЕ ':' (двоеточие отдаём HH:MM).

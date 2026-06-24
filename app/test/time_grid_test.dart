@@ -120,17 +120,61 @@ void main() {
   });
 
   group('blockContentLevel', () {
-    test('низкий блок → только заголовок', () {
+    test('низкий блок → ТОЛЬКО заголовок (приоритет названию, время на оси)', () {
       expect(blockContentLevel(20), BlockContentLevel.titleOnly);
-      expect(blockContentLevel(39.9), BlockContentLevel.titleOnly);
+      // Порог titleAndTime поднят до 48: на переходных высотах ресайза время
+      // не появляется раньше, чем под него реально хватит места.
+      expect(blockContentLevel(47.9), BlockContentLevel.titleOnly);
     });
-    test('средний блок → заголовок + время', () {
-      expect(blockContentLevel(40), BlockContentLevel.titleAndTime);
-      expect(blockContentLevel(71.9), BlockContentLevel.titleAndTime);
+    test('средний блок → заголовок + время (название уже влезло)', () {
+      expect(blockContentLevel(48), BlockContentLevel.titleAndTime);
+      expect(blockContentLevel(79.9), BlockContentLevel.titleAndTime);
     });
     test('высокий блок → заголовок + время + мета', () {
-      expect(blockContentLevel(72), BlockContentLevel.titleTimeAndMeta);
+      expect(blockContentLevel(80), BlockContentLevel.titleTimeAndMeta);
       expect(blockContentLevel(120), BlockContentLevel.titleTimeAndMeta);
+    });
+  });
+
+  group('compactBlockContent', () {
+    test('крошечный блок (узкий ИЛИ низкий) → только цвет', () {
+      // Слишком узкий по ширине.
+      expect(
+        compactBlockContent(kCompactMinTextWidth - 1, 100),
+        CompactBlockContent.colorOnly,
+      );
+      // Слишком низкий по высоте.
+      expect(
+        compactBlockContent(100, kCompactMinTextHeight - 1),
+        CompactBlockContent.colorOnly,
+      );
+    });
+    test('средний блок → только заголовок (без времени)', () {
+      // Достаточно для текста, но узок/невысок для диапазона времени.
+      expect(
+        compactBlockContent(kCompactMinTextWidth, kCompactMinTextHeight),
+        CompactBlockContent.titleOnly,
+      );
+      // Достаточно широкий, но низкий — времени нет.
+      expect(
+        compactBlockContent(kCompactMinTimeWidth, kCompactMinTimeHeight - 1),
+        CompactBlockContent.titleOnly,
+      );
+      // Достаточно высокий, но узкий — времени нет.
+      expect(
+        compactBlockContent(kCompactMinTimeWidth - 1, kCompactMinTimeHeight),
+        CompactBlockContent.titleOnly,
+      );
+    });
+    test('широкий и высокий блок → заголовок + время', () {
+      expect(
+        compactBlockContent(kCompactMinTimeWidth, kCompactMinTimeHeight),
+        CompactBlockContent.titleAndTime,
+      );
+      expect(
+        compactBlockContent(120, 80),
+        CompactBlockContent.titleAndTime,
+      );
     });
   });
 

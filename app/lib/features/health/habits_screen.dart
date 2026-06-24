@@ -6,6 +6,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/database/daos/habits_dao.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
@@ -18,6 +20,12 @@ final _habitsProvider = StreamProvider.autoDispose<List<HabitsTableData>>((ref) 
   return ref.watch(habitsDaoProvider).watchActive();
 });
 
+/// Стрим заархивированных привычек — для экрана архива и счётчика «Архив (N)».
+final _archivedHabitsProvider =
+    StreamProvider.autoDispose<List<HabitsTableData>>((ref) {
+  return ref.watch(habitsDaoProvider).watchArchived();
+});
+
 /// Реактивный счётчик выполнений привычки за сегодня, кэшируется Riverpod
 /// по habitId. Заменяет inline-FutureBuilder: (1) обновляется сразу после
 /// logHabit, (2) не пере-запрашивает БД на каждый ребилд родителя,
@@ -25,6 +33,21 @@ final _habitsProvider = StreamProvider.autoDispose<List<HabitsTableData>>((ref) 
 final _habitTodayCountProvider =
     StreamProvider.autoDispose.family<int, String>((ref, habitId) {
   return ref.watch(habitsDaoProvider).watchCountForDate(habitId, DateTime.now());
+});
+
+/// Реактивная сводка статистики привычки (стрик/лучший/всего), кэшируется
+/// Riverpod по habit. Эмитит новое значение при каждом logHabit — карточка
+/// и HabitDetailSheet обновляются сразу. Один стрим на привычку.
+final _habitStatsProvider =
+    StreamProvider.autoDispose.family<HabitStats, HabitsTableData>((ref, habit) {
+  return ref.watch(habitsDaoProvider).watchStats(habit);
+});
+
+/// Карта дни(YYYY-MM-DD)→count за всю историю привычки — для ленты 30 дней
+/// в HabitDetailSheet. Future (не stream): лист перечитывает при открытии.
+final _habitDayCountsProvider =
+    FutureProvider.autoDispose.family<Map<String, int>, String>((ref, habitId) {
+  return ref.watch(habitsDaoProvider).dayCountsForHabit(habitId);
 });
 
 class HabitsScreen extends ConsumerWidget {
@@ -36,8 +59,32 @@ class HabitsScreen extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
+    // Кол-во заархивированных — для подписи у иконки архива.
+    final archivedCount = ref.watch(_archivedHabitsProvider).value?.length ?? 0;
+
     return Scaffold(
-      appBar: AppBar(title: Text(context.s('habits.title'))),
+      appBar: AppBar(
+        title: Text(context.s('habits.title')),
+        actions: [
+          // Заметный вход в архив привычек. Иконка + (N) когда архив непустой,
+          // чтобы пользователь видел, что там что-то есть.
+          IconButton(
+            icon: const Icon(Icons.archive_outlined),
+            tooltip: context.s('habits.archive_title'),
+            onPressed: () => context.push('/habits/archive'),
+          ),
+          if (archivedCount > 0)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Text(
+                  '$archivedCount',
+                  style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+                ),
+              ),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'habits_add_fab',
         onPressed: () => _showAddDialog(context, ref),
@@ -287,10 +334,17 @@ class _GoodHabitCard extends ConsumerWidget {
     final done = count >= target;
     final progress = (count / target).clamp(0.0, 1.0);
 
+    // Текущий стрик (дней подряд) — реактивно из DAO.
+    final streak = ref.watch(_habitStatsProvider(habit)).value?.currentStreak ?? 0;
+
     return Card(
       // Отступ между карточками
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
+      child: InkWell(
+        // Тап по карточке → история/детали привычки.
+        onTap: () => showHabitDetailSheet(context, habit),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
         // 16dp card inner padding — spec §4.1
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -359,20 +413,34 @@ class _GoodHabitCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  done
-                      ? context.s('habits.done')
-                      : context
-                          .s('habits.progress')
-                          .replaceFirst('{count}', '$count')
-                          .replaceFirst('{target}', '$target'),
-                  style: textTheme.bodySmall?.copyWith(
-                    // Done: success color; иначе textFaint (самый тихий уровень)
-                    color: done ? ext.success : ext.textFaint,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        done
+                            ? context.s('habits.done')
+                            : context
+                                .s('habits.progress')
+                                .replaceFirst('{count}', '$count')
+                                .replaceFirst('{target}', '$target'),
+                        style: textTheme.bodySmall?.copyWith(
+                          // Done: success color; иначе textFaint (самый тихий уровень)
+                          color: done ? ext.success : ext.textFaint,
+                        ),
+                      ),
+                    ),
+                    // Стрик «🔥 N дней подряд» — только когда серия идёт.
+                    if (streak > 0)
+                      Text(
+                        '🔥 ${context.s('habits.streak_days').replaceFirst('{n}', '$streak')}',
+                        style: textTheme.bodySmall?.copyWith(color: ext.ember),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ],
             ),
+      ),
       ),
     );
   }
@@ -397,12 +465,23 @@ class _BadHabitCard extends ConsumerWidget {
     // Реактивный счётчик нарушений: обновляется сразу после logHabit.
     final count = ref.watch(_habitTodayCountProvider(habit.id)).value ?? 0;
 
+    // Дней без срыва — реактивно из DAO.
+    final daysClean =
+        ref.watch(_habitStatsProvider(habit)).value?.daysClean ?? 0;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
+      child: InkWell(
+        // Тап по карточке → история/детали привычки.
+        onTap: () => showHabitDetailSheet(context, habit),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
         // 16dp card inner padding
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
           children: [
             Text(
               habit.emoji.isNotEmpty ? habit.emoji : '',
@@ -461,7 +540,417 @@ class _BadHabitCard extends ConsumerWidget {
                 ),
               ],
             ),
+            // «N дней без срыва» — успешный нейтральный сигнал под счётчиком.
+            if (daysClean > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                context
+                    .s('habits.days_clean')
+                    .replaceFirst('{n}', '$daysClean'),
+                style: textTheme.bodySmall?.copyWith(color: ext.success),
+              ),
+            ],
+          ],
+        ),
       ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Экран архива привычек — список заархивированных с действиями
+// «Разархивировать» (вернуть в активные) и «Удалить навсегда».
+// ---------------------------------------------------------------------------
+
+class HabitsArchiveScreen extends ConsumerWidget {
+  const HabitsArchiveScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final archivedAsync = ref.watch(_archivedHabitsProvider);
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(context.s('habits.archive_title'))),
+      body: archivedAsync.when(
+        loading: () => Center(child: KaiLoader(label: context.s('loading.habits'))),
+        error: (e, _) => Center(
+          child: Text(
+            context.s('error.generic').replaceFirst('{err}', '$e'),
+            style: textTheme.bodyMedium?.copyWith(color: ext.ember),
+          ),
+        ),
+        data: (habits) {
+          if (habits.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.inventory_2_outlined, size: 48, color: ext.textMuted),
+                    const SizedBox(height: 16),
+                    Text(
+                      context.s('habits.archive_empty_title'),
+                      style: textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      context.s('habits.archive_empty_body'),
+                      textAlign: TextAlign.center,
+                      style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            children: [
+              for (final h in habits)
+                _ArchivedHabitCard(
+                  key: ValueKey('archived_${h.id}'),
+                  habit: h,
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ArchivedHabitCard extends ConsumerWidget {
+  const _ArchivedHabitCard({super.key, required this.habit});
+  final HabitsTableData habit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final textTheme = Theme.of(context).textTheme;
+    final dao = ref.read(habitsDaoProvider);
+
+    // Сводка из DAO — чтобы в архиве была видна инфа о привычке, а не только имя.
+    final stats = ref.watch(_habitStatsProvider(habit)).value;
+    final isGood = habit.type == 'good';
+    final kind = context.s(isGood ? 'habits.kind_good' : 'habits.kind_bad');
+    // good → текущий стрик; bad → всего срывов. Плюс дата создания.
+    final metric = isGood
+        ? '🔥 ${stats?.currentStreak ?? 0}'
+        : '${stats?.totalCompletions ?? 0} ${context.s('habits.total_slips').toLowerCase()}';
+    final created = _formatDate(habit.createdAt);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        // Тап → история/детали (даже из архива).
+        onTap: () => showHabitDetailSheet(context, habit),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Text(
+              habit.emoji.isNotEmpty ? habit.emoji : '',
+              style: const TextStyle(fontSize: 22),
+            ),
+            if (habit.emoji.isNotEmpty) const SizedBox(width: 8),
+            // Имя + краткая инфа под ним — Expanded против overflow на 320px.
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(habit.name, style: textTheme.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$kind · $metric · $created',
+                    style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            // Разархивировать — основное действие (вернуть в активные).
+            IconButton(
+              icon: Icon(Icons.unarchive_outlined, color: ext.textMuted),
+              tooltip: context.s('habits.unarchive'),
+              onPressed: () => dao.unarchive(habit.id),
+            ),
+            // Удалить навсегда — с подтверждением (деструктивное, без Undo).
+            IconButton(
+              icon: Icon(Icons.delete_outline, color: ext.ember),
+              tooltip: context.s('habits.delete'),
+              onPressed: () => _confirmDelete(context, dao),
+            ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, HabitsDao dao) async {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('"${habit.name}" — ${ctx.s('habits.delete_forever_title')}'),
+        content: Text(ctx.s('habits.delete_forever_body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(ctx.s('btn.cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: ext.ember),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(ctx.s('habits.delete')),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await dao.deleteHabit(habit.id);
+  }
+}
+
+/// Короткая дата YYYY-MM-DD (локаль-нейтральная, для подписей в архиве/сводке).
+String _formatDate(DateTime d) {
+  final y = d.year.toString().padLeft(4, '0');
+  final m = d.month.toString().padLeft(2, '0');
+  final day = d.day.toString().padLeft(2, '0');
+  return '$y-$m-$day';
+}
+
+// ---------------------------------------------------------------------------
+// HabitDetailSheet — bottom-sheet истории/деталей привычки.
+// Открывается тапом по карточке (good/bad/архив). Содержит:
+//   • сводку (текущий стрик, лучший стрик, всего, дата создания),
+//   • мини-ленту последних 30 дней с отметками (выполнено/нет — good;
+//     нарушения — bad).
+// Данные берутся реактивно из DAO (watchStats + dayCountsForHabit).
+// ---------------------------------------------------------------------------
+
+/// Открыть лист истории привычки.
+Future<void> showHabitDetailSheet(BuildContext context, HabitsTableData habit) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _HabitDetailSheet(habit: habit),
+  );
+}
+
+class _HabitDetailSheet extends ConsumerWidget {
+  const _HabitDetailSheet({required this.habit});
+  final HabitsTableData habit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final textTheme = Theme.of(context).textTheme;
+    final isGood = habit.type == 'good';
+
+    final stats = ref.watch(_habitStatsProvider(habit)).value;
+    // Карта дни→count для ленты последних 30 дней (разовый запрос, авто-кэш).
+    final dayCountsAsync = ref.watch(_habitDayCountsProvider(habit.id));
+
+    return SafeArea(
+      child: Padding(
+        // 24dp screen margin
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Заголовок — эмодзи + имя.
+              Row(
+                children: [
+                  if (habit.emoji.isNotEmpty) ...[
+                    Text(habit.emoji, style: const TextStyle(fontSize: 28)),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: Text(habit.name, style: textTheme.headlineSmall),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                context.s(isGood ? 'habits.kind_good' : 'habits.kind_bad'),
+                style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+              ),
+              const SizedBox(height: 20),
+
+              // Сводка: текущий стрик · лучший стрик · всего · дата создания.
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _StatTile(
+                    label: context.s('habits.current_streak'),
+                    value:
+                        '${stats?.currentStreak ?? 0} ${context.s('habits.unit_days')}',
+                    accent: ext.ember,
+                  ),
+                  _StatTile(
+                    label: context.s('habits.best_streak'),
+                    value:
+                        '${stats?.bestStreak ?? 0} ${context.s('habits.unit_days')}',
+                    accent: ext.ember,
+                  ),
+                  _StatTile(
+                    label: context
+                        .s(isGood ? 'habits.total_done' : 'habits.total_slips'),
+                    value: '${stats?.totalCompletions ?? 0}',
+                    accent: isGood ? ext.success : ext.textMuted,
+                  ),
+                  _StatTile(
+                    label: context.s('habits.created_on'),
+                    value: _formatDate(habit.createdAt),
+                    accent: ext.textMuted,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // История — последние 30 дней.
+              Text(context.s('habits.history'), style: textTheme.titleMedium),
+              const SizedBox(height: 2),
+              Text(
+                context.s('habits.last_30_days'),
+                style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+              ),
+              const SizedBox(height: 12),
+              dayCountsAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => Text(
+                  context.s('error.generic').replaceFirst('{err}', '$e'),
+                  style: textTheme.bodySmall?.copyWith(color: ext.ember),
+                ),
+                data: (counts) => _HistoryStrip(
+                  dayCounts: counts,
+                  target: habit.targetPerDay,
+                  isGood: isGood,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Плитка одной метрики в сводке.
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: 132,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ext.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: textTheme.titleMedium?.copyWith(color: accent),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Лента последних 30 дней. Каждая клетка — один день (свежие справа).
+///   good: выполнено (count>=target) → success-заливка, иначе пусто.
+///   bad: было нарушение (count>0) → ember-заливка, иначе чистый день.
+class _HistoryStrip extends StatelessWidget {
+  const _HistoryStrip({
+    required this.dayCounts,
+    required this.target,
+    required this.isGood,
+  });
+  final Map<String, int> dayCounts;
+  final int target;
+  final bool isGood;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final effectiveTarget = target < 1 ? 1 : target;
+    final todayUtc = DateTime.utc(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+
+    // 30 дней: от 29 дней назад до сегодня (свежие справа).
+    final cells = <Widget>[];
+    for (var i = 29; i >= 0; i--) {
+      final day = todayUtc.subtract(Duration(days: i));
+      final count = dayCounts[dayKey(day)] ?? 0;
+      final Color color;
+      if (isGood) {
+        color = count >= effectiveTarget
+            ? ext.success
+            : ext.textMuted.withValues(alpha: 0.18);
+      } else {
+        color = count > 0
+            ? ext.ember
+            : ext.success.withValues(alpha: 0.30);
+      }
+      cells.add(
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: ext.border),
+          ),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: cells,
     );
   }
 }

@@ -10,6 +10,8 @@
 // позиция считается по .hour/.minute, а при сохранении новое время строится
 // через локальный DateTime(...), как в add_task_sheet.
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 // gestures.dart нужен явно: VerticalDragGestureRecognizer, PointerDownEvent и
 // GestureDisposition НЕ ре-экспортируются material.dart (там только узкий show-
@@ -29,11 +31,18 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/day_window.dart';
 import '../../../core/widgets/kai_loader.dart';
 import '../../today/task_colors.dart';
+import '../../today/widgets/add_task_sheet.dart' show showAddTaskSheet;
 import 'day_timeline.dart' show dayItemsProvider;
 import 'plan_providers.dart';
 import 'recurrence_providers.dart';
 import 'task_detail_card.dart';
 import 'week_strip.dart' show selectedDayProvider;
+
+// Порог удержания для подхвата блока на перенос (long-press).
+// Дефолт Flutter kLongPressTimeout ≈ 500 мс — по живому тесту слишком долго
+// держать; 250 мс заметно отзывчивее, но всё ещё отличает «придержал → тяну»
+// от быстрого свайпа-скролла сетки. Подстраивать здесь.
+const _kBlockPickupDelay = Duration(milliseconds: 250);
 
 // ===========================================================================
 // Чистая математика (тестируемые top-level функции)
@@ -122,13 +131,61 @@ String formatBlockTimeRange(DateTime start, int durationMinutes) {
 enum BlockContentLevel { titleOnly, titleAndTime, titleTimeAndMeta }
 
 /// Пороги подобраны под крупный заголовок (bodyMedium ~14–16px) + время
-/// (labelMedium ~12px) и вертикальные паддинги блока (3+3). Низкий блок прячет
-/// время (overflow ellipsis по заголовку), средний показывает время, высокий —
-/// ещё строку меты.
+/// (labelMedium ~12px) и вертикальные паддинги блока (3+3). Приоритет —
+/// НАЗВАНИЮ (как у Google/Apple Calendar): на низком блоке показываем только
+/// заголовок (время и так видно на часовой оси слева), время добавляется лишь
+/// когда под заголовком гарантированно есть место для ещё одной строки, мета —
+/// только на высоком блоке.
+///
+/// Порог titleAndTime (48) с запасом выше суммы «заголовок (~17px) + время
+/// (~15px) + паддинги (6px)» ≈ 38px — чтобы на ПЕРЕХОДНЫХ высотах живого ресайза
+/// между titleOnly и titleAndTime строка времени не появлялась раньше, чем под
+/// неё реально хватит места (иначе на отдельных кадрах был overflow на 8..0px).
 BlockContentLevel blockContentLevel(double height) {
-  if (height >= 72) return BlockContentLevel.titleTimeAndMeta;
-  if (height >= 40) return BlockContentLevel.titleAndTime;
+  if (height >= 80) return BlockContentLevel.titleTimeAndMeta;
+  if (height >= 48) return BlockContentLevel.titleAndTime;
   return BlockContentLevel.titleOnly;
+}
+
+/// Что показывать в блоке узких видов (3 дня / неделя), где колонки тонкие.
+/// Решение принимается по ФАКТИЧЕСКОЙ геометрии блока (ширина × высота), а не
+/// только по высоте: на узкой колонке диапазон времени «14:30–15:15» не влезает
+/// и читается как каша, а на совсем маленьком блоке даже заголовок превращается
+/// в обрезок — лучше показать просто цветной блок (название доступно по тапу).
+enum CompactBlockContent {
+  /// Блок слишком мал для читаемого текста — только цвет (тап открывает карточку).
+  colorOnly,
+
+  /// Помещается только короткий заголовок по центру (без времени).
+  titleOnly,
+
+  /// Помещается заголовок + время (колонка достаточно широкая/высокая).
+  titleAndTime,
+}
+
+/// Минимальная ширина блока, при которой имеет смысл рисовать текст вообще.
+const double kCompactMinTextWidth = 36.0;
+
+/// Минимальная высота блока для читаемого заголовка в узком виде.
+const double kCompactMinTextHeight = 22.0;
+
+/// Минимальная ширина для отображения диапазона времени (он длиннее заголовка).
+const double kCompactMinTimeWidth = 64.0;
+
+/// Минимальная высота, при которой под заголовком ещё есть место для строки
+/// времени в узком виде.
+const double kCompactMinTimeHeight = 40.0;
+
+/// Решает, что рисовать в блоке узкого вида (3 дня / неделя) по его фактическим
+/// ширине [width] и высоте [height]. Чистая функция — покрыта юнит-тестами.
+CompactBlockContent compactBlockContent(double width, double height) {
+  if (width < kCompactMinTextWidth || height < kCompactMinTextHeight) {
+    return CompactBlockContent.colorOnly;
+  }
+  if (width >= kCompactMinTimeWidth && height >= kCompactMinTimeHeight) {
+    return CompactBlockContent.titleAndTime;
+  }
+  return CompactBlockContent.titleOnly;
 }
 
 /// Раскладка перекрывающихся событий по равным колонкам-«дорожкам».
@@ -226,37 +283,99 @@ Color taskStripeColor(
   return ext?.border ?? scheme.outline;
 }
 
+/// Автоконтрастный текст для заливки [bg]: тёмный near-black на светлом фоне,
+/// почти-белый на тёмном. Считается по ВОСПРИНИМАЕМОЙ яркости заливки
+/// (computeLuminance), а не хардкодом цвета темы — поэтому блок читаем при любой
+/// (в т.ч. кастомной) теме и любом цвете-метке задачи. Порог 0.5 — стандартная
+/// граница «светлый/тёмный фон» для контраста текста.
+Color _onColorFor(Color bg) {
+  return bg.computeLuminance() > 0.5
+      ? const Color(0xFF1A1A1A)
+      : const Color(0xFFFFFFFF);
+}
+
+/// Граница блока — тот же цвет, что и фон, но СДВИНУТЫЙ к контрасту текста
+/// (чуть темнее на светлом фоне, чуть светлее на тёмном). Даёт явный кант, чтобы
+/// блок не сливался с соседними/с колонкой, не нарушая однородность рамки
+/// (неоднородный Border + borderRadius = краш на paint).
+Color _borderFor(Color bg) {
+  // 18% к контрастному полюсу: видимая, но не кричащая граница.
+  return Color.lerp(bg, _onColorFor(bg), 0.18) ?? bg;
+}
+
 /// Цвет блока события по типу/приоритету (accent discipline: ember только
 /// для urgent, accent только для main, остальное — нейтрали).
-({Color bg, Color fg, Color border}) _blockColors(
+///
+/// Стиль «Google Calendar»: блок — ПЛОТНАЯ заливка цветом задачи (не
+/// полупрозрачная «вода»), текст — автоконтраст по яркости заливки, граница —
+/// тот же цвет, сдвинутый к контрасту (видимый кант). Так блок читается на любой
+/// теме и не сливается с фоном колонки. [accentStripe] — насыщенный исходный
+/// цвет для левой полоски-акцента (ярче плотной заливки, особенно для нейтралей).
+({Color bg, Color fg, Color border, Color accentStripe}) _blockColors(
   ItemsTableData item,
   FocusThemeExtension? ext,
   ColorScheme scheme,
 ) {
   final ember = ext?.ember ?? scheme.secondary;
   final accent = scheme.primary;
-  final surfaceElevated = ext?.surfaceElevated ?? scheme.surface;
-  final onSurface = scheme.onSurface;
+  // Фон колонки — куда «отступает» заливка выполненной задачи (B4): lerp к нему
+  // гасит насыщенность, не делая блок прозрачным (что плодило бы слои покраски).
+  final surface = scheme.surface;
+  // Выполненная задача визуально приглушена: заливка тянется к surface, граница
+  // и левый акцент — тоже, текст становится muted. Strikethrough рисуется отдельно
+  // (в _BlockContent). Доля приглушения подобрана так, чтобы блок «отступал», но
+  // оставался читаем (автоконтраст текста считается уже по приглушённой заливке).
+  const doneBgLerp = 0.55; // насколько заливка тянется к surface
+  const doneFgAlpha = 0.6; // текст выполненной задачи слегка тусклее
+  final isDone = item.status == 'done';
 
-  // Пользовательский цвет-метка имеет приоритет над типом/приоритетом:
-  // полупрозрачная заливка + цветная рамка-полоса, текст остаётся читаемым.
-  final userColor = taskColorFromKey(item.color);
-  if (userColor != null) {
+  // Плотный блок из насыщенного цвета [base]: заливка = сам цвет (полностью
+  // непрозрачный, поверх фона колонки), текст и граница — производные от него.
+  // Для выполненной задачи заливка приглушается (lerp к surface), а текст —
+  // приглушённый автоконтраст по уже приглушённой заливке.
+  ({Color bg, Color fg, Color border, Color accentStripe}) dense(Color base) {
+    final bg = isDone
+        ? (Color.lerp(base, surface, doneBgLerp) ?? base)
+        : base;
+    final fg = isDone
+        ? _onColorFor(bg).withValues(alpha: doneFgAlpha)
+        : _onColorFor(bg);
+    final stripe = isDone
+        ? (Color.lerp(base, surface, doneBgLerp * 0.6) ?? base)
+        : base;
     return (
-      bg: userColor.withValues(alpha: 0.16),
-      fg: onSurface,
-      border: userColor,
+      bg: bg,
+      fg: fg,
+      border: _borderFor(bg),
+      accentStripe: stripe,
     );
   }
 
-  if (item.type == 'exam' || item.type == 'deadline') {
-    return (bg: ember.withValues(alpha: 0.16), fg: ember, border: ember);
-  }
-  if (item.priority == 'main') {
-    return (bg: accent.withValues(alpha: 0.16), fg: onSurface, border: accent);
-  }
-  final border = ext?.border ?? scheme.outline;
-  return (bg: surfaceElevated, fg: onSurface, border: border);
+  // Пользовательский цвет-метка имеет приоритет над типом/приоритетом.
+  final userColor = taskColorFromKey(item.color);
+  if (userColor != null) return dense(userColor);
+
+  if (item.type == 'exam' || item.type == 'deadline') return dense(ember);
+  if (item.priority == 'main') return dense(accent);
+
+  // Нейтральная задача (без цвета/типа/main): плотная заливка приглушённым
+  // цветом-меткой («gray» из палитры) — всё ещё чёткая плашка, но не претендует
+  // на акцент темы. Левая полоска — нейтральный border темы для тонкого намёка.
+  final neutral = ext?.textMuted ?? scheme.outline;
+  final neutralBg = isDone
+      ? (Color.lerp(neutral, surface, doneBgLerp) ?? neutral)
+      : neutral;
+  final neutralStripe = ext?.border ?? scheme.outline;
+  return (
+    bg: neutralBg,
+    fg: isDone
+        ? _onColorFor(neutralBg).withValues(alpha: doneFgAlpha)
+        : _onColorFor(neutralBg),
+    border: _borderFor(neutralBg),
+    accentStripe: isDone
+        ? (Color.lerp(neutralStripe, surface, doneBgLerp * 0.6) ?? neutralStripe)
+        : neutralStripe,
+  );
 }
 
 // ===========================================================================
@@ -273,6 +392,12 @@ class DayTimeGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedDay = ref.watch(selectedDayProvider);
     final itemsAsync = ref.watch(dayItemsProvider(selectedDay));
+
+    final now = DateTime.now();
+    final todayNorm = DateTime(now.year, now.month, now.day);
+    final selectedNorm =
+        DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
+    final isToday = selectedNorm == todayNorm;
 
     if (itemsAsync.isLoading && itemsAsync.valueOrNull == null) {
       return const Center(child: KaiLoader());
@@ -307,6 +432,17 @@ class DayTimeGrid extends ConsumerWidget {
                   hourHeight: hourHeight,
                 ),
               ),
+              // Линия текущего времени — только если выбран сегодняшний день.
+              // Поверх блоков, но не интерактивна (IgnorePointer внутри),
+              // поэтому tap/drag блоков не перехватывает.
+              if (isToday)
+                Positioned(
+                  left: _kGutterWidth,
+                  top: 0,
+                  width: colWidth < 0 ? 0 : colWidth,
+                  height: hourHeight * _kHoursInDay,
+                  child: _NowIndicator(hourHeight: hourHeight),
+                ),
             ],
           );
         },
@@ -462,6 +598,17 @@ class _NDayTimeGrid extends ConsumerWidget {
                             compact: true,
                           ),
                         ),
+                      // Линия текущего времени — в колонке сегодняшнего дня (если
+                      // он попал в диапазон). Поверх блоков, не интерактивна.
+                      for (var i = 0; i < days.length; i++)
+                        if (days[i] == todayNorm)
+                          Positioned(
+                            left: _kGutterWidth + effectiveColWidth * i,
+                            top: 0,
+                            width: effectiveColWidth,
+                            height: hourHeight * _kHoursInDay,
+                            child: _NowIndicator(hourHeight: hourHeight),
+                          ),
                     ],
                   ),
                 ),
@@ -620,6 +767,98 @@ class _HourLinesAndGutter extends StatelessWidget {
 }
 
 // ===========================================================================
+// Линия текущего времени («now» indicator)
+// ===========================================================================
+
+/// Тонкая горизонтальная линия на уровне текущего времени + кружок-«пуговица»
+/// слева (как Google/Apple Calendar). Показывается ТОЛЬКО в колонке сегодняшнего
+/// дня — вызывающий код вставляет её лишь для today.
+///
+/// Перф: собственный [Timer.periodic] на МИНУТУ (не секунду — позиция меняется
+/// раз в минуту, секундный тайм ер зря будил бы дерево), setState только сдвигает
+/// top. Обёрнут в свой [RepaintBoundary], не интерактивен ([IgnorePointer]),
+/// поэтому не перерисовывает блоки/сетку и не перехватывает tap/drag.
+class _NowIndicator extends StatefulWidget {
+  const _NowIndicator({required this.hourHeight});
+
+  final double hourHeight;
+
+  @override
+  State<_NowIndicator> createState() => _NowIndicatorState();
+}
+
+class _NowIndicatorState extends State<_NowIndicator> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Минутный таймер: позиция линии меняется раз в минуту. Отменяется в dispose.
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    // Цвет — приглушённый акцент, НЕ ember-urgent (линия времени — нейтральный
+    // ориентир, не тревога). На Contrast-теме disableAnimations не влияет на
+    // цвет; контраст обеспечиваем через border темы, чтобы линия была видна на
+    // ярком фоне (там accent сливался бы). Иначе — primary темы.
+    final reduce = reduceMotionOf(context);
+    final lineColor = reduce
+        ? (ext?.border ?? scheme.outline)
+        : scheme.primary;
+
+    final nowMin = minutesFromMidnight(DateTime.now());
+    final top = minutesToOffset(nowMin, widget.hourHeight);
+
+    // Не интерактивен: не должен перехватывать tap/drag блоков под/над ним.
+    return IgnorePointer(
+      child: RepaintBoundary(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              // Линия идёт на всю ширину колонки; кружок «свисает» влево за её
+              // левый край (в зону жёлоба), как у Google/Apple Calendar.
+              top: top - 0.5,
+              left: 0,
+              right: 0,
+              child: Row(
+                children: [
+                  // Кружок-«пуговица» слева, центрирован по линии.
+                  Transform.translate(
+                    offset: const Offset(-3, 0),
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: lineColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Container(height: 1.5, color: lineColor)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ===========================================================================
 // Колонка одного дня с блоками-событиями (drag/resize/tap)
 // ===========================================================================
 
@@ -638,8 +877,6 @@ class _DayColumn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (items.isEmpty) return const SizedBox.expand();
-
     // Считаем дорожки перекрытий.
     final spans = items
         .map((i) => (
@@ -654,6 +891,18 @@ class _DayColumn extends ConsumerWidget {
         final width = constraints.maxWidth;
         return Stack(
           children: [
+            // ПОД блоками — слой рисования новой задачи (drag-to-create). Долгое
+            // нажатие (_kBlockPickupDelay) на ПУСТОМ месте колонки → ghost-блок,
+            // тяга рисует интервал, отпускание открывает лист добавления.
+            // Блоки лежат ВЫШЕ в Stack, поэтому их long-press/tap/resize
+            // перехватывают касания над собой первыми, а этот слой ловит только
+            // пустые области. Подробности арены — в _CreateLayer.
+            Positioned.fill(
+              child: _CreateLayer(
+                day: day,
+                hourHeight: hourHeight,
+              ),
+            ),
             for (var i = 0; i < items.length; i++)
               // Positioned должен быть прямым потомком Stack, поэтому _EventBlock
               // кладётся в Stack напрямую. RepaintBoundary для изоляции
@@ -676,8 +925,224 @@ class _DayColumn extends ConsumerWidget {
   }
 }
 
-/// Активный жест блока: перенос (drag) или изменение длительности (resize).
-enum _GestureKind { none, drag, resize }
+/// Минимальная «нарисованная» длительность, ниже которой жест считается тапом
+/// (палец почти не сдвинулся) и задача НЕ создаётся. 20 мин > одного снап-шага
+/// (15), поэтому случайный микро-потяг не плодит пустые задачи.
+const int kMinCreateDurationMinutes = 20;
+
+/// Эфемерное состояние жеста рисования новой задачи. Хранится в ValueNotifier,
+/// чтобы кадр рисования перерисовывал только ghost+подсказку (свой
+/// RepaintBoundary), а не всю колонку/сетку — как у блоков.
+class _CreateGesture {
+  const _CreateGesture(this.topPx, this.heightPx);
+  const _CreateGesture.none()
+      : topPx = 0,
+        heightPx = -1;
+
+  final double topPx;
+  final double heightPx;
+
+  /// Активен, пока высота >= 0 (none() ставит -1).
+  bool get active => heightPx >= 0;
+}
+
+/// Слой рисования новой задачи по пустой области колонки дня (drag-to-create,
+/// как Google/Apple/Fantastical/Notion).
+///
+/// АРЕНА ЖЕСТОВ (почему скролл не воруется). Слой держит ОДИН
+/// [LongPressGestureRecognizer] с тем же порогом [_kBlockPickupDelay] (~250 мс),
+/// что и перенос блоков. LongPress по умолчанию заявляет победу в арене лишь
+/// после удержания почти неподвижного пальца; быстрый вертикальный свайп
+/// сдвигает палец раньше срабатывания — и арену выигрывает родительский
+/// SingleChildScrollView (обычный скролл сетки продолжает работать). Это ровно
+/// та же симметрия, что у переноса блоков (тоже long-press), поэтому поведение
+/// предсказуемо: «придержал → рисуешь», «свайпнул → листаешь».
+///
+/// Слой лежит ПОД блоками (раньше в Stack), behavior = opaque, поэтому ловит
+/// касания только на ПУСТЫХ участках: над блоком его tap/long-press-move/resize
+/// перехватывают сами блоки. Ghost рисуется через [ValueNotifier]+собственный
+/// [RepaintBoundary], без setState всей колонки.
+class _CreateLayer extends StatefulWidget {
+  const _CreateLayer({
+    required this.day,
+    required this.hourHeight,
+  });
+
+  final DateTime day;
+  final double hourHeight;
+
+  @override
+  State<_CreateLayer> createState() => _CreateLayerState();
+}
+
+class _CreateLayerState extends State<_CreateLayer> {
+  // Эфемерное состояние ghost. ValueNotifier (не setState) — кадр рисования
+  // перерисовывает только ghost+подсказку в своём RepaintBoundary.
+  final ValueNotifier<_CreateGesture> _ghost =
+      ValueNotifier(const _CreateGesture.none());
+
+  // Сырой top старта и текущий низ (в пикселях от начала колонки). Старт
+  // фиксируется в onLongPressStart по localPosition, низ ведётся в move.
+  double _startTop = 0;
+  double _currentBottom = 0;
+
+  // Снап-хаптика: последний слот (минуты), на котором уже был тик. Сбрасывается
+  // на старте; тик при смене 15-мин слота конца — переиспользуем приём блоков.
+  int? _lastSnapSlot;
+
+  void _tickOnSnapChange(int slot) {
+    if (_lastSnapSlot != slot) {
+      _lastSnapSlot = slot;
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ghost.dispose();
+    super.dispose();
+  }
+
+  /// Снэпнутый старт (минуты от полуночи) текущего рисования.
+  int get _snappedStartMin =>
+      offsetToSnappedMinutes(_startTop, widget.hourHeight);
+
+  /// Снэпнутая длительность (минуты) текущего рисования: разница снэпнутых
+  /// концов, минимум одного снап-шага (рисование всегда «вниз» — берём модуль).
+  int _snappedDurationMin() {
+    final endMin = offsetToSnappedMinutes(_currentBottom, widget.hourHeight);
+    final dur = (endMin - _snappedStartMin).abs();
+    return dur < kSnapMinutes ? kSnapMinutes : dur;
+  }
+
+  void _onStart(LongPressStartDetails d) {
+    HapticFeedback.mediumImpact();
+    _startTop = d.localPosition.dy;
+    _currentBottom = d.localPosition.dy;
+    _lastSnapSlot = offsetToSnappedMinutes(_startTop, widget.hourHeight);
+    final snappedTop =
+        minutesToOffset(_snappedStartMin, widget.hourHeight);
+    _ghost.value = _CreateGesture(snappedTop, 0);
+  }
+
+  void _onMoveUpdate(LongPressMoveUpdateDetails d) {
+    // offsetFromOrigin — суммарное смещение от точки подхвата.
+    _currentBottom = _startTop + d.offsetFromOrigin.dy;
+    final endSlot = offsetToSnappedMinutes(_currentBottom, widget.hourHeight);
+    _tickOnSnapChange(endSlot);
+    // Рисуем от снэпнутого старта до снэпнутого конца (всегда вниз: высота по
+    // модулю, top = меньшая из границ).
+    final startSnapMin = _snappedStartMin;
+    final endSnapMin = endSlot;
+    final topMin = startSnapMin < endSnapMin ? startSnapMin : endSnapMin;
+    final durMin = (endSnapMin - startSnapMin).abs();
+    final topPx = minutesToOffset(topMin, widget.hourHeight);
+    final heightPx = durationToHeight(
+      durMin < kSnapMinutes ? kSnapMinutes : durMin,
+      widget.hourHeight,
+      minHeight: 0,
+    );
+    _ghost.value = _CreateGesture(topPx, heightPx);
+  }
+
+  void _onEnd(LongPressEndDetails d) {
+    final wasActive = _ghost.value.active;
+    _ghost.value = const _CreateGesture.none();
+    if (!wasActive) return;
+    final durMin = _snappedDurationMin();
+    // Слишком короткий диапазон (по сути тап) — НЕ создаём.
+    if (durMin < kMinCreateDurationMinutes) return;
+    HapticFeedback.selectionClick();
+    final startMin = _snappedStartMin;
+    final startAt = DateTime(
+      widget.day.year,
+      widget.day.month,
+      widget.day.day,
+      startMin ~/ 60,
+      startMin % 60,
+    );
+    // Открываем лист добавления с предзаполнением начала и длительности.
+    showAddTaskSheet(
+      context,
+      day: widget.day,
+      initialAt: startAt,
+      initialDurationMinutes: durMin,
+    );
+  }
+
+  void _onCancel() {
+    _ghost.value = const _CreateGesture.none();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: <Type, GestureRecognizerFactory>{
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(duration: _kBlockPickupDelay),
+          (r) {
+            r
+              ..onLongPressStart = _onStart
+              ..onLongPressMoveUpdate = _onMoveUpdate
+              ..onLongPressEnd = _onEnd
+              ..onLongPressCancel = _onCancel;
+          },
+        ),
+      },
+      // Ghost изолирован в свой RepaintBoundary: кадр рисования не перерисовывает
+      // колонку/сетку. Когда жест неактивен — пустой Stack (нулевая стоимость).
+      child: RepaintBoundary(
+        child: ValueListenableBuilder<_CreateGesture>(
+          valueListenable: _ghost,
+          builder: (context, g, _) {
+            if (!g.active) return const SizedBox.expand();
+            final startMin = _snappedStartMin;
+            final durMin = _snappedDurationMin();
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  top: g.topPx,
+                  left: 0,
+                  right: 0,
+                  height: g.heightPx < 2 ? 2 : g.heightPx,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      // Полупрозрачный акцент темы — «ghost» будущей задачи.
+                      color: scheme.primary.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: scheme.primary.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ),
+                // Плавающая подсказка времени — как у блоков (_GestureLabel).
+                Positioned(
+                  top: g.topPx + 2,
+                  left: 4,
+                  child: _GestureLabel(
+                    text: '${formatMinutesOfDay(startMin)}  ·  '
+                        '${_durationShort(durMin)}',
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Активный жест блока: перенос (drag), изменение конца (resize, нижняя ручка)
+/// или изменение начала (resizeTop, верхняя ручка — двигает верхнюю границу,
+/// меняя startTime и длительность, нижняя граница фиксирована).
+enum _GestureKind { none, drag, resize, resizeTop, settling }
 
 /// Эфемерное состояние жеста блока. Хранится в ValueNotifier, чтобы во время
 /// жеста перерисовывался только Positioned + плавающая подсказка, а не весь
@@ -730,6 +1195,49 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
   final ValueNotifier<_BlockGesture> _gesture =
       ValueNotifier(const _BlockGesture.none());
 
+  // B2 — снап-хаптика: последний снэпнутый слот (в минутах), на котором уже был
+  // дан тактильный тик. Сбрасывается в null на старте каждого жеста; при СМЕНЕ
+  // слота во время drag/resize даём лёгкий selectionClick и обновляем поле.
+  // Так тик звучит ровно на каждом 15-мин шаге, а не на каждом кадре (дребезг).
+  int? _lastSnapSlot;
+
+  /// Если текущий снэпнутый слот [slot] отличается от прошлого — даёт лёгкий
+  /// тактильный тик и запоминает новый. Вызывается из update-обработчиков жеста.
+  void _tickOnSnapChange(int slot) {
+    if (_lastSnapSlot != slot) {
+      _lastSnapSlot = slot;
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  // B3 — анимация «приземления»: на коммите блок не перескакивает с сырого drag-
+  // top на снэпнутый мгновенно, а короткое время держит снэпнутую геометрию в
+  // «settling»-состоянии, и AnimatedPositioned плавно довозит его (а лифт-тень
+  // мягко гаснет). Таймер чистит settling после kDurationSnap. Отменяется в
+  // dispose, чтобы не было pending Timer.
+  Timer? _settleTimer;
+
+  /// Переводит блок в кратковременное «settling»: держит снэпнутую геометрию
+  /// [topPx]/[heightPx], чтобы AnimatedPositioned доехал от сырого top к снэпу и
+  /// лифт-тень погасла плавно. Через [settleFor] состояние сбрасывается в none.
+  /// При reduce-motion (effectiveDuration == 0) фаза мгновенна — сразу none.
+  void _settle(double topPx, double heightPx) {
+    _settleTimer?.cancel();
+    final settleFor = effectiveDuration(context, kDurationSnap);
+    if (settleFor == Duration.zero) {
+      _gesture.value = const _BlockGesture.none();
+      return;
+    }
+    _gesture.value = _BlockGesture(_GestureKind.settling, topPx, heightPx);
+    _settleTimer = Timer(settleFor, () {
+      if (!mounted) return;
+      // Сбрасываем только если всё ещё в settling (не начался новый жест).
+      if (_gesture.value.kind == _GestureKind.settling) {
+        _gesture.value = const _BlockGesture.none();
+      }
+    });
+  }
+
   // Зона хвата нижней ручки крупнее видимой полоски — Закон Фиттса.
   static const double _handleHitHeight = 22.0;
   static const double _laneGap = 2.0;
@@ -739,6 +1247,7 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
 
   @override
   void dispose() {
+    _settleTimer?.cancel();
     _gesture.dispose();
     super.dispose();
   }
@@ -770,6 +1279,9 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
       baseHeight: baseHeight,
       onResizeStart: () {
         HapticFeedback.selectionClick();
+        // Старт жеста: снэп-слот «уже на текущей длительности», чтобы первый тик
+        // прозвучал только при реальной смене слота.
+        _lastSnapSlot = snapDuration(widget.item.durationMinutes);
         _gesture.value =
             _BlockGesture(_GestureKind.resize, baseTop, baseHeight);
       },
@@ -777,13 +1289,46 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
         final g = _gesture.value;
         final cur = g.active ? g.heightPx : baseHeight;
         final next = cur + dy;
+        final clamped = next < _minResizePx ? _minResizePx : next;
+        // B2: тик при смене снэпнутой длительности (слот = снэпнутые минуты).
+        final rawMinutes = (clamped / widget.hourHeight * 60).round();
+        _tickOnSnapChange(snapDuration(rawMinutes));
         _gesture.value = _BlockGesture(
           _GestureKind.resize,
           baseTop,
-          next < _minResizePx ? _minResizePx : next,
+          clamped,
         );
       },
       onResizeEnd: _commitResize,
+      // Верхняя ручка: двигает ВЕРХНЮЮ границу (начало), нижняя зафиксирована.
+      onResizeTopStart: () {
+        HapticFeedback.selectionClick();
+        // Старт: снэп-слот = текущее снэпнутое начало (тик только при смене).
+        _lastSnapSlot = offsetToSnappedMinutes(baseTop, widget.hourHeight);
+        _gesture.value =
+            _BlockGesture(_GestureKind.resizeTop, baseTop, baseHeight);
+      },
+      onResizeTopUpdate: (dy) {
+        final g = _gesture.value;
+        // Нижняя граница фиксирована = исходный низ блока. Двигаем верх, высота
+        // = низ − верх. Clamp: высота не меньше минимума (не уходит в ноль/минус)
+        // и верх не выше 0 (не вылезает за сутки сверху).
+        final bottomPx = baseTop + baseHeight;
+        final curTop = g.kind == _GestureKind.resizeTop ? g.topPx : baseTop;
+        var nextTop = curTop + dy;
+        if (nextTop < 0) nextTop = 0;
+        if (nextTop > bottomPx - _minResizePx) {
+          nextTop = bottomPx - _minResizePx;
+        }
+        // B2: тик при смене снэпнутого начала (слот = снэпнутые минуты верха).
+        _tickOnSnapChange(offsetToSnappedMinutes(nextTop, widget.hourHeight));
+        _gesture.value = _BlockGesture(
+          _GestureKind.resizeTop,
+          nextTop,
+          bottomPx - nextTop,
+        );
+      },
+      onResizeTopEnd: _commitResizeTop,
       handleHitHeight: _handleHitHeight,
     );
 
@@ -801,9 +1346,11 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
         final height = g.active ? g.heightPx : baseHeight;
         final dragging = g.kind == _GestureKind.drag;
         final resizing = g.kind == _GestureKind.resize;
+        final resizingTop = g.kind == _GestureKind.resizeTop;
 
-        // Плавающая подсказка: при drag — новое время начала; при resize —
-        // длительность/конец. Привязка к 15 мин показывается уже снэпнутой.
+        // Плавающая подсказка: при drag — новое время начала; при resize (низ) —
+        // конец + длительность; при resizeTop (верх) — новое начало + длительность.
+        // Привязка к 15 мин показывается уже снэпнутой.
         Widget? floatingLabel;
         if (dragging) {
           final snapMin = offsetToSnappedMinutes(top, widget.hourHeight);
@@ -815,11 +1362,25 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
             text: '${formatMinutesOfDay(startMin + dur)}  ·  '
                 '${_durationShort(dur)}',
           );
+        } else if (resizingTop) {
+          final newStartMin = offsetToSnappedMinutes(top, widget.hourHeight);
+          final rawMinutes = (height / widget.hourHeight * 60).round();
+          final dur = snapDuration(rawMinutes);
+          floatingLabel = _GestureLabel(
+            text: '${formatMinutesOfDay(newStartMin)}  ·  '
+                '${_durationShort(dur)}',
+          );
         }
 
         // Лифт во время жеста: лёгкий масштаб + тень (ANIMATIONS.md §1.1/§1.2 —
-        // приподнятый элемент = «взят»).
-        final lifted = g.active;
+        // приподнятый элемент = «взят»). На фазе «приземления» (settling, B3)
+        // масштаб уже опускается к 1.0, а тень мягко гаснет (AnimatedOpacity),
+        // а не обрывается резко.
+        final settling = g.kind == _GestureKind.settling;
+        final lifted = g.active && !settling;
+        // Тень присутствует пока активен жест ИЛИ идёт приземление; её
+        // прозрачность анимируется в 0 на settling — мягкое гашение лифт-тени.
+        final showShadow = g.active;
 
         return AnimatedScale(
           scale: lifted ? 1.03 : 1.0,
@@ -828,24 +1389,31 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // Тень-лифт поверх обычной заливки только во время жеста.
-              if (lifted)
+              // Тень-лифт поверх обычной заливки во время жеста и приземления;
+              // на settling её opacity → 0 (плавное гашение, B3).
+              if (showShadow)
                 Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                  child: AnimatedOpacity(
+                    opacity: settling ? 0.0 : 1.0,
+                    duration: effectiveDuration(context, kDurationSnap),
+                    curve: kCurveSnap,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               Positioned.fill(child: child!),
-              if (floatingLabel != null)
+              // Плавающая подсказка не нужна на фазе приземления — жест отпущен.
+              if (floatingLabel != null && !settling)
                 Positioned(top: 2, right: 2, child: floatingLabel),
             ],
           ),
@@ -853,44 +1421,114 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
       },
     );
 
-    // Стабильная часть: GestureDetector с замыканиями жеста строится один раз
-    // за data-build и не зависит от кадров жеста.
-    final interactive = GestureDetector(
+    // Стабильная часть: распознаватели жеста строятся один раз за data-build и
+    // не зависят от кадров жеста.
+    //
+    // Арена жестов тела блока — модель Google Calendar:
+    //   • короткий ТАП (нажал-отпустил без увода пальца) → карточка-деталь;
+    //   • быстрый вертикальный СВАЙП по блоку (движение без удержания) →
+    //     ПРОКРУЧИВАЕТ сетку (жест уходит родительскому скроллу);
+    //   • ДОЛГОЕ нажатие (~500 мс) → блок «поднимается» (лифт + хаптика), и В ТОМ
+    //     ЖЕ касании, не отпуская палец, пользователь тянет его на новое время.
+    // LongPressGestureRecognizer по умолчанию выигрывает арену у вертикального
+    // скролла родителя только если палец удержан и почти не двигался первые
+    // мгновения — ровно нужное поведение: коротким движением листаешь сетку,
+    // удержанием берёшь блок. Раньше перенос висел на _EagerPanRecognizer (claim
+    // с первого смещения) и конфликтовал со скроллом — это и заменяем.
+    // Нижняя/верхняя ручки (resize) — отдельный _EagerVerticalDragRecognizer в
+    // _BlockContent, он выигрывает на своей зоне, поэтому tap/long-press-move/
+    // resize/скролл не конфликтуют.
+    //
+    // offsetFromOrigin у onLongPressMoveUpdate — это СУММАРНОЕ смещение от точки
+    // подхвата, а не дельта кадра. Считаем инкремент сами (текущее минус прошлое)
+    // и переиспользуем прежнюю функцию накопления top → снапинг/обновление
+    // времени (_commitMove) остаются без изменений.
+    var lastMoveDy = 0.0;
+    final interactive = RawGestureDetector(
       behavior: HitTestBehavior.opaque,
-      // Короткий тап → карточка-деталь (а не сразу форма).
-      onTap: () => showTaskDetailSheet(
-        context,
-        item: widget.item,
-        day: widget.day,
-      ),
-      // Long-press начинает перенос (не конфликтует со скроллом списка).
-      onLongPressStart: (_) {
-        HapticFeedback.mediumImpact();
-        _gesture.value =
-            _BlockGesture(_GestureKind.drag, baseTop, baseHeight);
+      gestures: <Type, GestureRecognizerFactory>{
+        TapGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+          () => TapGestureRecognizer(),
+          (r) {
+            r.onTap = () => showTaskDetailSheet(
+                  context,
+                  item: widget.item,
+                  day: widget.day,
+                );
+          },
+        ),
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(duration: _kBlockPickupDelay),
+          (r) {
+            r
+              ..onLongPressStart = (_) {
+                // Подхват блока: хаптика-лифт + пометка active. mediumImpact —
+                // ощутимый «взял», как принято в проекте для лифта жеста.
+                HapticFeedback.mediumImpact();
+                lastMoveDy = 0.0;
+                // B2: снэп-слот = текущее снэпнутое начало (тик только при смене).
+                _lastSnapSlot =
+                    offsetToSnappedMinutes(baseTop, widget.hourHeight);
+                _gesture.value =
+                    _BlockGesture(_GestureKind.drag, baseTop, baseHeight);
+              }
+              ..onLongPressMoveUpdate = (d) {
+                final cur = _gesture.value;
+                // offsetFromOrigin — суммарное смещение от подхвата. Инкремент
+                // кадра = текущее − прошлое; накапливаем в top, как делал pan.
+                final dy = d.offsetFromOrigin.dy;
+                final deltaDy = dy - lastMoveDy;
+                lastMoveDy = dy;
+                final base =
+                    cur.kind == _GestureKind.drag ? cur.topPx : baseTop;
+                final nextTop = base + deltaDy;
+                // B2: тик при смене снэпнутого слота начала (шаг 15 мин).
+                _tickOnSnapChange(
+                    offsetToSnappedMinutes(nextTop, widget.hourHeight));
+                _gesture.value = _BlockGesture(
+                  _GestureKind.drag,
+                  nextTop,
+                  cur.active ? cur.heightPx : baseHeight,
+                );
+              }
+              ..onLongPressEnd = (_) {
+                _commitMove();
+              }
+              ..onLongPressCancel = () {
+                // Откатываем эфемерный лифт, если жест отменён ареной/уходом.
+                if (_gesture.value.kind == _GestureKind.drag) {
+                  _gesture.value = const _BlockGesture.none();
+                }
+              };
+          },
+        ),
       },
-      onLongPressMoveUpdate: (d) {
-        final cur = _gesture.value;
-        _gesture.value = _BlockGesture(
-          _GestureKind.drag,
-          baseTop + d.offsetFromOrigin.dy,
-          cur.heightPx,
-        );
-      },
-      onLongPressEnd: (_) => _commitMove(),
       child: lift,
     );
 
     // Только геометрия Positioned (top/height) перестраивается на каждом кадре
     // жеста; интерактивная обёртка и содержимое переиспользуются как child.
+    //
+    // B3: AnimatedPositioned с НУЛЕВОЙ длительностью на живом drag/resize (блок
+    // мгновенно следует за пальцем — перф-инвариант) и kDurationSnap ТОЛЬКО на
+    // фазе «приземления» (settling): тогда блок плавно доезжает от сырого drag-
+    // top к снэпнутому. При reduce-motion settling вообще не возникает (см.
+    // _settle), поэтому здесь длительность всегда ноль — мгновенно.
     return ValueListenableBuilder<_BlockGesture>(
       valueListenable: _gesture,
       child: interactive,
       builder: (context, g, child) {
         final top = g.active ? g.topPx : baseTop;
         final height = g.active ? g.heightPx : baseHeight;
+        final settling = g.kind == _GestureKind.settling;
+        final duration =
+            settling ? effectiveDuration(context, kDurationSnap) : Duration.zero;
 
-        return Positioned(
+        return AnimatedPositioned(
+          duration: duration,
+          curve: kCurveSnap,
           top: top,
           left: left,
           width: width,
@@ -907,10 +1545,15 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
   /// scheduledAt (и дату — в week колонка фиксирует день widget.day).
   Future<void> _commitMove() async {
     final g = _gesture.value;
-    _gesture.value = const _BlockGesture.none();
-    if (g.kind != _GestureKind.drag) return;
+    if (g.kind != _GestureKind.drag) {
+      _gesture.value = const _BlockGesture.none();
+      return;
+    }
     HapticFeedback.selectionClick();
     final snappedMin = offsetToSnappedMinutes(g.topPx, widget.hourHeight);
+    // B3: «приземление» — довозим блок от сырого drag-top к снэпнутому top
+    // (высота не менялась при переносе), вместо мгновенного перескока.
+    _settle(minutesToOffset(snappedMin, widget.hourHeight), g.heightPx);
     final newStart = DateTime(
       widget.day.year,
       widget.day.month,
@@ -944,11 +1587,16 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
   /// Сохраняет новую длительность после resize: snap к 15, минимум 15.
   Future<void> _commitResize() async {
     final g = _gesture.value;
-    _gesture.value = const _BlockGesture.none();
-    if (g.kind != _GestureKind.resize) return;
+    if (g.kind != _GestureKind.resize) {
+      _gesture.value = const _BlockGesture.none();
+      return;
+    }
     HapticFeedback.selectionClick();
     final rawMinutes = (g.heightPx / widget.hourHeight * 60).round();
     final newDuration = snapDuration(rawMinutes);
+    // B3: «приземление» — довозим нижнюю границу к снэпнутой высоте (top
+    // фиксирован при ресайзе низом).
+    _settle(g.topPx, durationToHeight(newDuration, widget.hourHeight));
     if (newDuration == widget.item.durationMinutes) return;
     final dao = ref.read(itemsDaoProvider);
     // Виртуальный повтор серии: материализуем этот день с новой длительностью.
@@ -964,6 +1612,68 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
     await dao.updateItem(
       widget.item.id,
       ItemsTableCompanion(
+        durationMinutes: Value(newDuration),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Сохраняет ресайз верхней ручкой: меняет НАЧАЛО (scheduledAt) и длительность
+  /// так, чтобы КОНЕЦ остался на месте. Новое начало снапится к сетке (15 мин),
+  /// длительность пересчитывается от фиксированного конца и зажимается минимумом
+  /// (никогда не уходит в ноль/минус).
+  Future<void> _commitResizeTop() async {
+    final g = _gesture.value;
+    if (g.kind != _GestureKind.resizeTop) {
+      _gesture.value = const _BlockGesture.none();
+      return;
+    }
+    HapticFeedback.selectionClick();
+
+    // Конец задачи в минутах от полуночи (фиксирован при ресайзе верхом).
+    final origStartMin = minutesFromMidnight(widget.item.scheduledAt);
+    final endMin = origStartMin + widget.item.durationMinutes;
+
+    // Новое начало = снап позиции верхней границы к сетке.
+    final snappedStart = offsetToSnappedMinutes(g.topPx, widget.hourHeight);
+    // Длительность от фиксированного конца, минимум kMinDurationMinutes.
+    var newDuration = endMin - snappedStart;
+    if (newDuration < kMinDurationMinutes) newDuration = kMinDurationMinutes;
+    final newStartMin = endMin - newDuration;
+
+    // B3: «приземление» — довозим верхнюю границу к снэпнутому началу; нижняя
+    // (top + height) фиксирована, поэтому новый top = снэп, высота от него.
+    final settledTop = minutesToOffset(newStartMin, widget.hourHeight);
+    _settle(settledTop, durationToHeight(newDuration, widget.hourHeight));
+
+    final newStart = DateTime(
+      widget.day.year,
+      widget.day.month,
+      widget.day.day,
+      newStartMin ~/ 60,
+      newStartMin % 60,
+    );
+
+    final unchanged = newStartMin == origStartMin &&
+        newDuration == widget.item.durationMinutes;
+    if (unchanged) return;
+
+    final dao = ref.read(itemsDaoProvider);
+    // Виртуальный повтор серии: материализуем день с новым началом и длительностью.
+    if (isVirtualOccurrenceId(widget.item.id)) {
+      await dao.materializeOccurrence(
+        anchorIdFromVirtual(widget.item.id),
+        dateFromVirtual(widget.item.id) ?? widget.day,
+        status: widget.item.status,
+        scheduledAt: newStart,
+        durationMinutes: newDuration,
+      );
+      return;
+    }
+    await dao.updateItem(
+      widget.item.id,
+      ItemsTableCompanion(
+        scheduledAt: Value(newStart),
         durationMinutes: Value(newDuration),
         updatedAt: Value(DateTime.now()),
       ),
@@ -991,22 +1701,29 @@ class _BlockContent extends StatelessWidget {
     required this.onResizeStart,
     required this.onResizeUpdate,
     required this.onResizeEnd,
+    required this.onResizeTopStart,
+    required this.onResizeTopUpdate,
+    required this.onResizeTopEnd,
     required this.handleHitHeight,
   });
 
   final ItemsTableData item;
-  final ({Color bg, Color fg, Color border}) colors;
+  final ({Color bg, Color fg, Color border, Color accentStripe}) colors;
   final bool compact;
   final double baseHeight;
+  // Нижняя ручка (resize конца).
   final VoidCallback onResizeStart;
   final ValueChanged<double> onResizeUpdate;
   final VoidCallback onResizeEnd;
+  // Верхняя ручка (resize начала).
+  final VoidCallback onResizeTopStart;
+  final ValueChanged<double> onResizeTopUpdate;
+  final VoidCallback onResizeTopEnd;
   final double handleHitHeight;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final level = blockContentLevel(baseHeight);
     final timeRange = formatBlockTimeRange(item.scheduledAt, item.durationMinutes);
     final isDone = item.status == 'done';
 
@@ -1014,74 +1731,78 @@ class _BlockContent extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.bg,
         borderRadius: BorderRadius.circular(8),
-        // Рамка должна быть равномерной по цвету, иначе borderRadius бросает
-        // ассерт «A borderRadius can only be given on borders with uniform
-        // colors». Толстый левый акцент рисуется отдельной полоской ниже.
-        border: Border.all(color: colors.border.withValues(alpha: 0.4)),
+        // Рамка ОДНОРОДНА по цвету (иначе borderRadius бросает ассерт «A
+        // borderRadius can only be given on borders with uniform colors»).
+        // Полная непрозрачность + цвет, сдвинутый к контрасту (_borderFor) —
+        // явный кант, чтобы плотный блок не сливался с соседями и колонкой.
+        // Толстый левый акцент рисуется отдельной полоской ниже.
+        border: Border.all(color: colors.border),
       ),
       child: Stack(
         children: [
-          // Левый акцент-полоска (бывшая толстая левая граница).
+          // Левый акцент-полоска: насыщенный исходный цвет задачи (ярче плотной
+          // заливки), читается как явный цветной акцент. Для colorOnly-блоков
+          // (без текста) это второй слой плотности.
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
-            width: 3,
+            width: 4,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: colors.border,
+                color: colors.accentStripe,
                 borderRadius: const BorderRadius.horizontal(
                   left: Radius.circular(8),
                 ),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 3, 4, 3),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  // До 2 строк когда блок высокий; иначе 1 строка.
-                  maxLines: level == BlockContentLevel.titleTimeAndMeta &&
-                          !compact
-                      ? 2
-                      : 1,
-                  overflow: TextOverflow.ellipsis,
-                  // Заголовок — читаемый размер из темы (bodyMedium ~14px вместо
-                  // мелкого labelSmall ~11px, особенно заметного в вебе).
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colors.fg,
-                    fontWeight: FontWeight.w700,
-                    height: 1.1,
-                    decoration:
-                        isDone ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                if (level != BlockContentLevel.titleOnly)
-                  Text(
-                    timeRange,
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    // Время — labelMedium (~12px) вместо labelSmall: крупнее и
-                    // читаемо, но мельче заголовка, чтобы держать иерархию.
-                    style: textTheme.labelMedium?.copyWith(
-                      color: colors.fg.withValues(alpha: 0.85),
-                    ),
-                  ),
-                if (level == BlockContentLevel.titleTimeAndMeta &&
-                    isVirtualOccurrenceId(item.id))
-                  Text(
-                    context.s('recur.repeats_daily'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colors.fg.withValues(alpha: 0.7),
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-              ],
+          // Контент строится по фактической геометрии блока. В дневном виде
+          // (compact=false) заголовок+время центрируются по обеим осям. В узких
+          // видах (3 дня / неделя, compact=true) решение «что вообще влезет»
+          // принимает compactBlockContent по реальной ширине/высоте — чтобы
+          // не было обрезанной каши и наезжающего текста.
+          Positioned.fill(
+            // Слева оставляем место под акцент-полоску (3px) + воздух.
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 3, 4, 3),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  // Жёсткая нижняя граница для ОБОИХ путей: если фактической
+                  // высоты не хватает даже на одну строку текста (короткий блок
+                  // 12–20px у задачи на 10–15 мин, в т.ч. в день-виде с lane-
+                  // раскладкой), рисуем только цвет — иначе Column переполняется
+                  // на пиксель. compactBlockContent.colorOnly уже инкапсулирует
+                  // этот порог по высоте, поэтому переиспользуем его и для дня.
+                  if (compactBlockContent(c.maxWidth, c.maxHeight) ==
+                      CompactBlockContent.colorOnly) {
+                    return const SizedBox.shrink();
+                  }
+                  return compact
+                      ? _buildCompactContent(
+                          context,
+                          textTheme,
+                          c.maxWidth,
+                          c.maxHeight,
+                          timeRange,
+                          isDone,
+                        )
+                      // Уровень дневного контента считаем по ФАКТИЧЕСКОЙ высоте
+                      // блока (c.maxHeight), а не по замороженному baseHeight: во
+                      // время живого ресайза Positioned ужимает блок кадр за
+                      // кадром, и контент должен деградировать (титул+время →
+                      // только титул) по реальной высоте, иначе на переходных
+                      // высотах строка времени не влезает и Column переполняется.
+                      : _buildDayContent(
+                          context,
+                          textTheme,
+                          blockContentLevel(c.maxHeight),
+                          c.maxWidth,
+                          timeRange,
+                          isDone,
+                        );
+                },
+              ),
             ),
           ),
           // Нижняя ручка изменения длительности: видимая полоска + крупная
@@ -1096,6 +1817,57 @@ class _BlockContent extends StatelessWidget {
           // (resolve(accepted) на старте), стабильно выигрывая над long-press
           // родителя уже на первый потяг. Вне зоны ручки перенос блока работает
           // как прежде.
+          //
+          // ВЕРХНЯЯ ручка (resize начала) — зеркальна нижней, тем же eager-
+          // распознавателем. Показываем только когда блок достаточно высок, чтобы
+          // верхняя и нижняя зоны хвата не перекрыли весь блок (иначе тело стало
+          // бы недоступно для tap/move). startTime тянется верхом, endTime — низом.
+          if (baseHeight >= handleHitHeight * 2 + 6)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: handleHitHeight,
+              child: RawGestureDetector(
+                behavior: HitTestBehavior.opaque,
+                gestures: <Type, GestureRecognizerFactory>{
+                  _EagerVerticalDragRecognizer:
+                      GestureRecognizerFactoryWithHandlers<
+                          _EagerVerticalDragRecognizer>(
+                    () => _EagerVerticalDragRecognizer(),
+                    (recognizer) {
+                      recognizer
+                        ..onStart = (_) {
+                          onResizeTopStart();
+                        }
+                        ..onUpdate = (d) {
+                          onResizeTopUpdate(d.delta.dy);
+                        }
+                        ..onEnd = (_) {
+                          onResizeTopEnd();
+                        }
+                        ..onCancel = () {
+                          onResizeTopEnd();
+                        };
+                    },
+                  ),
+                },
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: Container(
+                    width: 28,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 3),
+                    decoration: BoxDecoration(
+                      // На плотной заливке ручка из цвета текста (автоконтраст)
+                      // читается лучше, чем граница (близкая к фону).
+                      color: colors.fg.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
@@ -1136,7 +1908,9 @@ class _BlockContent extends StatelessWidget {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 3),
                   decoration: BoxDecoration(
-                    color: colors.border,
+                    // На плотной заливке ручка из цвета текста (автоконтраст)
+                    // читается лучше, чем граница (близкая к фону).
+                    color: colors.fg.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1144,6 +1918,142 @@ class _BlockContent extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Дневной вид (широкий блок): заголовок + время по центру блока — и по
+  /// вертикали, и по горизонтали. Текст по-прежнему обрезается ellipsis и не
+  /// вызывает overflow на коротких блоках (Column min + maxLines).
+  Widget _buildDayContent(
+    BuildContext context,
+    TextTheme textTheme,
+    BlockContentLevel level,
+    double maxWidth,
+    String timeRange,
+    bool isDone,
+  ) {
+    // ЖЁСТКИЙ гард от overflow на ЛЮБОЙ высоте (в т.ч. на переходных кадрах
+    // живого ресайза): ClipRect отсекает покраску за границами, а FittedBox
+    // (scaleDown) гарантирует, что Column НИКОГДА не превысит фактическую высоту
+    // блока — на тесном кадре контент ужимается, а не переполняет RenderFlex.
+    // SizedBox(width) внутри FittedBox даёт тексту КОНЕЧНУЮ ширину, чтобы работал
+    // ellipsis по горизонтали (FittedBox иначе отдаёт неограниченную ширину и
+    // длинное название не обрезалось бы, а масштабировалось в нечитаемо мелкое).
+    // Приоритет — НАЗВАНИЮ: titleOnly показывает только заголовок (время видно
+    // на часовой оси слева), время добавляется лишь когда блок достаточно высок.
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          width: maxWidth.isFinite && maxWidth > 0 ? maxWidth : null,
+          child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              item.title,
+              textAlign: TextAlign.center,
+              // До 2 строк когда блок высокий; иначе 1 строка.
+              maxLines: level == BlockContentLevel.titleTimeAndMeta ? 2 : 1,
+              overflow: TextOverflow.ellipsis,
+              // Заголовок — читаемый размер из темы (bodyMedium ~14px вместо
+              // мелкого labelSmall ~11px, особенно заметного в вебе).
+              style: textTheme.bodyMedium?.copyWith(
+                color: colors.fg,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+                decoration: isDone ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            if (level != BlockContentLevel.titleOnly)
+              Text(
+                timeRange,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                // Время — labelMedium (~12px) вместо labelSmall: крупнее и
+                // читаемо, но мельче заголовка, чтобы держать иерархию.
+                style: textTheme.labelMedium?.copyWith(
+                  color: colors.fg.withValues(alpha: 0.85),
+                ),
+              ),
+            if (level == BlockContentLevel.titleTimeAndMeta &&
+                isVirtualOccurrenceId(item.id))
+              Text(
+                context.s('recur.repeats_daily'),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelSmall?.copyWith(
+                  color: colors.fg.withValues(alpha: 0.7),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Узкий вид (3 дня / неделя): по фактической геометрии решаем, что влезает.
+  /// colorOnly — только цвет блока (название по тапу), titleOnly — короткое
+  /// имя по центру с ellipsis, titleAndTime — имя + время. Так в тонких
+  /// колонках не остаётся обрезанной каши и наезжающего текста.
+  Widget _buildCompactContent(
+    BuildContext context,
+    TextTheme textTheme,
+    double width,
+    double height,
+    String timeRange,
+    bool isDone,
+  ) {
+    final what = compactBlockContent(width, height);
+    if (what == CompactBlockContent.colorOnly) {
+      // Только цвет — никакого текста, название доступно по тапу (карточка).
+      return const SizedBox.shrink();
+    }
+    // ЖЁСТКИЙ гард от overflow на ЛЮБОЙ высоте (тот же, что в дне): ClipRect +
+    // FittedBox(scaleDown) — контент НИКОГДА не превысит фактическую высоту блока
+    // даже на переходных кадрах ресайза. SizedBox(width) сохраняет ellipsis по
+    // горизонтали. Приоритет — НАЗВАНИЮ (titleOnly раньше titleAndTime).
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          width: width.isFinite && width > 0 ? width : null,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                item.title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelMedium?.copyWith(
+                  color: colors.fg,
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                  decoration: isDone ? TextDecoration.lineThrough : null,
+                ),
+              ),
+              if (what == CompactBlockContent.titleAndTime)
+                Text(
+                  timeRange,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: colors.fg.withValues(alpha: 0.85),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

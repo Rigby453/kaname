@@ -1,0 +1,278 @@
+// Жесты блока сетки времени (time_grid.dart), проверенные на реальном
+// in-memory Drift + настоящем DayTimeGrid:
+//   • drag по ТЕЛУ блока стартует перенос С ПЕРВОГО касания (без tap/long-press)
+//     и меняет scheduledAt;
+//   • ВЕРХНЯЯ ручка меняет startTime (начало) и не даёт длительности уйти в ноль
+//     (clamp на минимум), удерживая конец на месте.
+//
+// Жесты драйвим через tester.startGesture + moveBy + up (точный pan по координате
+// внутри тела/ручки). DAO-результат читаем через runAsync после settle, как в
+// interaction_smoke_test.dart.
+
+import 'package:app/core/database/database.dart';
+import 'package:app/core/database/database_providers.dart';
+import 'package:app/core/theme/app_theme.dart';
+import 'package:app/core/theme/theme_provider.dart'
+    show sharedPreferencesProvider;
+import 'package:app/features/plan/widgets/time_grid.dart';
+import 'package:app/features/plan/widgets/week_strip.dart'
+    show selectedDayProvider;
+
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// Зеркалит _kBlockPickupDelay из time_grid.dart (та константа приватна).
+// Если меняешь порог подхвата в виджете — обнови и здесь.
+const _kBlockPickupDelay = Duration(milliseconds: 250);
+
+ThemeData _testTheme() => ThemeData.dark().copyWith(
+      extensions: const [
+        FocusThemeExtension(
+          textMuted: Color(0xFF9E9070),
+          ember: Color(0xFFFF6A3D),
+          border: Color(0xFF3A3020),
+          surfaceElevated: Color(0xFF2E2618),
+          textFaint: Color(0xFF736850),
+          accentMuted: Color(0xFF26290F),
+          success: Color(0xFF4BAF6F),
+          borderStrong: Color(0xFF524630),
+        ),
+      ],
+    );
+
+void main() {
+  late AppDatabase db;
+  late SharedPreferences prefs;
+
+  // Высота часа фиксируем — расчёты пикселей детерминированы.
+  const hourHeight = kHourHeight; // 56.0
+  // День задач — фиксированная дата, чтобы selectedDay совпал.
+  final day = DateTime(2026, 6, 24);
+
+  setUp(() async {
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  Future<void> insertTask({
+    required String id,
+    required int hour,
+    required int minute,
+    required int durationMinutes,
+  }) async {
+    final at = DateTime(day.year, day.month, day.day, hour, minute);
+    await db.into(db.itemsTable).insert(
+          ItemsTableCompanion(
+            id: Value(id),
+            userId: const Value('local'),
+            title: const Value('Тестовая задача'),
+            type: const Value('task'),
+            priority: const Value('medium'),
+            status: const Value('pending'),
+            scheduledAt: Value(at),
+            durationMinutes: Value(durationMinutes),
+            isProtected: const Value(false),
+            createdAt: Value(at),
+            updatedAt: Value(at),
+          ),
+        );
+  }
+
+  Future<ItemsTableData> readTask(String id) async {
+    return (db.select(db.itemsTable)..where((t) => t.id.equals(id))).getSingle();
+  }
+
+  Widget harness() => ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appDatabaseProvider.overrideWithValue(db),
+          selectedDayProvider.overrideWith((ref) => day),
+        ],
+        child: MaterialApp(
+          theme: _testTheme(),
+          // disableAnimations: лифт-анимация блока (AnimatedScale 1.0↔1.03) через
+          // effectiveDuration становится мгновенной (Duration.zero) — без неё в
+          // тесте оставался pending Timer при dispose. Жесты (tap/long-press/
+          // drag/resize) от этого не меняются, проверяется логика переноса.
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              height: 700,
+              child: DayTimeGrid(hourHeight: hourHeight),
+            ),
+          ),
+        ),
+      );
+
+  // Снимаем дерево и даём дренировать таймер закрытия Drift-стрима, который
+  // riverpod создаёт при dispose StreamProvider (zero-duration Timer в
+  // StreamQueryStore.markAsClosed). Без этого тест падает на инварианте
+  // «A Timer is still pending even after the widget tree was disposed».
+  Future<void> unmountAndFlush(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  }
+
+  Future<void> pumpGrid(WidgetTester tester) async {
+    await tester.pumpWidget(harness());
+    // Даём стриму БД доставить задачи (как settle в interaction-тестах).
+    await tester.pump();
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  testWidgets(
+    'long-press по телу блока поднимает его и перенос в том же касании меняет '
+    'scheduledAt; короткий tap НЕ двигает',
+    (tester) async {
+      // Задача 09:00–12:00 (180 мин) — высокий блок (168px), большое тело между
+      // ручками, чтобы хват точно попал в зону переноса, а не в ручку resize.
+      await insertTask(id: 'move', hour: 9, minute: 0, durationMinutes: 180);
+      await pumpGrid(tester);
+
+      final before = await readTask('move');
+      expect(before.scheduledAt.hour, 9);
+
+      // Берёмся за середину тела (далеко от верхней/нижней ручек по ключу блока).
+      final blockBox = tester.getRect(find.byKey(const ValueKey('move')));
+      final grabCenter = blockBox.center;
+
+      // 1) Опускаем палец и ждём порог long-press подхвата (_kBlockPickupDelay
+      //    на фейковом клоке) — блок «поднимается» (onLongPressStart). Затем
+      //    В ТОМ ЖЕ касании ведём вниз на 1 час фиксированными шагами и
+      //    отпускаем. Никакого pumpAndSettle с бесконечной анимацией лифта —
+      //    только фикс-шаги.
+      final gesture = await tester.startGesture(grabCenter);
+      await tester.pump(_kBlockPickupDelay + const Duration(milliseconds: 50));
+      // Перенос на +1 час несколькими шагами (onLongPressMoveUpdate).
+      for (var i = 0; i < 4; i++) {
+        await gesture.moveBy(const Offset(0, hourHeight / 4));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Скролл НЕ должен был сдвинуться — long-press выиграл арену у скролла.
+      final scrollable = tester.widget<Scrollable>(find.byType(Scrollable).first);
+      expect(scrollable.controller?.offset, kHourHeight * 7,
+          reason: 'страница не проскроллилась — long-press взял блок');
+
+      final after = await readTask('move');
+      // Перенос на +60 минут → 10:00 (снап к 15 мин не сдвигает ровный час).
+      expect(after.scheduledAt.hour, 10, reason: 'блок переехал на час вниз');
+      expect(after.scheduledAt.minute, 0);
+      // Длительность не тронута переносом.
+      expect(after.durationMinutes, 180);
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'короткий tap по телу блока НЕ переносит (открывает карточку), время не меняется',
+    (tester) async {
+      await insertTask(id: 'tap', hour: 9, minute: 0, durationMinutes: 180);
+      await pumpGrid(tester);
+
+      final blockBox = tester.getRect(find.byKey(const ValueKey('tap')));
+      // Короткий тап по центру тела — без удержания и без движения.
+      await tester.tapAt(blockBox.center);
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final after = await readTask('tap');
+      // Тап только открывает карточку — время задачи не сдвинулось.
+      expect(after.scheduledAt.hour, 9, reason: 'tap не переносит блок');
+      expect(after.scheduledAt.minute, 0);
+      expect(after.durationMinutes, 180);
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'верхняя ручка тянет начало (startTime) и не даёт длительности уйти в ноль',
+    (tester) async {
+      // Задача 09:00–10:00 (60 мин). Тянем верхнюю ручку ВНИЗ почти до конца —
+      // длительность должна зажаться минимумом (15 мин), конец остаться 10:00.
+      await insertTask(id: 'top', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final before = await readTask('top');
+      expect(before.durationMinutes, 60);
+
+      // Берём геометрию блока по его ключу (ValueKey(id)) — надёжно.
+      final blockBox = tester.getRect(find.byKey(const ValueKey('top')));
+      // Верхняя ручка занимает первые 22px блока — целимся в её центр.
+      final grabTop = Offset(blockBox.center.dx, blockBox.top + 11);
+
+      // Тянем верхнюю ручку ВНИЗ на 200px (≈3.5ч) — заведомо больше длительности.
+      await tester.dragFrom(grabTop, const Offset(0, 200));
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final after = await readTask('top');
+      // Длительность зажата минимумом, не ноль/минус.
+      expect(after.durationMinutes, kMinDurationMinutes,
+          reason: 'длительность не ушла в ноль при ресайзе верхом');
+      // Конец остался на месте (10:00): начало = конец − минимум.
+      final endMin = after.scheduledAt.hour * 60 +
+          after.scheduledAt.minute +
+          after.durationMinutes;
+      expect(endMin, 10 * 60, reason: 'конец задачи остался 10:00');
+      // Начало сдвинулось позже исходных 09:00.
+      expect(after.scheduledAt.hour * 60 + after.scheduledAt.minute,
+          greaterThan(9 * 60));
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'верхняя ручка тянет начало раньше, удлиняя задачу (конец фиксирован)',
+    (tester) async {
+      // Задача 09:00–10:00. Тянем верх ВВЕРХ на 1 час → начало 08:00, 120 мин.
+      await insertTask(id: 'grow', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final blockBox = tester.getRect(find.byKey(const ValueKey('grow')));
+      final grabTop = Offset(blockBox.center.dx, blockBox.top + 11);
+
+      // Тянем верхнюю ручку ВВЕРХ на час → начало 08:00, длительность 120.
+      await tester.dragFrom(grabTop, const Offset(0, -hourHeight));
+      await tester.pump();
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final after = await readTask('grow');
+      expect(after.scheduledAt.hour, 8, reason: 'начало уехало на 08:00');
+      expect(after.scheduledAt.minute, 0);
+      expect(after.durationMinutes, 120, reason: 'задача удлинилась до 2 часов');
+
+      await unmountAndFlush(tester);
+    },
+  );
+}

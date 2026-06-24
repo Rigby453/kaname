@@ -302,4 +302,44 @@ class WorkoutsDao extends DatabaseAccessor<AppDatabase>
           ..orderBy([(t) => OrderingTerm.desc(t.completedAt)]))
         .get();
   }
+
+  /// Реактивно: упражнения, по которым есть хотя бы один залогированный подход
+  /// (для вкладки «Дневник» → прогресс по упражнениям). Возвращает уникальные
+  /// (exerciseId, name), свежие первыми (по последнему подходу). Имя берётся из
+  /// workout_exercises; упражнения, удалённые из шаблона, в выборку не попадают.
+  Stream<List<ExerciseWithLogs>> watchExercisesWithLogs() {
+    final lastLogged = workoutSetLogsTable.completedAt.max();
+    final query = selectOnly(workoutSetLogsTable)
+      ..addColumns([
+        workoutSetLogsTable.exerciseId,
+        workoutExercisesTable.name,
+        lastLogged,
+      ])
+      ..join([
+        innerJoin(
+          workoutExercisesTable,
+          workoutExercisesTable.id.equalsExp(workoutSetLogsTable.exerciseId),
+        ),
+      ])
+      ..groupBy([workoutSetLogsTable.exerciseId])
+      ..orderBy([OrderingTerm.desc(lastLogged)]);
+
+    return query.watch().map(
+          (rows) => [
+            for (final row in rows)
+              ExerciseWithLogs(
+                exerciseId: row.read(workoutSetLogsTable.exerciseId)!,
+                name: row.read(workoutExercisesTable.name)!,
+              ),
+          ],
+        );
+  }
+}
+
+/// Упражнение, по которому есть залогированные подходы (для «Дневника»).
+class ExerciseWithLogs {
+  const ExerciseWithLogs({required this.exerciseId, required this.name});
+
+  final String exerciseId;
+  final String name;
 }

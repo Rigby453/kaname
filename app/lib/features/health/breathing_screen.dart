@@ -3,6 +3,7 @@
 // Анимация круга следует ANIMATIONS.md §0: effectiveDuration + reduceMotionOf.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -24,6 +25,18 @@ const _kFadeDuration = Duration(milliseconds: 150);
 
 /// Длительность анимации смены цвета круга.
 const _kColorDuration = Duration(milliseconds: 300);
+
+/// Включает «подрагивание» круга на фазе задержки дыхания (Hold).
+/// true  → круг чуть вибрирует масштабом (забавный эффект «затаённого» дыхания).
+/// false → запасной вариант: на задержке круг просто стоит неподвижно.
+/// Если джиттер выглядит плохо — выставить в false (см. ТЗ — допустимый fallback).
+const kHoldJitter = true;
+
+/// Период одного колебания джиттера на задержке (туда-обратно).
+const _kJitterPeriod = Duration(milliseconds: 900);
+
+/// Амплитуда джиттера в долях масштаба (крошечная: ±0.015).
+const _kJitterAmplitude = 0.015;
 
 class BreathingScreen extends StatefulWidget {
   const BreathingScreen({super.key});
@@ -57,6 +70,13 @@ class _BreathingScreenState extends State<BreathingScreen>
   // Целевой масштаб для AnimationController: 0.6=выдох, 1.0=вдох
   double _targetScale = 0.6;
 
+  // --- Джиттер круга на задержке дыхания (Hold) ---
+  // Отдельный repeat-контроллер 0..1; в дельту масштаба превращается через sin,
+  // так что круг «подрагивает» вокруг удержанного значения. Активен только в
+  // hold-фазе при kHoldJitter && !reduceMotion. Иначе круг стоит неподвижно.
+  late AnimationController _jitterController;
+  bool _holdActive = false;
+
   // --- Анимация цвета круга ---
   late AnimationController _colorController;
   late Animation<Color?> _colorAnimation;
@@ -84,6 +104,12 @@ class _BreathingScreenState extends State<BreathingScreen>
     );
     _circleScale = Tween<double>(begin: 0.6, end: 0.6).animate(
       CurvedAnimation(parent: _circleController, curve: kCurveLift),
+    );
+
+    // Контроллер джиттера: бесконечный repeat, дельту считаем по value через sin.
+    _jitterController = AnimationController(
+      vsync: this,
+      duration: _kJitterPeriod,
     );
 
     // Анимация цвета круга
@@ -121,6 +147,7 @@ class _BreathingScreenState extends State<BreathingScreen>
   void dispose() {
     _ticker?.cancel();
     _circleController.dispose();
+    _jitterController.dispose();
     _colorController.dispose();
     _fadeController.dispose();
     super.dispose();
@@ -194,6 +221,8 @@ class _BreathingScreenState extends State<BreathingScreen>
   void _stop() {
     _ticker?.cancel();
     _circleController.stop();
+    _jitterController.stop();
+    _holdActive = false;
     _colorController.stop();
     setState(() {
       _running = false;
@@ -219,6 +248,8 @@ class _BreathingScreenState extends State<BreathingScreen>
           _done = true;
           _ticker?.cancel();
           _circleController.stop();
+          _jitterController.stop();
+          _holdActive = false;
           _colorController.stop();
           return;
         }
@@ -252,6 +283,10 @@ class _BreathingScreenState extends State<BreathingScreen>
       if (!reduce) {
         // Анимация масштаба (только без reduce motion)
         if (!phase.hold) {
+          // Вдох/выдох: круг едет к целевому масштабу, джиттер выключен.
+          _holdActive = false;
+          _jitterController.stop();
+
           final phaseDuration = phase.duration;
           _circleController.duration = phaseDuration;
 
@@ -263,7 +298,19 @@ class _BreathingScreenState extends State<BreathingScreen>
           );
           _circleController.forward(from: 0.0);
         } else {
+          // Задержка: масштаб круга фиксируется на удержанном значении.
           _circleController.stop();
+          if (kHoldJitter) {
+            // Лёгкое «подрагивание» — бесконечный repeat, дельту даёт sin.
+            _holdActive = true;
+            if (!_jitterController.isAnimating) {
+              _jitterController.repeat();
+            }
+          } else {
+            // Запасной вариант: круг стоит неподвижно.
+            _holdActive = false;
+            _jitterController.stop();
+          }
         }
       }
 
@@ -313,6 +360,13 @@ class _BreathingScreenState extends State<BreathingScreen>
   // ---------------------------------------------------------------------------
   // Обратный счётчик секунд фазы
   // ---------------------------------------------------------------------------
+
+  /// Текущая дельта масштаба от джиттера (0, если задержка неактивна).
+  /// Полный период контроллера = одно колебание sin (туда-обратно).
+  double _jitterDelta() {
+    if (!_holdActive) return 0.0;
+    return math.sin(_jitterController.value * 2 * math.pi) * _kJitterAmplitude;
+  }
 
   /// Оставшиеся секунды в текущей фазе (1, 2, 3 ... N).
   int _phaseSecondsLeft(BreathPhase phase, double phaseProgress) {
@@ -420,9 +474,16 @@ class _BreathingScreenState extends State<BreathingScreen>
         // Круг — центральный элемент с текстом фазы и счётчиком внутри
         Center(
           child: AnimatedBuilder(
-            animation: Listenable.merge([_circleController, _colorController, _fadeController]),
+            animation: Listenable.merge([
+              _circleController,
+              _jitterController,
+              _colorController,
+              _fadeController,
+            ]),
             builder: (context, _) {
-              final scale = reduce ? 0.8 : _circleScale.value;
+              // База — масштаб фазы; на задержке добавляем крошечный джиттер.
+              final scale =
+                  reduce ? 0.8 : (_circleScale.value + _jitterDelta());
               final circleColor = _colorAnimation.value ?? colorScheme.primary;
               return _BreathCircle(
                 scale: scale,

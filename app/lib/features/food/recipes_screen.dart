@@ -90,11 +90,11 @@ class RecipesScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('food.my_recipes_title'))),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         heroTag: 'recipes_add_fab',
-        icon: const Icon(Icons.add),
-        label: Text(context.s('food.new_recipe')),
+        tooltip: context.s('food.new_recipe'),
         onPressed: () => _newRecipe(context, ref),
+        child: const Icon(Icons.add),
       ),
       body: recipes.isEmpty
           ? const _EmptyState()

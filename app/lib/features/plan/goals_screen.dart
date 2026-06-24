@@ -65,11 +65,11 @@ class GoalsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('plan.goals_screen_title'))),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         heroTag: 'goals_add_fab',
         onPressed: () => _showNewGoalDialog(context, ref),
-        icon: const Icon(Icons.add),
-        label: Text(context.s('plan.goals_new_button')),
+        tooltip: context.s('plan.goals_new_button'),
+        child: const Icon(Icons.add),
       ),
       body: goalsAsync.when(
         // KaiLoader вместо CircularProgressIndicator (kai_loader.dart)

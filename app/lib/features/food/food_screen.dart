@@ -17,7 +17,6 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/animations/ai_insight_reveal.dart';
 import '../../core/animations/constants.dart';
-import '../../core/widgets/collapsing_fab.dart';
 import '../../core/animations/ai_pulse_dot.dart';
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
@@ -226,11 +225,11 @@ class _FoodScreenState extends ConsumerState<FoodScreen> {
           ),
         ],
       ),
-      floatingActionButton: CollapsingFab(
+      floatingActionButton: FloatingActionButton(
         heroTag: 'food_add_fab',
         onPressed: () => _showSearchSheet(context),
-        icon: const Icon(Icons.add),
-        label: Text(context.s('food.add')),
+        tooltip: context.s('food.add'),
+        child: const Icon(Icons.add),
       ),
       body: ListView(
         // 24dp экранный отступ по spec (02-type-space.md §4.1)

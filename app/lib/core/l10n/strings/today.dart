@@ -60,19 +60,19 @@ const Map<String, Map<String, String>> todayStrings = {
     'ko': '아직 계획 없음.\n+ 를 눌러 첫 번째 할 일을 추가해봐.',
   },
 
-  // Заголовок секции «Позже» в TaskList (короткий)
+  // Заголовок секции «Остальное на сегодня» в TaskList (rest-of-today, не «Главное»)
   'today.later_section': {
-    'en': 'Later',
-    'ru': 'Позже',
-    'de': 'Später',
-    'fr': 'Plus tard',
-    'it': 'Dopo',
-    'pt': 'Mais tarde',
-    'es': 'Más tarde',
-    'id': 'Nanti',
-    'hi': 'बाद में',
-    'ja': '後で',
-    'ko': '나중에',
+    'en': 'Rest of today',
+    'ru': 'Остальное на сегодня',
+    'de': 'Rest des Tages',
+    'fr': 'Reste de la journée',
+    'it': 'Resto della giornata',
+    'pt': 'Resto do dia',
+    'es': 'Resto del día',
+    'id': 'Sisa hari ini',
+    'hi': 'आज का बाकी',
+    'ja': '今日の残り',
+    'ko': '오늘의 나머지',
   },
 
   // Тултип щита у main-задачи

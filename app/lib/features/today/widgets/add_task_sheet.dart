@@ -12,7 +12,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
-import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,7 +21,6 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:video_player/video_player.dart';
 
 import '../../../core/animations/app_sheet.dart';
 import '../../../core/animations/app_toast.dart';
@@ -33,6 +32,7 @@ import '../../../core/settings/recent_subjects.dart';
 import '../../../core/settings/reminder_default_provider.dart';
 import '../../../core/settings/task_presets_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/attachment_view.dart';
 import '../../../core/widgets/number_input_dialog.dart';
 import '../../../core/utils/id.dart';
 import '../../../core/utils/nl_datetime.dart';
@@ -76,34 +76,6 @@ String _reminderLabel(BuildContext context, int? minutes) {
       .replaceAll('{n}', '$minutes');
 }
 
-/// true, если значение localPath вложения — это data-URI (web-вложение),
-/// а не реальный путь к файлу на диске (Android).
-bool _isDataUri(String localPath) => localPath.startsWith('data:');
-
-/// Декодирует base64-байты из data-URI вложения (web). Ожидает формат
-/// `data:<mime>;base64,<payload>`.
-Uint8List _bytesFromDataUri(String dataUri) =>
-    base64Decode(dataUri.substring(dataUri.indexOf(',') + 1));
-
-/// Строит виджет-изображение вложения по его localPath, выбирая источник:
-///   • data-URI (web) → Image.memory из декодированных base64-байтов;
-///   • обычный путь (Android) → Image.file.
-/// errorBuilder общий для обоих случаев (битый файл/данные не роняют UI).
-Widget _attachmentImage(
-  String localPath, {
-  required BoxFit fit,
-  required ImageErrorWidgetBuilder errorBuilder,
-}) {
-  if (_isDataUri(localPath)) {
-    return Image.memory(
-      _bytesFromDataUri(localPath),
-      fit: fit,
-      errorBuilder: errorBuilder,
-    );
-  }
-  return Image.file(File(localPath), fit: fit, errorBuilder: errorBuilder);
-}
-
 /// Человекочитаемая длительность: 45 → "45m", 90 → "1h 30m".
 String _durationLabel(int minutes) {
   if (minutes < 60) return '${minutes}m';
@@ -114,10 +86,18 @@ String _durationLabel(int minutes) {
 
 /// Открывает модальный лист добавления (existing == null) или
 /// редактирования (existing != null) задачи на день [day].
+///
+/// [initialAt] / [initialDurationMinutes] — необязательное предзаполнение
+/// времени начала и длительности (drag-to-create в сетке времени: пользователь
+/// «нарисовал» интервал по пустой области). Применяются только при создании
+/// (existing == null) и игнорируются в режиме редактирования. Обычный вызов с
+/// одним [day] работает как прежде.
 Future<void> showAddTaskSheet(
   BuildContext context, {
   required DateTime day,
   ItemsTableData? existing,
+  DateTime? initialAt,
+  int? initialDurationMinutes,
 }) {
   final colorScheme = Theme.of(context).colorScheme;
   // Баг 1: серые треугольники по бокам скруглений появляются из-за того, что
@@ -146,7 +126,12 @@ Future<void> showAddTaskSheet(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        child: AddTaskSheet(day: day, existing: existing),
+        child: AddTaskSheet(
+          day: day,
+          existing: existing,
+          initialAt: initialAt,
+          initialDurationMinutes: initialDurationMinutes,
+        ),
       ),
     ),
   );
@@ -156,6 +141,8 @@ class AddTaskSheet extends ConsumerStatefulWidget {
   const AddTaskSheet({
     required this.day,
     this.existing,
+    this.initialAt,
+    this.initialDurationMinutes,
     super.key,
   });
 
@@ -164,6 +151,14 @@ class AddTaskSheet extends ConsumerStatefulWidget {
 
   /// Если задан — режим редактирования
   final ItemsTableData? existing;
+
+  /// Предзаполненное время начала для НОВОЙ задачи (drag-to-create в сетке).
+  /// В режиме редактирования игнорируется (приоритет у existing.scheduledAt).
+  final DateTime? initialAt;
+
+  /// Предзаполненная длительность (минут) для НОВОЙ задачи (drag-to-create).
+  /// В режиме редактирования игнорируется.
+  final int? initialDurationMinutes;
 
   @override
   ConsumerState<AddTaskSheet> createState() => _AddTaskSheetState();
@@ -282,8 +277,22 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     // чтобы соответствующий чип подсветился и сохранилось нормализованное.
     _type = _normalizeType(existing?.type ?? 'task');
     _priority = _normalizePriority(existing?.priority ?? 'medium');
-    _scheduledAt = existing?.scheduledAt ?? _defaultScheduledAt();
-    _durationMinutes = existing?.durationMinutes ?? _kDefaultDurationMinutes;
+    // Приоритет времени/длительности: существующая задача (редактирование) →
+    // предзаполнение из drag-to-create (initialAt/initialDurationMinutes) →
+    // умный дефолт. initial* применяются только при создании (existing == null).
+    _scheduledAt =
+        existing?.scheduledAt ?? widget.initialAt ?? _defaultScheduledAt();
+    _durationMinutes = existing?.durationMinutes ??
+        widget.initialDurationMinutes ??
+        _kDefaultDurationMinutes;
+    // Пользователь явно задал время рисованием на сетке — NL-парсер заголовка
+    // не должен его перетирать (как после ручного выбора времени).
+    if (existing == null && widget.initialAt != null) {
+      _userPickedDateTime = true;
+    }
+    if (existing == null && widget.initialDurationMinutes != null) {
+      _userPickedDuration = true;
+    }
     _moduleLink = existing?.moduleLink;
     _color = existing?.color;
     _reminderMinutesBefore = existing?.reminderMinutesBefore;
@@ -928,55 +937,13 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   }
 
   void _viewAttachment(ItemAttachmentsTableData a) {
-    if (a.type == 'photo') {
-      // Полноэкранный просмотр фото с зумом (InteractiveViewer).
-      showDialog<void>(
-        context: context,
-        barrierColor: Colors.black,
-        builder: (ctx) => Stack(
-          children: [
-            Positioned.fill(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: _attachmentImage(
-                    a.localPath,
-                    fit: BoxFit.contain,
-                    errorBuilder: (ctx, _, _) => const Icon(
-                      Icons.broken_image_outlined,
-                      size: 48,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 8 + MediaQuery.of(ctx).padding.top,
-              right: 8,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Видео хранится только как файл на диске (Android). На вебе видео не
-      // добавляется (см. _pickAttachment), поэтому File-плеер тут безопасен;
-      // защищаемся от теоретического data-URI, чтобы не дёргать File на вебе.
-      if (_isDataUri(a.localPath)) {
-        _showAttachmentSnack(context.s('today.attachment_web_video_unsupported'));
-        return;
-      }
-      final ctrl = VideoPlayerController.file(File(a.localPath));
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => _VideoDialog(controller: ctrl),
-      );
-    }
+    viewAttachmentFullscreen(
+      context,
+      a,
+      onUnsupportedVideo: () => _showAttachmentSnack(
+        context.s('today.attachment_web_video_unsupported'),
+      ),
+    );
   }
 
   Future<void> _deleteAttachment(ItemAttachmentsTableData a) async {
@@ -1887,7 +1854,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                   runSpacing: 8,
                   children: [
                     for (final a in _attachments)
-                      _AttachmentThumb(
+                      AttachmentThumb(
                         attachment: a,
                         onTap: () => _viewAttachment(a),
                         onDelete: () => _deleteAttachment(a),
@@ -2119,155 +2086,6 @@ class _AttachAddButton extends StatelessWidget {
           Icon(icon, size: 22, color: muted),
           const SizedBox(height: 4),
           Text(label, style: textTheme.labelSmall, textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Квадратная миниатюра одного вложения: фото через Image.file, видео — кадр-
-// заглушка с иконкой ▶. Тап — просмотр на весь экран; крестик в углу — удаление.
-// ---------------------------------------------------------------------------
-
-class _AttachmentThumb extends StatelessWidget {
-  const _AttachmentThumb({
-    required this.attachment,
-    required this.onTap,
-    required this.onDelete,
-  });
-
-  final ItemAttachmentsTableData attachment;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
-
-  static const double _size = 72;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final ext = Theme.of(context).extension<FocusThemeExtension>();
-    final isVideo = attachment.type != 'photo';
-
-    return SizedBox(
-      width: _size,
-      height: _size,
-      child: Stack(
-        children: [
-          // Превью (фото или кадр-заглушка видео).
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: onTap,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: isVideo
-                    ? Container(
-                        color: ext?.surfaceElevated ?? colorScheme.surface,
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          size: 30,
-                          color: colorScheme.onSurface,
-                        ),
-                      )
-                    : _attachmentImage(
-                        attachment.localPath,
-                        fit: BoxFit.cover,
-                        // Файл/данные недоступны — нейтральная заглушка, не падаем.
-                        errorBuilder: (ctx, _, _) => Container(
-                          color: ext?.surfaceElevated ?? colorScheme.surface,
-                          alignment: Alignment.center,
-                          child: Icon(Icons.broken_image_outlined,
-                              size: 24, color: colorScheme.onSurface),
-                        ),
-                      ),
-              ),
-            ),
-          ),
-          // Кнопка удаления — крестик в правом верхнем углу.
-          Positioned(
-            top: 2,
-            right: 2,
-            child: GestureDetector(
-              onTap: onDelete,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  color: Colors.black54,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.close, size: 14, color: Colors.white),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VideoDialog extends StatefulWidget {
-  const _VideoDialog({required this.controller});
-  final VideoPlayerController controller;
-
-  @override
-  State<_VideoDialog> createState() => _VideoDialogState();
-}
-
-class _VideoDialogState extends State<_VideoDialog> {
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.initialize().then((_) {
-      if (mounted) setState(() {});
-      widget.controller.play();
-    });
-  }
-
-  @override
-  void dispose() {
-    widget.controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.black,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.controller.value.isInitialized)
-            AspectRatio(
-              aspectRatio: widget.controller.value.aspectRatio,
-              child: VideoPlayer(widget.controller),
-            )
-          else
-            const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                icon: Icon(
-                  widget.controller.value.isPlaying
-                      ? Icons.pause
-                      : Icons.play_arrow,
-                  color: Colors.white,
-                ),
-                onPressed: () {
-                  setState(() {
-                    widget.controller.value.isPlaying
-                        ? widget.controller.pause()
-                        : widget.controller.play();
-                  });
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
         ],
       ),
     );

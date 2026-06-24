@@ -789,17 +789,65 @@ class _GroupDetailSheetState extends ConsumerState<_GroupDetailSheet> {
                   final pending =
                       members.where((m) => m['status'] == 'pending').toList();
 
+                  final code = detail['code'] as String? ?? '';
+
                   return <Widget>[
-                    Row(
-                      children: [
-                        Text(detail['name'] as String? ?? '', style: textTheme.titleMedium),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${context.s('costudy.session_code_label')} ${detail['code'] ?? ''}',
-                          style: textTheme.bodySmall?.copyWith(letterSpacing: 2),
+                    Text(detail['name'] as String? ?? '', style: textTheme.titleMedium),
+                    const SizedBox(height: 12),
+
+                    // Постоянный код приглашения — виден любому участнику группы,
+                    // чтобы можно было позвать друзей в любой момент (не только
+                    // сразу после создания). Источник истины — поле `code` из
+                    // того же ответа API, что используется для join.
+                    if (code.isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: ext.surfaceElevated,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: ext.border),
                         ),
-                      ],
-                    ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.s('costudy.group_code_label'),
+                              style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                // Код — крупно и с широким трекингом, легко прочесть/продиктовать.
+                                Expanded(
+                                  child: Text(
+                                    code,
+                                    style: textTheme.titleLarge?.copyWith(
+                                      letterSpacing: 4,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.copy_outlined, size: 20),
+                                  tooltip: context.s('costudy.copy_code'),
+                                  onPressed: () {
+                                    Clipboard.setData(ClipboardData(text: code));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(context.s('costudy.code_copied'))),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                            Text(
+                              context.s('costudy.share_code'),
+                              style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
                     const SizedBox(height: 16),
 
                     // Pending-заявки (только владельцу) — «тумблер приглашений».

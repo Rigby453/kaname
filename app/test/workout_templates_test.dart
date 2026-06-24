@@ -130,13 +130,16 @@ void main() {
         equipment: const ['full_gym'],
         daysPerWeek: 4,
       );
-      // Новичок — все дни «Full Body N»; продвинутый — Upper/Lower.
+      // Заголовки дней теперь КЛЮЧИ (локализуются в localizeWorkoutProgram).
+      // Новичок — все дни full-body ('workout.day_full|N'); продвинутый — upper/lower.
       expect(
-        beginner.days.every((d) => d.title.startsWith('Full Body')),
+        beginner.days.every((d) => d.title.startsWith('workout.day_full')),
         isTrue,
       );
       expect(
-        advanced.days.any((d) => d.title == 'Upper Body' || d.title == 'Lower Body'),
+        advanced.days.any(
+          (d) => d.title == 'workout.day_upper' || d.title == 'workout.day_lower',
+        ),
         isTrue,
       );
     });
@@ -224,6 +227,68 @@ void main() {
     test('полностью пустой/битый ответ → программа с нулём дней (не падает)', () {
       expect(parseAiWorkoutProgram({}).days, isEmpty);
       expect(parseAiWorkoutProgram({'days': 'nonsense'}).days, isEmpty);
+    });
+  });
+
+  group('localizeWorkoutProgram — ключи → display-строки', () {
+    test('identity-translate: программа из ключей сохраняет ключи', () {
+      final p = buildTemplateProgram(
+        goal: 'muscle',
+        experience: 'beginner', // full-body дни → 'workout.day_full|N'
+        equipment: const ['full_gym'],
+        daysPerWeek: 2,
+      );
+      // С translate = identity programName/title остаются ключами (день full
+      // теряет суффикс |N после подстановки {n}, которого в ключе нет).
+      final loc = localizeWorkoutProgram(p, (k) => k);
+      expect(loc.programName, 'workout.program_muscle');
+      expect(loc.days.first.title, 'workout.day_full'); // |N снят, {n} не найден
+    });
+
+    test('стаб-перевод маппит слаги упражнений через exercise.<slug>', () {
+      final p = buildTemplateProgram(
+        goal: 'strength',
+        experience: 'advanced',
+        equipment: const ['barbell'],
+        daysPerWeek: 3,
+      );
+      // Перевод подменяет известные ключи на читаемые строки.
+      final dict = {
+        'exercise.barbell_bench_press': 'Жим штанги лёжа',
+        'workout.program_strength': 'Силовая программа',
+        'workout.day_push': 'День жима',
+        'workout.day_full': 'Всё тело {n}',
+      };
+      final loc = localizeWorkoutProgram(p, (k) => dict[k] ?? k);
+      expect(loc.programName, 'Силовая программа');
+      // Перевод из словаря применился.
+      final allNames =
+          loc.days.expand((d) => d.exercises.map((e) => e.name)).toList();
+      expect(allNames, contains('Жим штанги лёжа'));
+      // Имя НИКОГДА не остаётся «голым» слагом без префикса (напр. 'barbell_bench_press').
+      // Непереведённый ключ выглядит как 'exercise.<slug>' — это допустимый фолбэк,
+      // но bare-слаг (содержит '_', нет точки и нет пробела) — баг маппинга.
+      for (final name in allNames) {
+        final looksLikeBareSlug =
+            name.contains('_') && !name.contains('.') && !name.contains(' ');
+        expect(looksLikeBareSlug, isFalse,
+            reason: 'имя не должно остаться голым слагом: $name');
+      }
+    });
+
+    test('нумерованный full-body день подставляет номер {n}', () {
+      final p = buildTemplateProgram(
+        goal: 'general',
+        experience: 'beginner',
+        equipment: const ['bodyweight'],
+        daysPerWeek: 3, // три дня 'workout.day_full|1..3'
+      );
+      final loc = localizeWorkoutProgram(
+        p,
+        (k) => k == 'workout.day_full' ? 'Full Body {n}' : k,
+      );
+      final titles = loc.days.map((d) => d.title).toList();
+      expect(titles, ['Full Body 1', 'Full Body 2', 'Full Body 3']);
     });
   });
 }

@@ -18,6 +18,7 @@ import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/attachment_view.dart';
 import '../../today/task_colors.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import '../recurrence.dart';
@@ -259,6 +260,14 @@ class TaskDetailCard extends ConsumerWidget {
               textMuted: textMuted,
             ),
 
+            // Вложения (фото/видео). Для виртуального повтора берём с якоря.
+            // Если вложений нет — секция ничего не рисует (без пустого места).
+            _AttachmentsSection(
+              sourceItemId:
+                  _isVirtual ? anchorIdFromVirtual(item.id) : item.id,
+              textMuted: textMuted,
+            ),
+
             const SizedBox(height: 20),
 
             // Действия: Done / Skip.
@@ -415,6 +424,90 @@ class _SubtaskChecklist extends ConsumerWidget {
                   ),
                 ],
               ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Секция вложений (фото/видео) задачи в карточке-детали. Read-only:
+/// горизонтальная лента превью без кнопок удаления; тап по превью открывает
+/// вложение на весь экран (фото — зум, видео — File-плеер на Android).
+/// Реактивно слушает ItemAttachmentsDao.watchAttachments. Если вложений нет —
+/// ничего не рисует (SizedBox.shrink), чтобы не было пустого места.
+///
+/// Источник рендера общий с add_task_sheet (core/widgets/attachment_view.dart),
+/// поэтому Android (File) и web (base64 data-URI) покрыты тем же кодом.
+class _AttachmentsSection extends ConsumerWidget {
+  const _AttachmentsSection({
+    required this.sourceItemId,
+    required this.textMuted,
+  });
+
+  /// id задачи, чьи вложения показываем (для виртуала — id якоря/шаблона).
+  final String sourceItemId;
+
+  final Color textMuted;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dao = ref.watch(itemAttachmentsDaoProvider);
+    final textTheme = Theme.of(context).textTheme;
+
+    return StreamBuilder<List<ItemAttachmentsTableData>>(
+      stream: dao.watchAttachments(sourceItemId),
+      builder: (ctx, snapshot) {
+        final attachments = snapshot.data ?? const [];
+        if (attachments.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(Icons.attach_file, size: 16, color: textMuted),
+                const SizedBox(width: 8),
+                Text(
+                  context.s('today.attachments_label'),
+                  style: textTheme.bodyMedium?.copyWith(color: textMuted),
+                ),
+                const Spacer(),
+                Text(
+                  '${attachments.length}',
+                  style: textTheme.bodySmall?.copyWith(color: textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Горизонтальная лента превью — не переполняет узкий экран.
+            SizedBox(
+              height: 72,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: attachments.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final a = attachments[i];
+                  return AttachmentThumb(
+                    attachment: a,
+                    onTap: () => viewAttachmentFullscreen(
+                      context,
+                      a,
+                      onUnsupportedVideo: () =>
+                          ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            context.s('today.attachment_web_video_unsupported'),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         );
       },

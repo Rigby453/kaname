@@ -419,6 +419,31 @@ void main() {
 
       await unmountAndFlush(tester);
     });
+
+    // Запускаем сессию и прокачиваем время сквозь фазу задержки (Hold), где
+    // активен джиттер круга (kHoldJitter). Цель — поймать краши жизненного
+    // цикла анимации (repeat-контроллер, setState после dispose). pumpAndSettle
+    // тут НЕЛЬЗЯ — джиттер repeat'ит бесконечно; пампим явными шагами.
+    testWidgets('running session animates through inhale + hold without crash',
+        (tester) async {
+      await tester.pumpWidget(harness(const BreathingScreen()));
+      await settle(tester);
+
+      // Дефолтный пресет — Box 4-4-4-4 (Inhale 4s → Hold 4s ...).
+      await tester.tap(find.text('Start'));
+      await tester.pump();
+
+      // Прокачиваем ~6 секунд сессии шагами по 250мс: проходим вдох (0-4с) и
+      // заходим в задержку (4-8с) — там крутится джиттер круга.
+      for (var i = 0; i < 24; i++) {
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+
+      // Экран жив, круг с подписью фазы отрисован (никакого red-screen).
+      expect(find.byType(BreathingScreen), findsOneWidget);
+
+      await unmountAndFlush(tester);
+    });
   });
 
   group('PostureScreen', () {

@@ -67,60 +67,66 @@ class WorkoutProgram {
 /// bodyweight). 'full_gym' в запросе разблокирует всё (см. _hasEquipment).
 class _ExerciseTemplate {
   const _ExerciseTemplate({
-    required this.name,
+    required this.key,
     required this.equipment,
     required this.group, // 'push' | 'pull' | 'legs' | 'core' | 'cardio'
   });
 
-  final String name;
+  /// Стабильный слаг-ключ упражнения (без префикса 'exercise.').
+  /// Локализация делается в localizeWorkoutProgram() через `exercise.<key>`.
+  /// ВАЖНО: слаг сохраняет подстроку 'barbell'/'dumbbell', если упражнению
+  /// нужен этот инвентарь — на это завязан unit-тест фильтрации по e.name.
+  final String key;
   final String equipment;
   final String group;
 }
 
 // Скромный пул упражнений. Достаточно разнообразный, чтобы собрать
 // push/pull/legs и full-body под доступный инвентарь.
+// Английские названия в комментариях — реальные display-строки лежат в
+// lib/core/l10n/strings/health_b.dart под ключами 'exercise.<key>'.
 const List<_ExerciseTemplate> _catalog = [
   // --- Push (грудь/плечи/трицепс) ---
-  _ExerciseTemplate(name: 'Barbell Bench Press', equipment: 'barbell', group: 'push'),
-  _ExerciseTemplate(name: 'Overhead Barbell Press', equipment: 'barbell', group: 'push'),
-  _ExerciseTemplate(name: 'Dumbbell Bench Press', equipment: 'dumbbells', group: 'push'),
-  _ExerciseTemplate(name: 'Dumbbell Shoulder Press', equipment: 'dumbbells', group: 'push'),
-  _ExerciseTemplate(name: 'Dumbbell Lateral Raise', equipment: 'dumbbells', group: 'push'),
-  _ExerciseTemplate(name: 'Push-Up', equipment: 'bodyweight', group: 'push'),
-  _ExerciseTemplate(name: 'Pike Push-Up', equipment: 'bodyweight', group: 'push'),
-  _ExerciseTemplate(name: 'Dip', equipment: 'bodyweight', group: 'push'),
+  _ExerciseTemplate(key: 'barbell_bench_press', equipment: 'barbell', group: 'push'), // Barbell Bench Press
+  _ExerciseTemplate(key: 'overhead_barbell_press', equipment: 'barbell', group: 'push'), // Overhead Barbell Press
+  _ExerciseTemplate(key: 'dumbbell_bench_press', equipment: 'dumbbells', group: 'push'), // Dumbbell Bench Press
+  _ExerciseTemplate(key: 'dumbbell_shoulder_press', equipment: 'dumbbells', group: 'push'), // Dumbbell Shoulder Press
+  _ExerciseTemplate(key: 'dumbbell_lateral_raise', equipment: 'dumbbells', group: 'push'), // Dumbbell Lateral Raise
+  _ExerciseTemplate(key: 'push_up', equipment: 'bodyweight', group: 'push'), // Push-Up
+  _ExerciseTemplate(key: 'pike_push_up', equipment: 'bodyweight', group: 'push'), // Pike Push-Up
+  _ExerciseTemplate(key: 'dip', equipment: 'bodyweight', group: 'push'), // Dip
 
   // --- Pull (спина/бицепс) ---
-  _ExerciseTemplate(name: 'Barbell Row', equipment: 'barbell', group: 'pull'),
-  _ExerciseTemplate(name: 'Barbell Curl', equipment: 'barbell', group: 'pull'),
-  _ExerciseTemplate(name: 'Dumbbell Row', equipment: 'dumbbells', group: 'pull'),
-  _ExerciseTemplate(name: 'Dumbbell Curl', equipment: 'dumbbells', group: 'pull'),
-  _ExerciseTemplate(name: 'Pull-Up', equipment: 'pullup_bar', group: 'pull'),
-  _ExerciseTemplate(name: 'Chin-Up', equipment: 'pullup_bar', group: 'pull'),
-  _ExerciseTemplate(name: 'Inverted Row', equipment: 'bodyweight', group: 'pull'),
-  _ExerciseTemplate(name: 'Superman Hold', equipment: 'bodyweight', group: 'pull'),
+  _ExerciseTemplate(key: 'barbell_row', equipment: 'barbell', group: 'pull'), // Barbell Row
+  _ExerciseTemplate(key: 'barbell_curl', equipment: 'barbell', group: 'pull'), // Barbell Curl
+  _ExerciseTemplate(key: 'dumbbell_row', equipment: 'dumbbells', group: 'pull'), // Dumbbell Row
+  _ExerciseTemplate(key: 'dumbbell_curl', equipment: 'dumbbells', group: 'pull'), // Dumbbell Curl
+  _ExerciseTemplate(key: 'pull_up', equipment: 'pullup_bar', group: 'pull'), // Pull-Up
+  _ExerciseTemplate(key: 'chin_up', equipment: 'pullup_bar', group: 'pull'), // Chin-Up
+  _ExerciseTemplate(key: 'inverted_row', equipment: 'bodyweight', group: 'pull'), // Inverted Row
+  _ExerciseTemplate(key: 'superman_hold', equipment: 'bodyweight', group: 'pull'), // Superman Hold
 
   // --- Legs (ноги/ягодицы) ---
-  _ExerciseTemplate(name: 'Barbell Back Squat', equipment: 'barbell', group: 'legs'),
-  _ExerciseTemplate(name: 'Barbell Deadlift', equipment: 'barbell', group: 'legs'),
-  _ExerciseTemplate(name: 'Barbell Romanian Deadlift', equipment: 'barbell', group: 'legs'),
-  _ExerciseTemplate(name: 'Dumbbell Goblet Squat', equipment: 'dumbbells', group: 'legs'),
-  _ExerciseTemplate(name: 'Dumbbell Lunge', equipment: 'dumbbells', group: 'legs'),
-  _ExerciseTemplate(name: 'Bodyweight Squat', equipment: 'bodyweight', group: 'legs'),
-  _ExerciseTemplate(name: 'Bulgarian Split Squat', equipment: 'bodyweight', group: 'legs'),
-  _ExerciseTemplate(name: 'Glute Bridge', equipment: 'bodyweight', group: 'legs'),
+  _ExerciseTemplate(key: 'barbell_back_squat', equipment: 'barbell', group: 'legs'), // Barbell Back Squat
+  _ExerciseTemplate(key: 'barbell_deadlift', equipment: 'barbell', group: 'legs'), // Barbell Deadlift
+  _ExerciseTemplate(key: 'barbell_romanian_deadlift', equipment: 'barbell', group: 'legs'), // Barbell Romanian Deadlift
+  _ExerciseTemplate(key: 'dumbbell_goblet_squat', equipment: 'dumbbells', group: 'legs'), // Dumbbell Goblet Squat
+  _ExerciseTemplate(key: 'dumbbell_lunge', equipment: 'dumbbells', group: 'legs'), // Dumbbell Lunge
+  _ExerciseTemplate(key: 'bodyweight_squat', equipment: 'bodyweight', group: 'legs'), // Bodyweight Squat
+  _ExerciseTemplate(key: 'bulgarian_split_squat', equipment: 'bodyweight', group: 'legs'), // Bulgarian Split Squat
+  _ExerciseTemplate(key: 'glute_bridge', equipment: 'bodyweight', group: 'legs'), // Glute Bridge
 
   // --- Core ---
-  _ExerciseTemplate(name: 'Plank', equipment: 'bodyweight', group: 'core'),
-  _ExerciseTemplate(name: 'Hanging Knee Raise', equipment: 'pullup_bar', group: 'core'),
-  _ExerciseTemplate(name: 'Hollow Body Hold', equipment: 'bodyweight', group: 'core'),
-  _ExerciseTemplate(name: 'Russian Twist', equipment: 'bodyweight', group: 'core'),
+  _ExerciseTemplate(key: 'plank', equipment: 'bodyweight', group: 'core'), // Plank
+  _ExerciseTemplate(key: 'hanging_knee_raise', equipment: 'pullup_bar', group: 'core'), // Hanging Knee Raise
+  _ExerciseTemplate(key: 'hollow_body_hold', equipment: 'bodyweight', group: 'core'), // Hollow Body Hold
+  _ExerciseTemplate(key: 'russian_twist', equipment: 'bodyweight', group: 'core'), // Russian Twist
 
   // --- Cardio / conditioning (для fat_loss/endurance) ---
-  _ExerciseTemplate(name: 'Burpee', equipment: 'bodyweight', group: 'cardio'),
-  _ExerciseTemplate(name: 'Mountain Climber', equipment: 'bodyweight', group: 'cardio'),
-  _ExerciseTemplate(name: 'Jumping Jack', equipment: 'bodyweight', group: 'cardio'),
-  _ExerciseTemplate(name: 'High Knees', equipment: 'bodyweight', group: 'cardio'),
+  _ExerciseTemplate(key: 'burpee', equipment: 'bodyweight', group: 'cardio'), // Burpee
+  _ExerciseTemplate(key: 'mountain_climber', equipment: 'bodyweight', group: 'cardio'), // Mountain Climber
+  _ExerciseTemplate(key: 'jumping_jack', equipment: 'bodyweight', group: 'cardio'), // Jumping Jack
+  _ExerciseTemplate(key: 'high_knees', equipment: 'bodyweight', group: 'cardio'), // High Knees
 ];
 
 /// Доступен ли инвентарь упражнения. 'full_gym' разблокирует всё; bodyweight
@@ -200,41 +206,44 @@ List<String> _groupsForDay(String dayType, String goal) {
   }
 }
 
-/// Человекочитаемый заголовок дня.
+/// КЛЮЧ заголовка дня (не display-строка). Локализуется в
+/// localizeWorkoutProgram(). Для нумерованного full-body дня ключ несёт
+/// индекс через разделитель '|': 'workout.day_full|N' (N = index+1).
 String _dayTitle(String dayType, int index) {
   switch (dayType) {
     case 'push':
-      return 'Push Day';
+      return 'workout.day_push';
     case 'pull':
-      return 'Pull Day';
+      return 'workout.day_pull';
     case 'legs':
-      return 'Leg Day';
+      return 'workout.day_legs';
     case 'upper':
-      return 'Upper Body';
+      return 'workout.day_upper';
     case 'lower':
-      return 'Lower Body';
+      return 'workout.day_lower';
     case 'core':
-      return 'Core & Conditioning';
+      return 'workout.day_core';
     case 'full':
     default:
-      return 'Full Body ${index + 1}';
+      return 'workout.day_full|${index + 1}';
   }
 }
 
-/// Имя программы по цели.
+/// КЛЮЧ имени программы по цели (не display-строка).
+/// Локализуется в localizeWorkoutProgram().
 String _programName(String goal) {
   switch (goal) {
     case 'strength':
-      return 'Strength Program';
+      return 'workout.program_strength';
     case 'muscle':
-      return 'Muscle Builder';
+      return 'workout.program_muscle';
     case 'fat_loss':
-      return 'Fat Loss Program';
+      return 'workout.program_fat_loss';
     case 'endurance':
-      return 'Endurance Program';
+      return 'workout.program_endurance';
     case 'general':
     default:
-      return 'General Fitness';
+      return 'workout.program_general';
   }
 }
 
@@ -282,7 +291,7 @@ WorkoutProgram buildTemplateProgram({
     // Кор/кардио по времени удержания → reps как количество/удержание.
     final isHold = t.group == 'core' || t.group == 'cardio';
     return ProgramExercise(
-      name: t.name,
+      name: t.key, // слаг; локализуется в localizeWorkoutProgram()
       sets: scheme.sets.clamp(2, 6),
       reps: isHold ? (t.group == 'core' ? '30-45s' : '30s') : scheme.reps,
       restSeconds: isHold ? 30 : scheme.rest,
@@ -303,7 +312,7 @@ WorkoutProgram buildTemplateProgram({
     if (exercises.isEmpty && available.isNotEmpty) {
       final t = available[d % available.length];
       exercises.add(ProgramExercise(
-        name: t.name,
+        name: t.key, // слаг; локализуется в localizeWorkoutProgram()
         sets: scheme.sets.clamp(2, 6),
         reps: scheme.reps,
         restSeconds: scheme.rest,
@@ -316,6 +325,58 @@ WorkoutProgram buildTemplateProgram({
     programName: _programName(goal),
     days: days,
     note: '',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Локализация шаблонной программы (PURE): ключи → display-строки
+// ---------------------------------------------------------------------------
+
+/// Превращает программу с КЛЮЧАМИ (которую отдаёт buildTemplateProgram) в
+/// программу с локализованными display-строками, готовую к сохранению в БД.
+///
+/// Маппинг ключей на переводы:
+///  - programName уже хранит полный ключ 'workout.program_*' → translate(...).
+///  - day.title:
+///      * 'workout.day_full|N' → translate('workout.day_full') с подстановкой
+///        {n} = N (нумерованный full-body день);
+///      * иначе полный ключ 'workout.day_*' → translate(...).
+///  - exercise.name хранит «голый» слаг (напр. 'barbell_bench_press');
+///    переводим как `translate('exercise.<slug>')`. note/sets/reps/rest — как есть.
+///
+/// РОБАСТНОСТЬ: translate() сам откатывается на en, а затем на сам ключ, поэтому
+/// отсутствующий перевод (translate(key) == key) — не ошибка. [translate]
+/// совместима с сигнатурой context.s.
+WorkoutProgram localizeWorkoutProgram(
+  WorkoutProgram program,
+  String Function(String key) translate,
+) {
+  String localizeDayTitle(String title) {
+    const fullPrefix = 'workout.day_full|';
+    if (title.startsWith(fullPrefix)) {
+      final n = title.substring(fullPrefix.length);
+      return translate('workout.day_full').replaceAll('{n}', n);
+    }
+    return translate(title);
+  }
+
+  final days = program.days.map((day) {
+    final exercises = day.exercises
+        .map((ex) => ProgramExercise(
+              name: translate('exercise.${ex.name}'),
+              sets: ex.sets,
+              reps: ex.reps,
+              restSeconds: ex.restSeconds,
+              note: ex.note,
+            ))
+        .toList();
+    return ProgramDay(title: localizeDayTitle(day.title), exercises: exercises);
+  }).toList();
+
+  return WorkoutProgram(
+    programName: translate(program.programName),
+    days: days,
+    note: program.note,
   );
 }
 

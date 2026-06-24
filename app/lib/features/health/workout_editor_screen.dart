@@ -327,12 +327,14 @@ class _ExerciseCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // Кнопка истории упражнения (Feature B) — прошлые подходы + динамика
+              // Кнопка истории упражнения (Feature B) — прошлые подходы + динамика.
+              // textMuted (не textFaint): это самостоятельная точка входа в
+              // дневник упражнения, она должна замечаться, а не теряться.
               IconButton(
                 icon: Icon(
                   Icons.show_chart,
                   size: 20,
-                  color: ext.textFaint,
+                  color: ext.textMuted,
                 ),
                 tooltip: context.s('workout.view_history'),
                 onPressed: onHistory,

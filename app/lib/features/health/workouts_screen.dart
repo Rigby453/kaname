@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/database/daos/workouts_dao.dart' show ExerciseWithLogs;
 import '../../core/l10n/app_strings.dart';
 import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
@@ -43,14 +44,34 @@ final recentSessionsProvider =
   return ref.watch(workoutsDaoProvider).watchRecentSessions(30);
 });
 
+/// Упражнения, по которым есть залогированные подходы (для вкладки «Дневник»).
+final exercisesWithLogsProvider =
+    StreamProvider.autoDispose<List<ExerciseWithLogs>>((ref) {
+  return ref.watch(workoutsDaoProvider).watchExercisesWithLogs();
+});
+
+// ---------------------------------------------------------------------------
+// Вкладки экрана: «Тренировки» (список программ) и «Дневник» (прогресс/история).
+// ---------------------------------------------------------------------------
+
+enum _WorkoutsTab { workouts, diary }
+
 // ---------------------------------------------------------------------------
 // Экран списка
 // ---------------------------------------------------------------------------
 
-class WorkoutsScreen extends ConsumerWidget {
+class WorkoutsScreen extends ConsumerStatefulWidget {
   const WorkoutsScreen({super.key});
 
-  Future<void> _newWorkout(BuildContext context, WidgetRef ref) async {
+  @override
+  ConsumerState<WorkoutsScreen> createState() => _WorkoutsScreenState();
+}
+
+class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
+  // Локальный стейт активной вкладки (не выходит за пределы экрана).
+  _WorkoutsTab _tab = _WorkoutsTab.workouts;
+
+  Future<void> _newWorkout(BuildContext context) async {
     final name = await _promptWorkoutName(
       context,
       title: context.s('workout.new_workout'),
@@ -62,7 +83,6 @@ class WorkoutsScreen extends ConsumerWidget {
 
   Future<void> _deleteWorkout(
     BuildContext context,
-    WidgetRef ref,
     WorkoutsTableData workout,
   ) async {
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
@@ -95,10 +115,8 @@ class WorkoutsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final textTheme = Theme.of(context).textTheme;
-    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    final workoutsAsync = ref.watch(workoutsListProvider);
+  Widget build(BuildContext context) {
+    final isWorkoutsTab = _tab == _WorkoutsTab.workouts;
 
     return Scaffold(
       appBar: AppBar(
@@ -112,46 +130,102 @@ class WorkoutsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      // FAB — единственное первичное действие (+ New Workout)
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'workouts_add_fab',
-        icon: const Icon(Icons.add),
-        label: Text(context.s('workout.new_workout')),
-        onPressed: () => _newWorkout(context, ref),
-      ),
-      body: workoutsAsync.when(
-        // KaiLoader вместо CircularProgressIndicator
-        loading: () => Center(
-          child: KaiLoader(label: context.s('loading.workouts')),
-        ),
-        error: (e, _) => Center(
-          child: Text(
-            context.s('error.loading_workouts'),
-            style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
-          ),
-        ),
-        data: (workouts) {
-          if (workouts.isEmpty) return const _EmptyState();
-          return ListView(
-            // 24dp screen margin — spec §4.1
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
-            children: [
-              const SizedBox(height: 8),
-              ...workouts.map(
-                (w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _WorkoutCard(
-                    key: ValueKey(w.id),
-                    workout: w,
-                    onDelete: () => _deleteWorkout(context, ref, w),
+      // FAB — только на вкладке «Тренировки» (создание программы). На «Дневнике»
+      // создавать нечего — FAB скрыт.
+      floatingActionButton: isWorkoutsTab
+          ? FloatingActionButton(
+              heroTag: 'workouts_add_fab',
+              tooltip: context.s('workout.new_workout'),
+              onPressed: () => _newWorkout(context),
+              child: const Icon(Icons.add),
+            )
+          : null,
+      body: Column(
+        children: [
+          // Переключатель вкладок — SegmentedButton в стиле плана (Day/Week).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<_WorkoutsTab>(
+                segments: [
+                  ButtonSegment(
+                    value: _WorkoutsTab.workouts,
+                    label: Text(
+                      context.s('workout.tab_workouts'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  ButtonSegment(
+                    value: _WorkoutsTab.diary,
+                    label: Text(
+                      context.s('workout.tab_diary'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                selected: {_tab},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => setState(() => _tab = s.first),
+              ),
+            ),
+          ),
+          Expanded(
+            child: isWorkoutsTab
+                ? _WorkoutsTabView(onDelete: _deleteWorkout)
+                : const _DiaryTabView(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Вкладка «Тренировки» — список программ + пустое состояние.
+class _WorkoutsTabView extends ConsumerWidget {
+  const _WorkoutsTabView({required this.onDelete});
+
+  final Future<void> Function(BuildContext, WorkoutsTableData) onDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final workoutsAsync = ref.watch(workoutsListProvider);
+
+    return workoutsAsync.when(
+      // KaiLoader вместо CircularProgressIndicator
+      loading: () => Center(
+        child: KaiLoader(label: context.s('loading.workouts')),
+      ),
+      error: (e, _) => Center(
+        child: Text(
+          context.s('error.loading_workouts'),
+          style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+        ),
+      ),
+      data: (workouts) {
+        if (workouts.isEmpty) return const _EmptyState();
+        return ListView(
+          // 24dp screen margin — spec §4.1
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
+          children: [
+            const SizedBox(height: 8),
+            ...workouts.map(
+              (w) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _WorkoutCard(
+                  key: ValueKey(w.id),
+                  workout: w,
+                  onDelete: () => onDelete(context, w),
                 ),
               ),
-              const _HistorySection(),
-            ],
-          );
-        },
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -222,16 +296,44 @@ class _WorkoutCard extends ConsumerWidget {
   }
 }
 
-/// История: последние завершённые сессии.
-class _HistorySection extends ConsumerWidget {
-  const _HistorySection();
+/// Вкладка «Дневник» — прогресс/история тренировок:
+/// прошлые сессии + прогресс по упражнениям (с логами подходов).
+class _DiaryTabView extends ConsumerWidget {
+  const _DiaryTabView();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sessions =
-        ref.watch(recentSessionsProvider).valueOrNull ?? const [];
-    if (sessions.isEmpty) return const SizedBox.shrink();
+    final sessions = ref.watch(recentSessionsProvider).valueOrNull ?? const [];
+    final exercises =
+        ref.watch(exercisesWithLogsProvider).valueOrNull ?? const [];
 
+    // Понятный общий empty-state, если данных нет вообще.
+    if (sessions.isEmpty && exercises.isEmpty) {
+      return const _DiaryEmptyState();
+    }
+
+    return ListView(
+      // 24dp экранный отступ — spec §4.1
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
+      children: [
+        if (sessions.isNotEmpty) ...[
+          _SessionsSection(sessions: sessions),
+          const SizedBox(height: 24),
+        ],
+        if (exercises.isNotEmpty) _ExerciseProgressSection(exercises: exercises),
+      ],
+    );
+  }
+}
+
+/// Прошлые сессии: последние завершённые тренировки (дата + длительность).
+class _SessionsSection extends StatelessWidget {
+  const _SessionsSection({required this.sessions});
+
+  final List<WorkoutSessionsTableData> sessions;
+
+  @override
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
@@ -249,41 +351,127 @@ class _HistorySection extends ConsumerWidget {
           '${months[d.month - 1]} ${d.day} · ${plMinutes(context, mins)}';
     }
 
-    return Padding(
-      // Отступ сверху от списка тренировок
-      padding: const EdgeInsets.only(top: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Заголовок секции — titleMedium (body font, w600, нет serif)
-          Text(context.s('workout.history'), style: textTheme.titleMedium),
-          const SizedBox(height: 12),
-          ...sessions.take(10).map(
-                (s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Заголовок секции — titleMedium (body font, w600, нет serif)
+        Text(context.s('workout.diary_sessions'), style: textTheme.titleMedium),
+        const SizedBox(height: 12),
+        ...sessions.take(10).map(
+              (s) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    // Иконка завершения — success color (не accent)
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 16,
+                      color: ext.success,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        line(s),
+                        // bodySmall + textMuted — метаданные истории
+                        style: textTheme.bodySmall?.copyWith(
+                          color: ext.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// Прогресс по упражнениям: упражнения с залогированными подходами;
+/// тап → история подходов конкретного упражнения (exercise_history_screen).
+class _ExerciseProgressSection extends StatelessWidget {
+  const _ExerciseProgressSection({required this.exercises});
+
+  final List<ExerciseWithLogs> exercises;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(context.s('workout.diary_progress'), style: textTheme.titleMedium),
+        const SizedBox(height: 12),
+        ...exercises.map(
+          (e) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => context.push(
+                  '/workouts/exercise/${e.exerciseId}/history'
+                  '?name=${Uri.encodeQueryComponent(e.name)}',
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                   child: Row(
                     children: [
-                      // Иконка завершения — success color (не accent)
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 16,
-                        color: ext.success,
-                      ),
-                      const SizedBox(width: 8),
+                      // Иконка прогресса — нейтральная (textMuted)
+                      Icon(Icons.show_chart, size: 18, color: ext.textMuted),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          line(s),
-                          // bodySmall + textMuted — метаданные истории
-                          style: textTheme.bodySmall?.copyWith(
-                            color: ext.textMuted,
-                          ),
+                          e.name,
+                          style: textTheme.titleSmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: ext.textFaint,
                       ),
                     ],
                   ),
                 ),
               ),
-        ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Пустое состояние «Дневника» — нет ни сессий, ни логов.
+class _DiaryEmptyState extends StatelessWidget {
+  const _DiaryEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.show_chart, size: 56, color: ext.textFaint),
+            const SizedBox(height: 16),
+            Text(
+              context.s('workout.diary_empty'),
+              textAlign: TextAlign.center,
+              style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
