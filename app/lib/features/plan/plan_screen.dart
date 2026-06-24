@@ -23,6 +23,7 @@ import 'widgets/plan_providers.dart';
 import 'widgets/time_grid.dart';
 import 'widgets/week_agenda.dart';
 import 'widgets/week_strip.dart';
+import 'widgets/year_view.dart';
 
 class PlanScreen extends ConsumerStatefulWidget {
   const PlanScreen({super.key});
@@ -186,6 +187,7 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                     ButtonSegment(value: PlanView.threeDay, label: Text(context.s('plan.view_3day'))),
                     ButtonSegment(value: PlanView.week, label: Text(context.s('plan.view_week'))),
                     ButtonSegment(value: PlanView.month, label: Text(context.s('plan.view_month'))),
+                    ButtonSegment(value: PlanView.year, label: Text(context.s('plan.view_year'))),
                   ],
                   selected: {view},
                   showSelectedIcon: false,
@@ -422,6 +424,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final isGrid = layout == PlanLayout.grid;
 
     switch (view) {
+      case PlanView.year:
+        return const YearView();
       case PlanView.month:
         return const MonthView();
       case PlanView.threeDay:
@@ -474,6 +478,8 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
     final isGrid = layout == PlanLayout.grid;
 
     switch (view) {
+      case PlanView.year:
+        return const YearView();
       case PlanView.month:
         return const MonthView();
       case PlanView.threeDay:
@@ -540,6 +546,8 @@ class _ViewDropdown extends ConsumerWidget {
         return context.s('plan.view_week');
       case PlanView.month:
         return context.s('plan.view_month');
+      case PlanView.year:
+        return context.s('plan.view_year');
     }
   }
 

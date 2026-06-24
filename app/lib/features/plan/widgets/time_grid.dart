@@ -1346,6 +1346,25 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
   // Зона хвата нижней ручки крупнее видимой полоски — Закон Фиттса.
   static const double _handleHitHeight = 22.0;
   static const double _laneGap = 2.0;
+
+  // Пороги показа ручек ресайза (по baseHeight). Модель Google Calendar:
+  // на МАЛЕНЬКОМ блоке мало места — оставляем ТОЛЬКО нижнюю ручку (resize конца),
+  // на БОЛЬШОМ — обе (верх тянет начало, низ — конец). Нижняя появляется РАНЬШЕ
+  // (на меньшей высоте), чем верхняя.
+  //
+  // Запас [_kHandleBodyGap] — это тело блока, которое зоны хвата НЕ должны
+  // съедать целиком, иначе tap/long-press-move перестанут попадать в тело.
+  //   • нижняя ручка: блок должен вместить одну зону хвата + тело →
+  //     baseHeight >= _handleHitHeight + _kHandleBodyGap (~36px);
+  //   • обе ручки: блок должен вместить ДВЕ зоны хвата + тело между ними →
+  //     baseHeight >= _handleHitHeight*2 + _kHandleBodyGap (~58px).
+  // Ниже нижнего порога — совсем короткий блок, ручек нет (как было), ресайз
+  // через карточку-деталь.
+  static const double _kHandleBodyGap = 14.0;
+  static const double _kBottomHandleMinHeight =
+      _handleHitHeight + _kHandleBodyGap; // ~36px → появляется нижняя ручка
+  static const double _kBothHandlesMinHeight =
+      _handleHitHeight * 2 + _kHandleBodyGap; // ~58px → добавляется верхняя
   // Минимальная высота блока во время resize в пикселях (= минимум 15 минут
   // визуально, но не меньше, чтобы хват не схлопнулся).
   static const double _minResizePx = 18.0;
@@ -1435,6 +1454,8 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
       },
       onResizeTopEnd: _commitResizeTop,
       handleHitHeight: _handleHitHeight,
+      bottomHandleMinHeight: _kBottomHandleMinHeight,
+      bothHandlesMinHeight: _kBothHandlesMinHeight,
     );
 
     // Внутренняя обёртка лифта (масштаб + тень + подсказка). Вынесена из
@@ -1786,6 +1807,44 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
   }
 }
 
+/// Карта распознавателей для зоны хвата ручки ресайза (верхней или нижней).
+/// Один [_EagerVerticalDragRecognizer] — он принимает жест в арене НЕМЕДЛЕННО
+/// (resolve(accepted) в addAllowedPointer), стабильно выигрывая над long-press
+/// родительского блока уже на ПЕРВЫЙ потяг. Распознаватель device-agnostic, т.е.
+/// одинаково ловит ТАЧ (палец) и МЫШЬ/трекпад: на вебе/десктопе ресайз за ручку
+/// начинается СРАЗУ по нажатию-протягиванию мышью, без необходимости «выбрать»
+/// блок заранее; тач-eager-поведение при этом не регрессирует.
+///
+/// Блочные тела колбэков (не arrow): сеттеры drag-распознавателя возвращают void,
+/// и arrow `=> onEnd()` «использовал» бы void-результат (use_of_void_result).
+Map<Type, GestureRecognizerFactory> _resizeHandleGestures({
+  required VoidCallback onStart,
+  required ValueChanged<double> onUpdate,
+  required VoidCallback onEnd,
+}) {
+  return <Type, GestureRecognizerFactory>{
+    _EagerVerticalDragRecognizer:
+        GestureRecognizerFactoryWithHandlers<_EagerVerticalDragRecognizer>(
+      () => _EagerVerticalDragRecognizer(),
+      (recognizer) {
+        recognizer
+          ..onStart = (_) {
+            onStart();
+          }
+          ..onUpdate = (d) {
+            onUpdate(d.delta.dy);
+          }
+          ..onEnd = (_) {
+            onEnd();
+          }
+          ..onCancel = () {
+            onEnd();
+          };
+      },
+    ),
+  };
+}
+
 /// Короткая длительность: 45 → "45m", 90 → "1h30m". Для подсказки resize.
 String _durationShort(int minutes) {
   if (minutes < 60) return '${minutes}m';
@@ -1810,6 +1869,8 @@ class _BlockContent extends StatelessWidget {
     required this.onResizeTopUpdate,
     required this.onResizeTopEnd,
     required this.handleHitHeight,
+    required this.bottomHandleMinHeight,
+    required this.bothHandlesMinHeight,
   });
 
   final ItemsTableData item;
@@ -1825,10 +1886,22 @@ class _BlockContent extends StatelessWidget {
   final ValueChanged<double> onResizeTopUpdate;
   final VoidCallback onResizeTopEnd;
   final double handleHitHeight;
+  // Порог (по baseHeight), с которого показывается НИЖНЯЯ ручка (resize конца).
+  // Появляется раньше верхней — на меньшей высоте.
+  final double bottomHandleMinHeight;
+  // Порог (по baseHeight), с которого ДОБАВЛЯЕТСЯ ВЕРХНЯЯ ручка (resize начала).
+  // Выше нижнего: верх показываем лишь когда под ДВЕ зоны хвата + тело хватает места.
+  final double bothHandlesMinHeight;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    // Пороговая логика показа ручек (модель Google Calendar):
+    //   • маленький блок (< bottomHandleMinHeight) — ручек нет;
+    //   • средний (>= bottomHandleMinHeight) — ТОЛЬКО нижняя;
+    //   • большой (>= bothHandlesMinHeight) — верхняя + нижняя.
+    final showBottomHandle = baseHeight >= bottomHandleMinHeight;
+    final showTopHandle = baseHeight >= bothHandlesMinHeight;
     final timeRange = formatBlockTimeRange(item.scheduledAt, item.durationMinutes);
     final isDone = item.status == 'done';
 
@@ -1927,101 +2000,75 @@ class _BlockContent extends StatelessWidget {
           // распознавателем. Показываем только когда блок достаточно высок, чтобы
           // верхняя и нижняя зоны хвата не перекрыли весь блок (иначе тело стало
           // бы недоступно для tap/move). startTime тянется верхом, endTime — низом.
-          if (baseHeight >= handleHitHeight * 2 + 6)
+          if (showTopHandle)
             Positioned(
               left: 0,
               right: 0,
               top: 0,
               height: handleHitHeight,
-              child: RawGestureDetector(
-                behavior: HitTestBehavior.opaque,
-                gestures: <Type, GestureRecognizerFactory>{
-                  _EagerVerticalDragRecognizer:
-                      GestureRecognizerFactoryWithHandlers<
-                          _EagerVerticalDragRecognizer>(
-                    () => _EagerVerticalDragRecognizer(),
-                    (recognizer) {
-                      recognizer
-                        ..onStart = (_) {
-                          onResizeTopStart();
-                        }
-                        ..onUpdate = (d) {
-                          onResizeTopUpdate(d.delta.dy);
-                        }
-                        ..onEnd = (_) {
-                          onResizeTopEnd();
-                        }
-                        ..onCancel = () {
-                          onResizeTopEnd();
-                        };
-                    },
+              // MouseRegion-курсор ресайза (resizeUpDown): на вебе/десктопе при
+              // наведении мышью на зону хвата верхней ручки курсор сообщает «край
+              // тянется», как у Google Calendar. На тач-устройствах курсора нет —
+              // поведение не меняется.
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeUpDown,
+                child: RawGestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  gestures: _resizeHandleGestures(
+                    onStart: onResizeTopStart,
+                    onUpdate: onResizeTopUpdate,
+                    onEnd: onResizeTopEnd,
                   ),
-                },
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: Container(
-                    width: 28,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 3),
-                    decoration: BoxDecoration(
-                      // На плотной заливке ручка из цвета текста (автоконтраст)
-                      // читается лучше, чем граница (близкая к фону).
-                      color: colors.fg.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(2),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Container(
+                      width: 28,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 3),
+                      decoration: BoxDecoration(
+                        // На плотной заливке ручка из цвета текста (автоконтраст)
+                        // читается лучше, чем граница (близкая к фону).
+                        color: colors.fg.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: handleHitHeight,
-            child: RawGestureDetector(
-              behavior: HitTestBehavior.opaque,
-              gestures: <Type, GestureRecognizerFactory>{
-                _EagerVerticalDragRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                        _EagerVerticalDragRecognizer>(
-                  () => _EagerVerticalDragRecognizer(),
-                  (recognizer) {
-                    // Блочные тела (а не arrow): колбэки drag-распознавателя
-                    // возвращают void, и arrow `=> onResizeEnd()` «использовал»
-                    // бы void-результат (use_of_void_result). onStart/onUpdate/
-                    // onEnd принимают детали драга, onCancel — без аргументов.
-                    recognizer
-                      ..onStart = (_) {
-                        onResizeStart();
-                      }
-                      ..onUpdate = (d) {
-                        onResizeUpdate(d.delta.dy);
-                      }
-                      ..onEnd = (_) {
-                        onResizeEnd();
-                      }
-                      ..onCancel = () {
-                        onResizeEnd();
-                      };
-                  },
-                ),
-              },
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  width: 28,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 3),
-                  decoration: BoxDecoration(
-                    // На плотной заливке ручка из цвета текста (автоконтраст)
-                    // читается лучше, чем граница (близкая к фону).
-                    color: colors.fg.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(2),
+          if (showBottomHandle)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: handleHitHeight,
+              // MouseRegion-курсор ресайза для зоны хвата нижней ручки (см. выше).
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeUpDown,
+                child: RawGestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  gestures: _resizeHandleGestures(
+                    onStart: onResizeStart,
+                    onUpdate: onResizeUpdate,
+                    onEnd: onResizeEnd,
+                  ),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      width: 28,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 3),
+                      decoration: BoxDecoration(
+                        // На плотной заливке ручка из цвета текста (автоконтраст)
+                        // читается лучше, чем граница (близкая к фону).
+                        color: colors.fg.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

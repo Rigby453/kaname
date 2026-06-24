@@ -477,4 +477,35 @@ void main() {
       await _unmount(tester);
     });
   });
+
+  group('PlanScreen year view — overflow audits', () {
+    testWidgets('narrow 320px: no overflow', (tester) async {
+      await _setSize(tester, _narrowSize);
+      await tester.pumpWidget(
+        harness.build(
+          const PlanScreen(),
+          extraOverrides: [
+            planViewProvider.overrideWith((ref) => PlanView.year),
+          ],
+        ),
+      );
+      await _settle(tester);
+      await _unmount(tester);
+    });
+
+    testWidgets('large text scale 1.5: no overflow', (tester) async {
+      await _setSize(tester, _normalSize);
+      await tester.pumpWidget(
+        harness.build(
+          const PlanScreen(),
+          textScale: _largeTextScale,
+          extraOverrides: [
+            planViewProvider.overrideWith((ref) => PlanView.year),
+          ],
+        ),
+      );
+      await _settle(tester);
+      await _unmount(tester);
+    });
+  });
 }

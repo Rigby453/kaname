@@ -10,8 +10,8 @@ import '../../../core/utils/day_window.dart';
 import 'recurrence_providers.dart';
 import 'week_strip.dart' show selectedDayProvider;
 
-/// Режим отображения плана. Порядок видов: День, 3 дня, Неделя, Месяц.
-enum PlanView { day, threeDay, week, month }
+/// Режим отображения плана. Порядок видов: День, 3 дня, Неделя, Месяц, Год.
+enum PlanView { day, threeDay, week, month, year }
 
 /// Раскладка Day/Week: список (текущее поведение) или сетка времени
 /// в стиле Google Calendar. Month всегда показывается как календарь.
@@ -60,6 +60,32 @@ final planLayoutProvider =
 final rangeItemsProvider = Provider.autoDispose
     .family<AsyncValue<List<ItemsTableData>>, (DateTime, DateTime)>((ref, range) {
   return ref.watch(expandedRangeItemsProvider(range));
+});
+
+/// Счётчик задач по дням за весь [year] — для год-вида (как Google Calendar).
+///
+/// ЭФФЕКТИВНОСТЬ: один watch на диапазон [1 янв year, 1 янв year+1) через
+/// expandedRangeItemsProvider (конкретные строки + раскрытые повторы серий),
+/// затем группировка в Dart по ЛОКАЛЬНОМУ дню (localDayKey, не UTC-границы).
+/// НЕ 365 отдельных watch — одна подписка на год.
+///
+/// Возвращает `Map<localDayKey, count>`. Ключ года — int (value-equality).
+/// autoDispose: освобождается при уходе с год-вида/смене года.
+final yearTaskCountsProvider =
+    Provider.autoDispose.family<AsyncValue<Map<String, int>>, int>((ref, year) {
+  final yearStart = DateTime(year, 1, 1);
+  final yearEnd = DateTime(year + 1, 1, 1);
+  final itemsAsync = ref.watch(expandedRangeItemsProvider((yearStart, yearEnd)));
+  return itemsAsync.whenData((items) {
+    final counts = <String, int>{};
+    for (final i in items) {
+      // День задачи = ЛОКАЛЬНАЯ дата scheduledAt (согласовано с watchTodayItems
+      // и месячным видом). localDayKey считает по локальным Y/M/D без toUtc.
+      final key = localDayKey(i.scheduledAt);
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  });
 });
 
 /// Видимость строки поиска на экране Plan.

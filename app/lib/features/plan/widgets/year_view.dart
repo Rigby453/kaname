@@ -1,0 +1,347 @@
+// Год-вид Plan (как в Google Calendar): сетка всех 12 месяцев выбранного года.
+// Каждый месяц — компактная мини-сетка дней (Пн..Вс по столбцам). На днях с
+// задачами — индикатор «занятости»: заливка-точка под числом, насыщенность
+// которой растёт с числом задач (1 → бледная, 3+ → полная accent).
+//
+// Тап по дню → выбрать его (selectedDayProvider) и переключиться на дневной
+// вид (как в month_view). Свайп влево/вправо листает ГОДА. Заголовок — год.
+//
+// Данные эффективны: один watch на весь год (yearTaskCountsProvider агрегирует
+// кол-во задач по локальным дням через GROUP-в-Dart), НЕ 365 отдельных запросов.
+// Бакетинг дня согласован с month_view: локальная дата scheduledAt (localDayKey).
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/day_window.dart';
+import 'plan_providers.dart';
+import 'week_strip.dart' show selectedDayProvider, isSameDate;
+
+/// Ключи локализованных однобуквенных подписей дней недели (Пн..Вс) для
+/// мини-месяцев. Переиспользуем существующие weekday-строки (берём 1-й символ
+/// в виджете, чтобы шапка мини-месяца была максимально узкой).
+const List<String> _weekdayKeys = [
+  'plan.weekday_mon',
+  'plan.weekday_tue',
+  'plan.weekday_wed',
+  'plan.weekday_thu',
+  'plan.weekday_fri',
+  'plan.weekday_sat',
+  'plan.weekday_sun',
+];
+
+class YearView extends ConsumerWidget {
+  const YearView({super.key});
+
+  /// Сдвигает выбранный год на [delta], сохраняя месяц/день (с клампом дня).
+  void _changeYear(WidgetRef ref, int delta) {
+    final sel = ref.read(selectedDayProvider);
+    final targetYear = sel.year + delta;
+    final lastDay = DateTime(targetYear, sel.month + 1, 0).day;
+    ref.read(selectedDayProvider.notifier).state = DateTime(
+      targetYear,
+      sel.month,
+      sel.day.clamp(1, lastDay),
+    );
+  }
+
+  /// Тап по дню: выбрать его и перейти на дневной вид (как в month_view).
+  void _selectDay(WidgetRef ref, DateTime day) {
+    ref.read(selectedDayProvider.notifier).state =
+        DateTime(day.year, day.month, day.day);
+    ref.read(planViewProvider.notifier).state = PlanView.day;
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textMuted = ext?.textMuted ?? colorScheme.onSurface;
+
+    final sel = ref.watch(selectedDayProvider);
+    final year = sel.year;
+
+    // ОДИН watch на весь год: агрегированные счётчики задач по локальным дням.
+    final counts =
+        ref.watch(yearTaskCountsProvider(year)).valueOrNull ??
+        const <String, int>{};
+
+    final today = DateTime.now();
+
+    return GestureDetector(
+      // Горизонтальный свайп листает ГОДА (направление как в month_view:
+      // свайп вправо = назад). onHorizontalDragEnd не мешает тапам по дням.
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v.abs() <= 300) return;
+        _changeYear(ref, v > 0 ? -1 : 1);
+      },
+      child: Column(
+        children: [
+          // Заголовок года со стрелками — паттерн идентичен MonthView.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.chevron_left, color: textMuted),
+                  onPressed: () => _changeYear(ref, -1),
+                ),
+                Expanded(
+                  child: Text(
+                    '$year',
+                    style: textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.chevron_right, color: textMuted),
+                  onPressed: () => _changeYear(ref, 1),
+                ),
+              ],
+            ),
+          ),
+          // Сетка 12 мини-месяцев. Кол-во колонок адаптивно по ширине:
+          // 1 (очень узко) / 2 (телефон) / 3 / 4 (планшет). LayoutBuilder
+          // считает ширину, GridView скроллит вертикально — без overflow.
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                final cols = w >= 900
+                    ? 4
+                    : w >= 620
+                        ? 3
+                        : w >= 340
+                            ? 2
+                            : 1;
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    // Мини-месяц чуть выше квадрата: заголовок + шапка дней + до
+                    // 6 строк недель. Чуть «портретный» аспект под это.
+                    childAspectRatio: 0.82,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemCount: 12,
+                  itemBuilder: (context, index) {
+                    final month = index + 1;
+                    // RepaintBoundary вокруг каждого мини-месяца: год-вид —
+                    // много ячеек; изолируем перерисовку (перф §6).
+                    return RepaintBoundary(
+                      child: _MiniMonth(
+                        year: year,
+                        month: month,
+                        counts: counts,
+                        today: today,
+                        selected: sel,
+                        onSelectDay: (d) => _selectDay(ref, d),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Компактная мини-сетка одного месяца: заголовок месяца + однобуквенная шапка
+/// дней недели + строки чисел (Пн..Вс). На днях с задачами — индикатор-точка,
+/// насыщенность которой растёт с числом задач. Сегодня выделено рамкой.
+class _MiniMonth extends StatelessWidget {
+  const _MiniMonth({
+    required this.year,
+    required this.month,
+    required this.counts,
+    required this.today,
+    required this.selected,
+    required this.onSelectDay,
+  });
+
+  final int year;
+  final int month;
+  final Map<String, int> counts;
+  final DateTime today;
+  final DateTime selected;
+  final ValueChanged<DateTime> onSelectDay;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textFaint = ext?.textFaint ?? colorScheme.onSurface;
+
+    final firstOfMonth = DateTime(year, month, 1);
+    final leadingBlanks = firstOfMonth.weekday - 1; // Mon=0..Sun=6
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+
+    // Заголовок мини-месяца: короткое имя ('Jan'/'янв').
+    final monthLabel = DateFormat('MMM').format(firstOfMonth);
+
+    // Ячейки сетки: пустышки до первого дня + числа 1..N.
+    final cells = <Widget>[
+      for (var i = 0; i < leadingBlanks; i++) const SizedBox.shrink(),
+      for (var d = 1; d <= daysInMonth; d++)
+        _MiniDayCell(
+          day: d,
+          count: counts[localDayKey(DateTime(year, month, d))] ?? 0,
+          isToday: isSameDate(DateTime(year, month, d), today),
+          isSelected: isSameDate(DateTime(year, month, d), selected),
+          onTap: () => onSelectDay(DateTime(year, month, d)),
+        ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 2),
+          child: Text(
+            monthLabel,
+            style: textTheme.titleSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        // Однобуквенная шапка дней недели (узкая под мини-сетку).
+        Row(
+          children: [
+            for (final key in _weekdayKeys)
+              Expanded(
+                child: Center(
+                  child: Text(
+                    // Первый символ локализованной подписи (М/В/С… или M/T/W…).
+                    _firstChar(context.s(key)),
+                    style: textTheme.labelSmall?.copyWith(
+                      color: textFaint,
+                      fontSize: 9,
+                      height: 1.0,
+                    ),
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        // Сетка чисел месяца: 7 колонок, без скролла (мини-месяц целиком виден).
+        Expanded(
+          child: GridView.count(
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 7,
+            childAspectRatio: 1.0,
+            children: cells,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Безопасно берёт первый символ строки (или пусто).
+  static String _firstChar(String s) =>
+      s.characters.isEmpty ? '' : s.characters.first;
+}
+
+/// Одна ячейка дня в мини-месяце. Индикатор «занятости»: число рисуется поверх
+/// круглой подложки accent, прозрачность которой растёт с числом задач
+/// (1 → бледная, 3+ → полная). Сегодня — тонкая рамка accent. Выбранный день —
+/// сплошная accent-заливка (как маркер в month_view).
+class _MiniDayCell extends StatelessWidget {
+  const _MiniDayCell({
+    required this.day,
+    required this.count,
+    required this.isToday,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final int day;
+  final int count;
+  final bool isToday;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasTasks = count > 0;
+
+    // Интенсивность заливки по «занятости»: 1→0.30, 2→0.55, 3+→0.80 непрозр.
+    final double busyOpacity = count <= 0
+        ? 0.0
+        : count == 1
+            ? 0.30
+            : count == 2
+                ? 0.55
+                : 0.80;
+
+    // Цвет подложки: выбранный — полная accent; иначе — accent с busyOpacity.
+    final Color? fill = isSelected
+        ? colorScheme.primary
+        : hasTasks
+            ? colorScheme.primary.withValues(alpha: busyOpacity)
+            : null;
+
+    // Цвет числа: поверх насыщенной заливки — onPrimary (контраст);
+    // на бледной/без заливки — onSurface.
+    final bool denseFill = isSelected || busyOpacity >= 0.55;
+    final Color textColor =
+        denseFill ? colorScheme.onPrimary : colorScheme.onSurface;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(1),
+        child: Center(
+          child: Container(
+            // Фиксированный компактный кружок; FittedBox ужимает число при
+            // крупном текст-скейле, поэтому overflow невозможен.
+            decoration: BoxDecoration(
+              color: fill,
+              shape: BoxShape.circle,
+              border: isToday && !isSelected
+                  ? Border.all(color: colorScheme.primary, width: 1.0)
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Text(
+                  '$day',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: textColor,
+                    fontWeight: isSelected || isToday || count >= 3
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

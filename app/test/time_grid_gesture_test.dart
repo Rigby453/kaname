@@ -213,13 +213,14 @@ void main() {
   testWidgets(
     'верхняя ручка тянет начало (startTime) и не даёт длительности уйти в ноль',
     (tester) async {
-      // Задача 09:00–10:00 (60 мин). Тянем верхнюю ручку ВНИЗ почти до конца —
-      // длительность должна зажаться минимумом (15 мин), конец остаться 10:00.
-      await insertTask(id: 'top', hour: 9, minute: 0, durationMinutes: 60);
+      // Задача 09:00–11:00 (120 мин, 112px) — БОЛЬШОЙ блок, на нём показаны ОБЕ
+      // ручки (порог _kBothHandlesMinHeight ~58px). Тянем верхнюю ручку ВНИЗ
+      // почти до конца — длительность зажимается минимумом (15 мин), конец 11:00.
+      await insertTask(id: 'top', hour: 9, minute: 0, durationMinutes: 120);
       await pumpGrid(tester);
 
       final before = await readTask('top');
-      expect(before.durationMinutes, 60);
+      expect(before.durationMinutes, 120);
 
       // Берём геометрию блока по его ключу (ValueKey(id)) — надёжно.
       final blockBox = tester.getRect(find.byKey(const ValueKey('top')));
@@ -241,7 +242,7 @@ void main() {
       final endMin = after.scheduledAt.hour * 60 +
           after.scheduledAt.minute +
           after.durationMinutes;
-      expect(endMin, 10 * 60, reason: 'конец задачи остался 10:00');
+      expect(endMin, 11 * 60, reason: 'конец задачи остался 11:00');
       // Начало сдвинулось позже исходных 09:00.
       expect(after.scheduledAt.hour * 60 + after.scheduledAt.minute,
           greaterThan(9 * 60));
@@ -253,8 +254,9 @@ void main() {
   testWidgets(
     'верхняя ручка тянет начало раньше, удлиняя задачу (конец фиксирован)',
     (tester) async {
-      // Задача 09:00–10:00. Тянем верх ВВЕРХ на 1 час → начало 08:00, 120 мин.
-      await insertTask(id: 'grow', hour: 9, minute: 0, durationMinutes: 60);
+      // Задача 09:00–10:30 (90 мин, 84px) — БОЛЬШОЙ блок (обе ручки). Тянем верх
+      // ВВЕРХ на 1 час → начало 08:00, длительность 150 мин (конец 10:30 фиксирован).
+      await insertTask(id: 'grow', hour: 9, minute: 0, durationMinutes: 90);
       await pumpGrid(tester);
 
       final blockBox = tester.getRect(find.byKey(const ValueKey('grow')));
@@ -270,7 +272,62 @@ void main() {
       final after = await readTask('grow');
       expect(after.scheduledAt.hour, 8, reason: 'начало уехало на 08:00');
       expect(after.scheduledAt.minute, 0);
-      expect(after.durationMinutes, 120, reason: 'задача удлинилась до 2 часов');
+      expect(after.durationMinutes, 150,
+          reason: 'задача удлинилась до 2.5 часов (конец 10:30 фиксирован)');
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  // Считает зоны хвата ручек ресайза ВНУТРИ блока [id]. Каждая зона обёрнута в
+  // MouseRegion с курсором resizeUpDown (курсор ресайза на вебе/десктопе) — по
+  // этому маркеру их и находим, не завися от приватных типов распознавателей.
+  int resizeHandleCount(WidgetTester tester, String id) {
+    final handles = find.descendant(
+      of: find.byKey(ValueKey(id)),
+      matching: find.byWidgetPredicate(
+        (w) => w is MouseRegion &&
+            w.cursor == SystemMouseCursors.resizeUpDown,
+      ),
+    );
+    return handles.evaluate().length;
+  }
+
+  testWidgets(
+    'МАЛЕНЬКИЙ блок — только нижняя ручка; БОЛЬШОЙ — обе (верх+низ)',
+    (tester) async {
+      // Маленький блок: 45 мин = 42px. Это >= _kBottomHandleMinHeight (~36px),
+      // но < _kBothHandlesMinHeight (~58px) → показывается ТОЛЬКО нижняя ручка.
+      await insertTask(id: 'small', hour: 8, minute: 0, durationMinutes: 45);
+      // Большой блок: 120 мин = 112px >= _kBothHandlesMinHeight → ОБЕ ручки.
+      await insertTask(id: 'big', hour: 12, minute: 0, durationMinutes: 120);
+      await pumpGrid(tester);
+
+      // Маленький блок: ровно одна зона хвата (нижняя), верхней нет.
+      expect(resizeHandleCount(tester, 'small'), 1,
+          reason: 'на маленьком блоке только нижняя ручка (верхней нет)');
+      // Большой блок: две зоны хвата (верхняя + нижняя).
+      expect(resizeHandleCount(tester, 'big'), 2,
+          reason: 'на большом блоке обе ручки (верх + низ)');
+
+      // Курсор ресайза действительно задан на зонах хвата (веб/десктоп): хотя бы
+      // одна MouseRegion с resizeUpDown присутствует у обоих блоков.
+      expect(resizeHandleCount(tester, 'small'), greaterThan(0));
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'ОЧЕНЬ короткий блок — ручек нет совсем',
+    (tester) async {
+      // 15 мин → durationToHeight зажимает до 24px (< _kBottomHandleMinHeight
+      // ~36px) → ручек нет, ресайз только через карточку-деталь.
+      await insertTask(id: 'tiny', hour: 8, minute: 0, durationMinutes: 15);
+      await pumpGrid(tester);
+
+      expect(resizeHandleCount(tester, 'tiny'), 0,
+          reason: 'очень короткий блок без ручек ресайза');
 
       await unmountAndFlush(tester);
     },
