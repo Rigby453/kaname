@@ -44,7 +44,17 @@ void main() {
         'games': 120,
         'browsing': 60,
         'messaging': 90,
+        'other': 720, // информационная категория, фактически без лимита
       });
+    });
+
+    test('other: очень высокий порог → нормальное использование всегда ok', () {
+      // 6 часов (360 мин) — всё ещё ok для 'other' (порог 720).
+      expect(screenTimeLevel(360, 0, 'other'), ScreenTimeLevel.ok);
+      // 500 мин (83%+ от 720) → much.
+      expect(screenTimeLevel(500, 0, 'other'), ScreenTimeLevel.much);
+      // Ровно 720 → tooMuch (порог достигнут, но это 12 часов).
+      expect(screenTimeLevel(720, 0, 'other'), ScreenTimeLevel.tooMuch);
     });
   });
 
@@ -98,7 +108,7 @@ void main() {
       );
     });
 
-    test('каждая категория формирует свой ключ', () {
+    test('каждая стандартная категория формирует свой ключ', () {
       for (final cat in const [
         'social',
         'video',

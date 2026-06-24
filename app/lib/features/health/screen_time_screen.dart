@@ -1,7 +1,7 @@
 // Экран Screen Time — ежедневные лимиты + реальный трекинг использования (Android).
 // Лимиты: SharedPreferences, ключ 'screen_time_limits' (JSON).
 // Использование: плагин usage_stats (спец-разрешение PACKAGE_USAGE_STATS),
-//   агрегируется по категориям. Блокировки приложений НЕТ — только предупреждения.
+//   агрегируется по категориям. Блокировок приложений НЕТ — только предупреждения.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,7 +20,17 @@ const _categoryIcons = <String, IconData>{
   'games': Icons.sports_esports_outlined,
   'browsing': Icons.language_outlined,
   'messaging': Icons.chat_bubble_outline,
+  'other': Icons.apps_outlined,
 };
+
+/// Максимальный лимит слайдера (мин). 12 часов = 720 мин.
+const _kSliderMaxMinutes = 720.0;
+
+/// Минимальный лимит слайдера (мин).
+const _kSliderMinMinutes = 15.0;
+
+/// Шаг слайдера (мин).
+const _kSliderStep = 15.0;
 
 class ScreenTimeScreen extends ConsumerStatefulWidget {
   const ScreenTimeScreen({super.key});
@@ -61,14 +71,8 @@ class _ScreenTimeScreenState extends ConsumerState<ScreenTimeScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(context.s('screentime.title')),
-        actions: [
-          IconButton(
-            tooltip: context.s('screentime.refresh'),
-            icon: const Icon(Icons.refresh),
-            onPressed: () =>
-                ref.read(screenTimeUsageProvider.notifier).refresh(),
-          ),
-        ],
+        // FIX 3: убрана кнопка «обновить» из AppBar.
+        // Обновление доступно через RefreshIndicator (свайп) и при resume.
       ),
       body: RefreshIndicator(
         onRefresh: () => ref.read(screenTimeUsageProvider.notifier).refresh(),
@@ -98,6 +102,8 @@ class _ScreenTimeScreenState extends ConsumerState<ScreenTimeScreen>
           Card(
             child: Column(
               children: screenTimeCategories.entries
+                  // 'other' не имеет смысла ограничивать — не показываем в лимитах
+                  .where((e) => e.key != 'other')
                   .map(
                     (entry) => _CategoryTile(
                       categoryKey: entry.key,
@@ -263,20 +269,80 @@ class _UsageSection extends ConsumerWidget {
       );
     }
 
-    // 4) Список категорий с прогрессом / over-limit.
+    // 4) Список категорий с прогрессом / over-limit + строка «Total today».
     return Card(
       child: Column(
-        children: screenTimeCategories.entries
-            .map(
-              (entry) => _UsageTile(
-                categoryKey: entry.key,
-                categoryName: entry.value,
-                icon: _categoryIcons[entry.key] ?? Icons.apps_outlined,
-                usedMinutes: usage.usedMinutes[entry.key] ?? 0,
-                limitMinutes: limits[entry.key] ?? 0,
+        children: [
+          // «Total today» — сумма всех категорий (включая other).
+          _TotalTodayTile(totalMinutes: totalUsed),
+
+          // Стандартные категории с лимитами.
+          ...screenTimeCategories.entries
+              .where((e) => e.key != 'other')
+              .map(
+                (entry) => _UsageTile(
+                  categoryKey: entry.key,
+                  categoryName: entry.value,
+                  icon: _categoryIcons[entry.key] ?? Icons.apps_outlined,
+                  usedMinutes: usage.usedMinutes[entry.key] ?? 0,
+                  limitMinutes: limits[entry.key] ?? 0,
+                  isOther: false,
+                ),
               ),
-            )
-            .toList(),
+
+          // Категория «Other» — только информационная, без лимита/предупреждений.
+          if ((usage.usedMinutes['other'] ?? 0) > 0)
+            _UsageTile(
+              categoryKey: 'other',
+              categoryName: context.s('screentime.category_other'),
+              icon: Icons.apps_outlined,
+              usedMinutes: usage.usedMinutes['other'] ?? 0,
+              limitMinutes: 0, // без лимита (всегда)
+              isOther: true,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Строка «Total today» — суммарное экранное время за день по всем категориям.
+class _TotalTodayTile extends StatelessWidget {
+  const _TotalTodayTile({required this.totalMinutes});
+
+  final int totalMinutes;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final hours = totalMinutes ~/ 60;
+    final mins = totalMinutes % 60;
+    final timeStr = hours > 0
+        ? (mins > 0 ? '${hours}h ${mins}m' : '${hours}h')
+        : '${mins}m';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          Icon(Icons.today_outlined, size: 20, color: ext.textMuted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              context.s('screentime.total_today'),
+              style: textTheme.bodyLarge,
+            ),
+          ),
+          Text(
+            timeStr,
+            style: textTheme.bodySmall?.copyWith(
+              color: ext.textMuted,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -284,6 +350,7 @@ class _UsageSection extends ConsumerWidget {
 
 /// Плитка использования одной категории: «used X / limit Y», прогресс-бар,
 /// индикатор превышения (ember + «over by N» / «limit reached»).
+/// Для [isOther]==true: только информационная строка, без лимита/прогресса/советов.
 class _UsageTile extends ConsumerWidget {
   const _UsageTile({
     required this.categoryKey,
@@ -291,6 +358,7 @@ class _UsageTile extends ConsumerWidget {
     required this.icon,
     required this.usedMinutes,
     required this.limitMinutes,
+    required this.isOther,
   });
 
   final String categoryKey;
@@ -298,6 +366,8 @@ class _UsageTile extends ConsumerWidget {
   final IconData icon;
   final int usedMinutes;
   final int limitMinutes;
+  // true для 'other' — только информация, без лимита и советов.
+  final bool isOther;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -305,16 +375,19 @@ class _UsageTile extends ConsumerWidget {
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final primary = Theme.of(context).colorScheme.primary;
 
-    final hasLimit = limitMinutes > 0;
+    // Для 'other' всегда без лимита и без предупреждений.
+    final hasLimit = !isOther && limitMinutes > 0;
     final isOver = hasLimit && usedMinutes >= limitMinutes;
     final overBy = usedMinutes - limitMinutes;
 
-    // Бесплатный «зашитый» совет: уровень + тон → ключ локализованной фразы.
-    // Показываем только когда есть данные об использовании (used > 0); дефолтные
-    // пороги применяются даже без явного лимита.
+    // Бесплатный «зашитый» совет — только для стандартных категорий.
     final tone = ref.watch(toneProvider);
-    final level = screenTimeLevel(usedMinutes, limitMinutes, categoryKey);
-    final adviceKey = screenTimeAdviceKey(categoryKey, level, tone);
+    final level = isOther
+        ? ScreenTimeLevel.ok
+        : screenTimeLevel(usedMinutes, limitMinutes, categoryKey);
+    final adviceKey = isOther
+        ? null
+        : screenTimeAdviceKey(categoryKey, level, tone);
 
     // Прогресс: used/limit, ограничен [0..1]. Без лимита — индикатор не показываем.
     final double? progress = hasLimit
@@ -373,9 +446,8 @@ class _UsageTile extends ConsumerWidget {
               ),
             ],
           ],
-          // Совет по категории — bodySmall, приглушённый; ember для tooMuch
-          // (в тон существующему оформлению превышения лимита).
-          if (usedMinutes > 0) ...[
+          // Совет по категории — только для стандартных категорий (не 'other').
+          if (!isOther && usedMinutes > 0 && adviceKey != null) ...[
             const SizedBox(height: 6),
             Text(
               context.s(adviceKey),
@@ -445,7 +517,8 @@ class _CategoryTile extends ConsumerWidget {
   }
 }
 
-/// Боттом-шит с ползунком 0–180 мин (шаг 15) и переключателем «No limit».
+/// Боттом-шит с ползунком 15–720 мин (шаг 15 = 47 делений) и переключателем «No limit».
+/// FIX 2: максимум повышен с 3ч (180) до 12ч (720).
 class _LimitBottomSheet extends ConsumerStatefulWidget {
   const _LimitBottomSheet({
     required this.categoryKey,
@@ -469,10 +542,13 @@ class _LimitBottomSheetState extends ConsumerState<_LimitBottomSheet> {
   void initState() {
     super.initState();
     _noLimit = widget.initialMinutes == 0;
-    // Если лимит 0, ползунок ставим на 60 мин как дефолт для удобства
+    // Если лимит 0, ползунок ставим на 60 мин как дефолт для удобства.
+    // Клампим в новый диапазон 15–720.
     _sliderValue = _noLimit
         ? 60
-        : widget.initialMinutes.toDouble().clamp(15, 180);
+        : widget.initialMinutes
+            .toDouble()
+            .clamp(_kSliderMinMinutes, _kSliderMaxMinutes);
   }
 
   Future<void> _save() async {
@@ -568,14 +644,18 @@ class _LimitBottomSheetState extends ConsumerState<_LimitBottomSheet> {
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
-                    Text('3 h', style: textTheme.bodySmall),
+                    // FIX 2: динамический максимум (12ч)
+                    Text('12 h', style: textTheme.bodySmall),
                   ],
                 ),
                 Slider(
                   value: _sliderValue,
-                  min: 15,
-                  max: 180,
-                  divisions: 11, // (180-15)/15 = 11 шагов
+                  min: _kSliderMinMinutes,
+                  max: _kSliderMaxMinutes,
+                  // (720 - 15) / 15 = 47 делений
+                  divisions: ((_kSliderMaxMinutes - _kSliderMinMinutes) /
+                          _kSliderStep)
+                      .round(),
                   label: timeLabel,
                   onChanged: _noLimit
                       ? null

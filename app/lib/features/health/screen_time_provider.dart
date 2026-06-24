@@ -12,12 +12,14 @@ import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
 const _kPrefsKey = 'screen_time_limits';
 
 /// Категории экранного времени с ключами, совпадающими с JSON-схемой.
+/// Категория 'other' — информационная, без лимита (только показывает сумму).
 const screenTimeCategories = <String, String>{
   'social': 'Social Media',
   'video': 'Video & Shorts',
   'games': 'Games',
   'browsing': 'Browsing',
   'messaging': 'Messaging',
+  'other': 'Other',
 };
 
 /// Значения по умолчанию (0 = без лимита).
@@ -27,6 +29,7 @@ const _kDefaults = <String, int>{
   'games': 0,
   'browsing': 0,
   'messaging': 0,
+  'other': 0,
 };
 
 class ScreenTimeLimitsNotifier extends StateNotifier<Map<String, int>> {

@@ -1,15 +1,15 @@
-// Чистая (без I/O) категоризация пакетов Android в 5 категорий экранного времени.
+// Чистая (без I/O) категоризация пакетов Android в 6 категорий экранного времени.
 // Используется провайдером использования: сопоставляем имя пакета → категорию,
 // затем суммируем минуты. Легко тестируется юнит-тестами.
 //
 // Категории совпадают с ключами screenTimeCategories в screen_time_provider.dart:
-//   social, video, games, browsing, messaging.
+//   social, video, games, browsing, messaging, other.
 
-/// Сопоставление известных имён Android-пакетов с нашими 5 категориями.
+/// Сопоставление известных имён Android-пакетов с нашими категориями.
 ///
 /// Покрывает популярные мировые и российские приложения. Список не может быть
 /// исчерпывающим (особенно игры — их десятки тысяч), поэтому неизвестные пакеты
-/// просто игнорируются в [categorizeUsageMinutes].
+/// роутятся через Android-категорию в один из бакетов, либо в 'other'.
 const Map<String, String> kPackageToCategory = <String, String>{
   // --- social ---------------------------------------------------------------
   'com.instagram.android': 'social',
@@ -42,7 +42,7 @@ const Map<String, String> kPackageToCategory = <String, String>{
 
   // --- games ----------------------------------------------------------------
   // Игр слишком много, чтобы перечислить все — здесь только самые популярные.
-  // Большинство игр останутся неучтёнными (известное ограничение).
+  // Большинство игр попадут в 'games' через Android CATEGORY_GAME fallback.
   'com.king.candycrushsaga': 'games',
   'com.supercell.clashofclans': 'games',
   'com.supercell.brawlstars': 'games',
@@ -88,24 +88,81 @@ const Map<String, String> kPackageToCategory = <String, String>{
   'ru.yandex.mail': 'messaging', // Яндекс.Почта (как канал общения)
 };
 
-/// Суммирует минуты использования по пакетам в наши 5 категорий.
+/// Маппинг Android ApplicationInfo.category (int) → наша категория.
 ///
-/// [perPackageMinutes] — карта `packageName → minutes`. Неизвестные пакеты
-/// (отсутствующие в [kPackageToCategory]) игнорируются. Возвращает карту со
-/// всеми 5 категориями (отсутствующие — 0). Чистая функция: без I/O.
-Map<String, int> categorizeUsageMinutes(Map<String, int> perPackageMinutes) {
+/// Значения констант Android:
+///   CATEGORY_GAME        = 0
+///   CATEGORY_AUDIO       = 1
+///   CATEGORY_VIDEO       = 2
+///   CATEGORY_IMAGE       = 3
+///   CATEGORY_SOCIAL      = 4
+///   CATEGORY_NEWS        = 5
+///   CATEGORY_MAPS        = 6
+///   CATEGORY_PRODUCTIVITY = 7
+///   CATEGORY_UNDEFINED   = -1
+String? androidCategoryToOurCategory(int androidCategory) {
+  switch (androidCategory) {
+    case 0: // CATEGORY_GAME
+      return 'games';
+    case 1: // CATEGORY_AUDIO
+      return 'video'; // аудио → video-бакет (музыка/подкасты)
+    case 2: // CATEGORY_VIDEO
+      return 'video';
+    case 3: // CATEGORY_IMAGE
+      return null; // фото-галереи → other (нет подходящего бакета)
+    case 4: // CATEGORY_SOCIAL
+      return 'social';
+    case 5: // CATEGORY_NEWS
+      return 'browsing'; // новости близки к браузингу
+    case 6: // CATEGORY_MAPS
+      return null; // карты → other
+    case 7: // CATEGORY_PRODUCTIVITY
+      return null; // продуктивность → other (не отвлекающий)
+    default: // CATEGORY_UNDEFINED (-1) и всё остальное
+      return null; // → other
+  }
+}
+
+/// Суммирует минуты использования по пакетам в наши 6 категорий.
+///
+/// [perPackageMinutes] — карта `packageName → minutes`.
+/// [androidCategoryOverrides] — опциональная карта `packageName → ourCategory`,
+///   которая применяется для пакетов, НЕ найденных в [kPackageToCategory].
+///   Наш явный whitelist [kPackageToCategory] всегда имеет приоритет.
+///   Если пакет не найден ни там, ни здесь — минуты идут в 'other'.
+///
+/// Возвращает карту со всеми 6 категориями (отсутствующие — 0). Чистая функция: без I/O.
+Map<String, int> categorizeUsageMinutes(
+  Map<String, int> perPackageMinutes, {
+  Map<String, String> androidCategoryOverrides = const <String, String>{},
+}) {
   final result = <String, int>{
     'social': 0,
     'video': 0,
     'games': 0,
     'browsing': 0,
     'messaging': 0,
+    'other': 0,
   };
   perPackageMinutes.forEach((package, minutes) {
-    final category = kPackageToCategory[package];
-    if (category == null) return; // неизвестный пакет — игнорируем
     if (minutes <= 0) return;
-    result[category] = (result[category] ?? 0) + minutes;
+
+    // 1. Ищем в нашем явном whitelist (наиболее точная классификация).
+    final whitelistCategory = kPackageToCategory[package];
+    if (whitelistCategory != null) {
+      result[whitelistCategory] = (result[whitelistCategory] ?? 0) + minutes;
+      return;
+    }
+
+    // 2. Ищем в переопределениях от Android (CATEGORY_GAME → games и т.д.)
+    final overrideCategory = androidCategoryOverrides[package];
+    if (overrideCategory != null) {
+      result[overrideCategory] = (result[overrideCategory] ?? 0) + minutes;
+      return;
+    }
+
+    // 3. Неизвестный пакет — в 'other' (минуты не теряются).
+    result['other'] = (result['other'] ?? 0) + minutes;
   });
   return result;
 }

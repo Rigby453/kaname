@@ -1460,6 +1460,36 @@ const Map<String, Map<String, String>> healthBStrings = {
     'ko': '오늘 이 카테고리에서 기록된 사용이 없습니다.',
   },
 
+  // Категория «Other» — приложения, не попавшие в основные категории.
+  'screentime.category_other': {
+    'en': 'Other',
+    'ru': 'Другое',
+    'de': 'Sonstige',
+    'fr': 'Autres',
+    'it': 'Altro',
+    'pt': 'Outros',
+    'es': 'Otros',
+    'id': 'Lainnya',
+    'hi': 'अन्य',
+    'ja': 'その他',
+    'ko': '기타',
+  },
+
+  // Строка «Total today» — суммарное экранное время за день.
+  'screentime.total_today': {
+    'en': 'Total today',
+    'ru': 'Всего сегодня',
+    'de': 'Heute gesamt',
+    'fr': 'Total aujourd\'hui',
+    'it': 'Totale oggi',
+    'pt': 'Total hoje',
+    'es': 'Total hoy',
+    'id': 'Total hari ini',
+    'hi': 'आज कुल',
+    'ja': '今日の合計',
+    'ko': '오늘 합계',
+  },
+
   // ---------------------------------------------------------------------------
   // screentime_advice_*  —  screen_time_advice.dart (бесплатные «зашитые» фразы)
   //   <category>_<ok|much|too_much>_<gentle|harsh>. 5×3×2 = 30 ключей.

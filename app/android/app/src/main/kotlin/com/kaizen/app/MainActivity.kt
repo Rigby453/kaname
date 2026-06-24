@@ -3,6 +3,8 @@ package com.kaizen.app
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -39,6 +41,9 @@ class MainActivity : FlutterActivity() {
 
     // Ссылка на канал для вызова invokeMethod в onNewIntent
     private var widgetChannel: MethodChannel? = null
+
+    // Имя канала для получения Android-категорий пакетов
+    private val appCategoryChannelName = "kaizen/app_category"
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +92,42 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        // Канал для получения Android-категорий пакетов (Screen Time fallback).
+        // Принимает List<String> имён пакетов, возвращает Map<String, Int>:
+        //   packageName -> ApplicationInfo.category (int).
+        // Ошибки по отдельным пакетам игнорируются (пакет просто пропускается).
+        val appCategoryChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, appCategoryChannelName
+        )
+        appCategoryChannel.setMethodCallHandler { call, result ->
+            if (call.method == "getAppCategories") {
+                @Suppress("UNCHECKED_CAST")
+                val packages = call.arguments as? List<String> ?: emptyList()
+                val pm = packageManager
+                val categories = mutableMapOf<String, Int>()
+                for (pkg in packages) {
+                    try {
+                        val info = pm.getApplicationInfo(pkg, 0)
+                        // ApplicationInfo.category доступен начиная с API 26.
+                        // На старых устройствах (API < 26) используем CATEGORY_UNDEFINED.
+                        val cat = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            info.category
+                        } else {
+                            ApplicationInfo.CATEGORY_UNDEFINED
+                        }
+                        categories[pkg] = cat
+                    } catch (_: PackageManager.NameNotFoundException) {
+                        // Пакет не установлен — пропускаем.
+                    } catch (_: Exception) {
+                        // Любая другая ошибка — пропускаем пакет.
+                    }
+                }
+                result.success(categories)
+            } else {
+                result.notImplemented()
             }
         }
     }
