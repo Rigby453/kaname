@@ -20,6 +20,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/settings/rest_default_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
@@ -55,9 +56,15 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
   }
 
   Future<void> _addExercise() async {
+    // Читаем глобальный дефолт отдыха, чтобы новое упражнение показывало
+    // и сохраняло именно это значение — card == training с первого раза.
+    final globalRestSeconds = ref.read(restDefaultProvider);
     final result = await showDialog<_ExerciseFormResult>(
       context: context,
-      builder: (ctx) => _ExerciseDialog(title: ctx.s('workout.add_exercise_title')),
+      builder: (ctx) => _ExerciseDialog(
+        title: ctx.s('workout.add_exercise_title'),
+        defaultRestSeconds: globalRestSeconds,
+      ),
     );
     if (result == null) return;
     await ref.read(workoutsDaoProvider).addExercise(
@@ -407,10 +414,16 @@ class _ExerciseDialog extends StatefulWidget {
   const _ExerciseDialog({
     required this.title,
     this.initial,
+    this.defaultRestSeconds = kLegacyRestMarkerSeconds,
   });
 
   final String title;
   final WorkoutExercisesTableData? initial;
+
+  /// Глобальный дефолт отдыха (из restDefaultProvider), используется ТОЛЬКО
+  /// при создании нового упражнения (initial == null). При редактировании
+  /// существующего упражнения используется его сохранённое значение.
+  final int defaultRestSeconds;
 
   @override
   State<_ExerciseDialog> createState() => _ExerciseDialogState();
@@ -434,8 +447,11 @@ class _ExerciseDialogState extends State<_ExerciseDialog> {
     _weight = TextEditingController(
       text: ex?.weightKg != null ? ex!.weightKg.toString() : '',
     );
+    // Для нового упражнения (ex == null) берём глобальный дефолт из Профиля,
+    // чтобы карточка показывала то же значение, что тренажёр использует при
+    // первом запуске. Для существующего упражнения — его сохранённое значение.
     _rest = TextEditingController(
-        text: (ex?.restSeconds ?? 60).toString());
+        text: (ex?.restSeconds ?? widget.defaultRestSeconds).toString());
     _technique = TextEditingController(text: ex?.technique ?? '');
   }
 
@@ -456,7 +472,9 @@ class _ExerciseDialogState extends State<_ExerciseDialog> {
     final sets = int.tryParse(_sets.text.trim()) ?? 3;
     final reps = int.tryParse(_reps.text.trim()) ?? 10;
     final weightKg = double.tryParse(_weight.text.trim());
-    final restSeconds = int.tryParse(_rest.text.trim()) ?? 60;
+    // Пустое/невалидное поле → текущий дефолт (не хардкоженный 60).
+    final restSeconds =
+        int.tryParse(_rest.text.trim()) ?? widget.defaultRestSeconds;
     final technique = _technique.text.trim().isEmpty
         ? null
         : _technique.text.trim();

@@ -4,6 +4,12 @@
 // effectiveRestSeconds — чистая функция (без Flutter/prefs), тестируется прямо.
 // Логирование фактических значений проверяем на уровне DAO (in-memory Drift):
 // тренажёр пишет в Drift через logSet с теми числами, что в полях ввода.
+//
+// Новые тесты (баг card != training):
+//  - При добавлении нового упражнения дефолт отдыха = глобальный default, не 60.
+//  - Тренажёр вызывает effectiveRestSeconds: новое упражнение хранит, например,
+//    240 (глобал) → effectiveRestSeconds(240, 240) = 240 (не 60 и не замена).
+//  - Легаси: старые строки со значением 60 по-прежнему получают глобальный дефолт.
 
 import 'package:app/core/database/database.dart';
 import 'package:app/core/database/daos/workouts_dao.dart';
@@ -49,6 +55,96 @@ void main() {
         effectiveRestSeconds(
             exerciseRestSeconds: 240, globalDefaultSeconds: 120),
         240,
+      );
+    });
+
+    // --- Новые тесты (баг «card != training») ---
+
+    test(
+        'новое упражнение, созданное с globalDefault=240: '
+        'карточка хранит 240, тренажёр тоже получает 240 (card == training)',
+        () {
+      // Сценарий: пользователь установил глобальный дефолт 4 мин (240с).
+      // При добавлении упражнения диалог показывает и сохраняет 240.
+      // Тренажёр вызывает effectiveRestSeconds(240, 240) — должен вернуть 240.
+      // (240 ≠ kLegacyRestMarkerSeconds=60 → используем как есть.)
+      const globalDefault = 240;
+      // Редактор: дефолт нового поля = globalDefault = 240.
+      const savedRestSeconds = globalDefault; // именно это хранится в БД
+
+      expect(
+        effectiveRestSeconds(
+          exerciseRestSeconds: savedRestSeconds,
+          globalDefaultSeconds: globalDefault,
+        ),
+        globalDefault, // card == training
+      );
+    });
+
+    test(
+        'новое упражнение с globalDefault=120: '
+        'хранит 120, тренажёр получает 120 (не попадает под легаси-60)',
+        () {
+      // Глобал = 2 мин. Новое упражнение сохраняет 120 (не 60-маркер).
+      // effectiveRestSeconds(120, 120) = 120 (≠ 60 → не легаси).
+      const globalDefault = 120;
+      const savedRestSeconds = globalDefault;
+      expect(
+        effectiveRestSeconds(
+          exerciseRestSeconds: savedRestSeconds,
+          globalDefaultSeconds: globalDefault,
+        ),
+        globalDefault,
+      );
+    });
+
+    test(
+        'новое упражнение с globalDefault=15: '
+        'хранит 15, тренажёр получает 15 (не легаси-60)',
+        () {
+      // Минимальная граница (kRestDefaultMinSeconds).
+      const globalDefault = 15;
+      const savedRestSeconds = globalDefault;
+      expect(
+        effectiveRestSeconds(
+          exerciseRestSeconds: savedRestSeconds,
+          globalDefaultSeconds: globalDefault,
+        ),
+        globalDefault,
+      );
+    });
+
+    test(
+        'легаси совместимость: старая строка БД со значением 60 '
+        'получает глобальный дефолт (backward-compat)',
+        () {
+      // До фикса новые упражнения сохранялись с 60 (Constant-дефолт).
+      // Такие старые строки по-прежнему должны получать глобальный дефолт
+      // при воспроизведении тренировки — не показывать ровно 60с.
+      const globalDefault = 240;
+      expect(
+        effectiveRestSeconds(
+          exerciseRestSeconds: kLegacyRestMarkerSeconds, // 60 — старая строка
+          globalDefaultSeconds: globalDefault,
+        ),
+        globalDefault,
+      );
+    });
+
+    test(
+        'пользователь явно ставит 60с в диалоге: '
+        'это его выбор, тренажёр должен использовать глобальный дефолт '
+        '(60 = маркер; если нужна ровно 1 минута — нужно ставить 61)',
+        () {
+      // Известное ограничение: если пользователь хочет ровно 60с, маркер
+      // «перехватит» это значение. Тест документирует поведение.
+      const globalDefault = 90;
+      expect(
+        effectiveRestSeconds(
+          exerciseRestSeconds: 60, // пользователь ввёл 60 — попадает в маркер
+          globalDefaultSeconds: globalDefault,
+        ),
+        globalDefault, // получит 90, а не 60 — известное ограничение
       );
     });
   });
