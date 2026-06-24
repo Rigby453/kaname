@@ -15,6 +15,7 @@ import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import 'ai_workout_sheet.dart';
+import 'exercise_muscle_groups.dart';
 
 // ---------------------------------------------------------------------------
 // Провайдеры (используются и редактором тренировки)
@@ -357,28 +358,49 @@ class _SessionsSection extends StatelessWidget {
         // Заголовок секции — titleMedium (body font, w600, нет serif)
         Text(context.s('workout.diary_sessions'), style: textTheme.titleMedium),
         const SizedBox(height: 12),
+        // Каждая сессия — тапабельна → журнал дня «Тренировка <дата>».
         ...sessions.take(10).map(
-              (s) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    // Иконка завершения — success color (не accent)
-                    Icon(
-                      Icons.check_circle_outline,
-                      size: 16,
-                      color: ext.success,
+              (s) => Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => context.push(
+                    '/workouts/session/${s.id}'
+                    '?date=${Uri.encodeQueryComponent(s.startedAt.toIso8601String())}'
+                    '&name=${Uri.encodeQueryComponent(s.workoutName)}',
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        line(s),
-                        // bodySmall + textMuted — метаданные истории
-                        style: textTheme.bodySmall?.copyWith(
-                          color: ext.textMuted,
+                    child: Row(
+                      children: [
+                        // Иконка завершения — success color (не accent)
+                        Icon(
+                          Icons.check_circle_outline,
+                          size: 16,
+                          color: ext.success,
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            line(s),
+                            // bodySmall + textMuted — метаданные истории
+                            style: textTheme.bodySmall?.copyWith(
+                              color: ext.textMuted,
+                            ),
+                          ),
+                        ),
+                        // Аффорданс «открыть детали дня»
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: ext.textFaint,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -387,8 +409,14 @@ class _SessionsSection extends StatelessWidget {
   }
 }
 
-/// Прогресс по упражнениям: упражнения с залогированными подходами;
-/// тап → история подходов конкретного упражнения (exercise_history_screen).
+/// Прогресс по упражнениям: упражнения с залогированными подходами,
+/// СГРУППИРОВАННЫЕ по группе мышц (Part 2). Тап → история подходов
+/// конкретного упражнения (exercise_history_screen).
+///
+/// Группа мышс определяется по имени встроенного упражнения через reverse-lookup
+/// из всех локалей (exercise_muscle_groups.dart); кастомные/переименованные
+/// упражнения попадают в группу «Other». Заголовок группы скрывается, если
+/// упражнения распределились в единственную группу (нечего разделять).
 class _ExerciseProgressSection extends StatelessWidget {
   const _ExerciseProgressSection({required this.exercises});
 
@@ -397,53 +425,91 @@ class _ExerciseProgressSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Reverse-lookup строится из полной карты строк (все 11 локалей).
+    final nameToGroup = buildExerciseNameToGroup(S.all);
+
+    // Бакетим упражнения по группе мышц, сохраняя порядок «свежие первыми»
+    // внутри группы (exercises уже отсортированы провайдером).
+    final buckets = <MuscleGroup, List<ExerciseWithLogs>>{};
+    for (final e in exercises) {
+      final g = groupForName(e.name, nameToGroup);
+      buckets.putIfAbsent(g, () => []).add(e);
+    }
+    final usedGroups =
+        kMuscleGroupOrder.where((g) => buckets.containsKey(g)).toList();
+    // Показывать под-заголовки групп только если групп больше одной.
+    final showGroupHeaders = usedGroups.length > 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(context.s('workout.diary_progress'), style: textTheme.titleMedium),
         const SizedBox(height: 12),
-        ...exercises.map(
-          (e) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => context.push(
-                  '/workouts/exercise/${e.exerciseId}/history'
-                  '?name=${Uri.encodeQueryComponent(e.name)}',
+        for (final group in usedGroups) ...[
+          if (showGroupHeaders)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8, left: 8),
+              child: Text(
+                context.s(muscleGroupKey(group)),
+                style: textTheme.labelLarge?.copyWith(
+                  color: Theme.of(context)
+                      .extension<FocusThemeExtension>()!
+                      .textMuted,
                 ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                  child: Row(
-                    children: [
-                      // Иконка прогресса — нейтральная (textMuted)
-                      Icon(Icons.show_chart, size: 18, color: ext.textMuted),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          e.name,
-                          style: textTheme.titleSmall,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 18,
-                        color: ext.textFaint,
-                      ),
-                    ],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ...buckets[group]!.map((e) => _ExerciseProgressRow(exercise: e)),
+        ],
+      ],
+    );
+  }
+}
+
+/// Одна строка «Прогресс по упражнению» → тап в историю упражнения.
+class _ExerciseProgressRow extends StatelessWidget {
+  const _ExerciseProgressRow({required this.exercise});
+
+  final ExerciseWithLogs exercise;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => context.push(
+            '/workouts/exercise/${exercise.exerciseId}/history'
+            '?name=${Uri.encodeQueryComponent(exercise.name)}',
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Row(
+              children: [
+                // Иконка прогресса — нейтральная (textMuted)
+                Icon(Icons.show_chart, size: 18, color: ext.textMuted),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    exercise.name,
+                    style: textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
+                Icon(Icons.chevron_right, size: 18, color: ext.textFaint),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }

@@ -284,6 +284,60 @@ class WorkoutsDao extends DatabaseAccessor<AppDatabase>
         .watch();
   }
 
+  /// Реактивно: подходы одной сессии, СГРУППИРОВАННЫЕ по упражнению — для
+  /// журнала по датам («что делал в эту тренировку»). Для каждого упражнения
+  /// сессии возвращает его имя (из workout_exercises) и список подходов
+  /// (по setIndex, затем по времени). Порядок групп — по первому подходу
+  /// упражнения в сессии (хронология выполнения).
+  ///
+  /// Имя берётся из workout_exercises; если упражнение удалено из шаблона —
+  /// группа всё равно показывается с fallback-именем null (UI подставит метку).
+  Stream<List<ExerciseSetGroup>> watchSessionSetGroups(String sessionId) {
+    final query = select(workoutSetLogsTable).join([
+      leftOuterJoin(
+        workoutExercisesTable,
+        workoutExercisesTable.id.equalsExp(workoutSetLogsTable.exerciseId),
+      ),
+    ])
+      ..where(workoutSetLogsTable.sessionId.equals(sessionId))
+      ..orderBy([
+        OrderingTerm.asc(workoutSetLogsTable.completedAt),
+        OrderingTerm.asc(workoutSetLogsTable.setIndex),
+      ]);
+
+    return query.watch().map((rows) {
+      // Сохраняем порядок появления упражнений (первый подход — первым).
+      final order = <String>[];
+      final byExercise = <String, List<WorkoutSetLogsTableData>>{};
+      final names = <String, String?>{};
+      for (final row in rows) {
+        final log = row.readTable(workoutSetLogsTable);
+        final name = row.readTableOrNull(workoutExercisesTable)?.name;
+        final eid = log.exerciseId;
+        if (!byExercise.containsKey(eid)) {
+          order.add(eid);
+          byExercise[eid] = [];
+          names[eid] = name;
+        }
+        byExercise[eid]!.add(log);
+      }
+      return [
+        for (final eid in order)
+          ExerciseSetGroup(
+            exerciseId: eid,
+            name: names[eid],
+            sets: byExercise[eid]!
+              ..sort((a, b) {
+                final byIndex = a.setIndex.compareTo(b.setIndex);
+                return byIndex != 0
+                    ? byIndex
+                    : a.completedAt.compareTo(b.completedAt);
+              }),
+          ),
+      ];
+    });
+  }
+
   /// Реактивно: все подходы одного упражнения через все сессии,
   /// свежие первыми (для будущей истории/динамики).
   Stream<List<WorkoutSetLogsTableData>> watchExerciseHistory(String exerciseId) {
@@ -342,4 +396,18 @@ class ExerciseWithLogs {
 
   final String exerciseId;
   final String name;
+}
+
+/// Группа подходов одного упражнения внутри сессии — для журнала по датам.
+/// [name] = null, если упражнение удалено из шаблона (UI подставит fallback).
+class ExerciseSetGroup {
+  const ExerciseSetGroup({
+    required this.exerciseId,
+    required this.name,
+    required this.sets,
+  });
+
+  final String exerciseId;
+  final String? name;
+  final List<WorkoutSetLogsTableData> sets;
 }

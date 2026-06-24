@@ -141,4 +141,74 @@ void main() {
     final result = await dao.watchExercisesWithLogs().first;
     expect(result, isEmpty);
   });
+
+  test(
+      'watchSessionSetGroups группирует подходы сессии по упражнению '
+      'с именем из шаблона, чужая сессия не попадает', () async {
+    // Два упражнения в шаблоне (для join по имени).
+    final wId = await dao.createWorkout('Push Day');
+    await db.into(db.workoutExercisesTable).insert(
+          WorkoutExercisesTableCompanion.insert(
+            id: 'e1',
+            workoutId: wId,
+            name: 'Bench Press',
+          ),
+        );
+    await db.into(db.workoutExercisesTable).insert(
+          WorkoutExercisesTableCompanion.insert(
+            id: 'e2',
+            workoutId: wId,
+            name: 'Overhead Press',
+          ),
+        );
+
+    // Сессия s1: e1 (два подхода) затем e2 (один подход).
+    await dao.logSet(
+        sessionId: 's1', exerciseId: 'e1', setIndex: 0, reps: 10, weightKg: 50);
+    await dao.logSet(
+        sessionId: 's1', exerciseId: 'e1', setIndex: 1, reps: 8, weightKg: 55);
+    await dao.logSet(
+        sessionId: 's1', exerciseId: 'e2', setIndex: 0, reps: 12);
+    // Чужая сессия — не должна попасть в s1.
+    await dao.logSet(sessionId: 's2', exerciseId: 'e1', setIndex: 0, reps: 5);
+
+    final groups = await dao.watchSessionSetGroups('s1').first;
+
+    // Две группы упражнений: e1 (2 подхода) и e2 (1 подход).
+    expect(groups, hasLength(2));
+
+    final g1 = groups.firstWhere((g) => g.exerciseId == 'e1');
+    expect(g1.name, 'Bench Press');
+    expect(g1.sets, hasLength(2));
+    // Подходы упорядочены по setIndex.
+    expect(g1.sets[0].setIndex, 0);
+    expect(g1.sets[0].reps, 10);
+    expect(g1.sets[0].weightKg, 50);
+    expect(g1.sets[1].setIndex, 1);
+    expect(g1.sets[1].reps, 8);
+
+    final g2 = groups.firstWhere((g) => g.exerciseId == 'e2');
+    expect(g2.name, 'Overhead Press');
+    expect(g2.sets, hasLength(1));
+    expect(g2.sets.single.reps, 12);
+    expect(g2.sets.single.weightKg, isNull); // bodyweight
+  });
+
+  test('watchSessionSetGroups: имя = null, если упражнение удалено из шаблона',
+      () async {
+    // Логируем подход на упражнение, которого нет в workout_exercises.
+    await dao.logSet(
+        sessionId: 's1', exerciseId: 'ghost', setIndex: 0, reps: 7);
+
+    final groups = await dao.watchSessionSetGroups('s1').first;
+    expect(groups, hasLength(1));
+    expect(groups.single.exerciseId, 'ghost');
+    expect(groups.single.name, isNull);
+    expect(groups.single.sets, hasLength(1));
+  });
+
+  test('watchSessionSetGroups пустой для неизвестной сессии', () async {
+    final groups = await dao.watchSessionSetGroups('nope').first;
+    expect(groups, isEmpty);
+  });
 }

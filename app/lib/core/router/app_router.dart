@@ -32,6 +32,7 @@ import '../../features/health/workouts_screen.dart';
 import '../../features/health/workout_editor_screen.dart';
 import '../../features/health/workout_trainer_screen.dart';
 import '../../features/health/exercise_history_screen.dart';
+import '../../features/health/session_detail_screen.dart';
 import '../../features/health/sleep_report_screen.dart';
 import '../../features/health/water_fullscreen_screen.dart';
 import '../../features/health/water_report_screen.dart';
@@ -291,6 +292,19 @@ final routerProvider = Provider<GoRouter>((ref) {
           exerciseId: state.pathParameters['id']!,
           exerciseName: state.uri.queryParameters['name'],
         ),
+      ),
+      // Журнал одной сессии (Part 1): «Тренировка <дата>». :id — id сессии.
+      // ?date= (ISO старта) → заголовок-дата, ?name= → подзаголовок-программа.
+      GoRoute(
+        path: '/workouts/session/:id',
+        builder: (context, state) {
+          final rawDate = state.uri.queryParameters['date'];
+          return SessionDetailScreen(
+            sessionId: state.pathParameters['id']!,
+            startedAt: rawDate == null ? null : DateTime.tryParse(rawDate),
+            workoutName: state.uri.queryParameters['name'],
+          );
+        },
       ),
 
       // /diary-history — история записей дневника, вне оболочки

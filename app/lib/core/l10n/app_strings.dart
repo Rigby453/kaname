@@ -39,6 +39,11 @@ class S {
     ...onboardingQuizStrings,
   };
 
+  /// Полная карта строк (key → {langTag → текст}) — только для read-only
+  /// потребителей, которым нужны ВСЕ локали ключа (напр. reverse-lookup
+  /// «локализованное имя упражнения → группа мышц», Part 2). Не мутировать.
+  static Map<String, Map<String, String>> get all => _all;
+
   static String of(BuildContext context, String key) {
     final locale = Localizations.localeOf(context);
     final entry = _all[key];
