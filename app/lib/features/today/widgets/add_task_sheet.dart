@@ -176,6 +176,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   String? _moduleLink;
   // Цвет-метка задачи: null = нет, или ключ палитры из task_colors.dart (локальное поле)
   String? _color;
+  // Место/локация задачи (свободный текст, как в Google Calendar). Локальное
+  // поле — НЕ синхронизируется. Контроллер хранит текст; пустой => null в Drift.
+  late final TextEditingController _locationController;
 
   // --- Повтор (серия) ---
   // Выбранная частота повтора. null = без повтора (None по умолчанию).
@@ -295,6 +298,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     }
     _moduleLink = existing?.moduleLink;
     _color = existing?.color;
+    _locationController = TextEditingController(text: existing?.location ?? '');
     _reminderMinutesBefore = existing?.reminderMinutesBefore;
     // Инициализируем состояние повтора из существующего правила (режим
     // редактирования якоря серии). Для виртуального повтора и обычной задачи
@@ -616,6 +620,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _titleController.dispose();
     _customMinutesController.dispose();
     _subtaskController.dispose();
+    _locationController.dispose();
     if (_listening) _speech.stop();
     super.dispose();
   }
@@ -980,6 +985,9 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     final now = DateTime.now();
     // main-задачи всегда защищены от автопереноса
     final isProtected = _priority == 'main';
+    // Место/локация: пустая строка → null (локальное поле, не синкается).
+    final locationText = _locationController.text.trim();
+    final location = locationText.isEmpty ? null : locationText;
 
     // Запоминаем названия занятий/событий для быстрого повторного ввода (C4).
     // (exam теперь нормализуется в deadline ещё на входе формы.)
@@ -1013,11 +1021,13 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       );
       if (concreteId != null) {
         await _persistSubtasks(concreteId);
-        // materializeOccurrence не принимает reminder — проставляем отдельно.
+        // materializeOccurrence не принимает reminder/location — проставляем
+        // отдельно (location — локальное поле, не синкается).
         await dao.updateItem(
           concreteId,
           ItemsTableCompanion(
             reminderMinutesBefore: Value(_reminderMinutesBefore),
+            location: Value(location),
             updatedAt: Value(now),
           ),
         );
@@ -1046,6 +1056,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           reminderMinutesBefore: Value(_reminderMinutesBefore),
           moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
           color: Value(_color), // локальное поле — не попадает в синк
+          location: Value(location), // локальное поле — не попадает в синк
           updatedAt: Value(now),
         ),
       );
@@ -1070,6 +1081,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
           reminderMinutesBefore: Value(_reminderMinutesBefore),
           moduleLink: Value(_moduleLink), // локальное поле — не попадает в синк
           color: Value(_color), // локальное поле — не попадает в синк
+          location: Value(location), // локальное поле — не попадает в синк
           createdAt: Value(now),
           updatedAt: Value(now),
         ),
@@ -1289,6 +1301,7 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             reminderMinutesBefore: Value(existing.reminderMinutesBefore),
             moduleLink: Value(existing.moduleLink),
             color: Value(existing.color),
+            location: Value(existing.location),
             createdAt: Value(now),
             updatedAt: Value(now),
           ),
@@ -1734,6 +1747,24 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                     onSelected: (_) => _showCustomReminderDialog(),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Место/локация (как в Google Calendar) — свободный текст.
+            // Локальное поле, НЕ участвует в синке и NL-парсере названия.
+            Text(context.s('today.location_label'), style: textTheme.labelMedium),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _locationController,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: context.s('today.location_hint'),
+                prefixIcon: const Icon(Icons.place_outlined),
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
             const SizedBox(height: 16),

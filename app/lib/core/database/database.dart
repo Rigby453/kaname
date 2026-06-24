@@ -62,6 +62,12 @@ class ItemsTable extends Table {
   // (не синхронизируется), добавлено в schemaVersion 13. Аналогично moduleLink.
   TextColumn get color => text().nullable()();
 
+  // Место/локация задачи (как в Google Calendar): свободный текст —
+  // «Аудитория 305», «Зал» и т.п., или null = не указано. Локальная колонка
+  // (НЕ синхронизируется с сервером, нет в sync-payload), добавлено в
+  // schemaVersion 17. По образцу color/moduleLink.
+  TextColumn get location => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -569,7 +575,7 @@ class AppDatabase extends _$AppDatabase {
   HabitsDao get habitsDao => HabitsDao(this);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -639,6 +645,12 @@ class AppDatabase extends _$AppDatabase {
           // v16: добавлена таблица workout_set_logs (дневник подходов).
           if (from < 16) {
             await m.createTable(workoutSetLogsTable);
+          }
+          // v17: добавлена колонка location в items (локальное место/локация
+          // задачи, как в Google Calendar). НЕ синхронизируется — по образцу
+          // color/moduleLink.
+          if (from < 17) {
+            await m.addColumn(itemsTable, itemsTable.location);
           }
         },
       );

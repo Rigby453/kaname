@@ -146,6 +146,17 @@ class $ItemsTableTable extends ItemsTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _locationMeta = const VerificationMeta(
+    'location',
+  );
+  @override
+  late final GeneratedColumn<String> location = GeneratedColumn<String>(
+    'location',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -183,6 +194,7 @@ class $ItemsTableTable extends ItemsTable
     reminderMinutesBefore,
     moduleLink,
     color,
+    location,
     createdAt,
     updatedAt,
   ];
@@ -298,6 +310,12 @@ class $ItemsTableTable extends ItemsTable
         color.isAcceptableOrUnknown(data['color']!, _colorMeta),
       );
     }
+    if (data.containsKey('location')) {
+      context.handle(
+        _locationMeta,
+        location.isAcceptableOrUnknown(data['location']!, _locationMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -375,6 +393,10 @@ class $ItemsTableTable extends ItemsTable
         DriftSqlType.string,
         data['${effectivePrefix}color'],
       ),
+      location: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}location'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -406,6 +428,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
   final int? reminderMinutesBefore;
   final String? moduleLink;
   final String? color;
+  final String? location;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ItemsTableData({
@@ -422,6 +445,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     this.reminderMinutesBefore,
     this.moduleLink,
     this.color,
+    this.location,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -448,6 +472,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     }
     if (!nullToAbsent || color != null) {
       map['color'] = Variable<String>(color);
+    }
+    if (!nullToAbsent || location != null) {
+      map['location'] = Variable<String>(location);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -477,6 +504,9 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       color: color == null && nullToAbsent
           ? const Value.absent()
           : Value(color),
+      location: location == null && nullToAbsent
+          ? const Value.absent()
+          : Value(location),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -503,6 +533,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       ),
       moduleLink: serializer.fromJson<String?>(json['moduleLink']),
       color: serializer.fromJson<String?>(json['color']),
+      location: serializer.fromJson<String?>(json['location']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -524,6 +555,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
       'reminderMinutesBefore': serializer.toJson<int?>(reminderMinutesBefore),
       'moduleLink': serializer.toJson<String?>(moduleLink),
       'color': serializer.toJson<String?>(color),
+      'location': serializer.toJson<String?>(location),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -543,6 +575,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     Value<int?> reminderMinutesBefore = const Value.absent(),
     Value<String?> moduleLink = const Value.absent(),
     Value<String?> color = const Value.absent(),
+    Value<String?> location = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ItemsTableData(
@@ -563,6 +596,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
         : this.reminderMinutesBefore,
     moduleLink: moduleLink.present ? moduleLink.value : this.moduleLink,
     color: color.present ? color.value : this.color,
+    location: location.present ? location.value : this.location,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -593,6 +627,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           ? data.moduleLink.value
           : this.moduleLink,
       color: data.color.present ? data.color.value : this.color,
+      location: data.location.present ? data.location.value : this.location,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -614,6 +649,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           ..write('reminderMinutesBefore: $reminderMinutesBefore, ')
           ..write('moduleLink: $moduleLink, ')
           ..write('color: $color, ')
+          ..write('location: $location, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -635,6 +671,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
     reminderMinutesBefore,
     moduleLink,
     color,
+    location,
     createdAt,
     updatedAt,
   );
@@ -655,6 +692,7 @@ class ItemsTableData extends DataClass implements Insertable<ItemsTableData> {
           other.reminderMinutesBefore == this.reminderMinutesBefore &&
           other.moduleLink == this.moduleLink &&
           other.color == this.color &&
+          other.location == this.location &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -673,6 +711,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
   final Value<int?> reminderMinutesBefore;
   final Value<String?> moduleLink;
   final Value<String?> color;
+  final Value<String?> location;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -690,6 +729,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     this.reminderMinutesBefore = const Value.absent(),
     this.moduleLink = const Value.absent(),
     this.color = const Value.absent(),
+    this.location = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -708,6 +748,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     this.reminderMinutesBefore = const Value.absent(),
     this.moduleLink = const Value.absent(),
     this.color = const Value.absent(),
+    this.location = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -732,6 +773,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     Expression<int>? reminderMinutesBefore,
     Expression<String>? moduleLink,
     Expression<String>? color,
+    Expression<String>? location,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -751,6 +793,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
         'reminder_minutes_before': reminderMinutesBefore,
       if (moduleLink != null) 'module_link': moduleLink,
       if (color != null) 'color': color,
+      if (location != null) 'location': location,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -771,6 +814,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     Value<int?>? reminderMinutesBefore,
     Value<String?>? moduleLink,
     Value<String?>? color,
+    Value<String?>? location,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -790,6 +834,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
           reminderMinutesBefore ?? this.reminderMinutesBefore,
       moduleLink: moduleLink ?? this.moduleLink,
       color: color ?? this.color,
+      location: location ?? this.location,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -840,6 +885,9 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
     if (color.present) {
       map['color'] = Variable<String>(color.value);
     }
+    if (location.present) {
+      map['location'] = Variable<String>(location.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -868,6 +916,7 @@ class ItemsTableCompanion extends UpdateCompanion<ItemsTableData> {
           ..write('reminderMinutesBefore: $reminderMinutesBefore, ')
           ..write('moduleLink: $moduleLink, ')
           ..write('color: $color, ')
+          ..write('location: $location, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -8656,6 +8705,7 @@ typedef $$ItemsTableTableCreateCompanionBuilder =
       Value<int?> reminderMinutesBefore,
       Value<String?> moduleLink,
       Value<String?> color,
+      Value<String?> location,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -8675,6 +8725,7 @@ typedef $$ItemsTableTableUpdateCompanionBuilder =
       Value<int?> reminderMinutesBefore,
       Value<String?> moduleLink,
       Value<String?> color,
+      Value<String?> location,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -8751,6 +8802,11 @@ class $$ItemsTableTableFilterComposer
 
   ColumnFilters<String> get color => $composableBuilder(
     column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get location => $composableBuilder(
+    column: $table.location,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8839,6 +8895,11 @@ class $$ItemsTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get location => $composableBuilder(
+    column: $table.location,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -8910,6 +8971,9 @@ class $$ItemsTableTableAnnotationComposer
   GeneratedColumn<String> get color =>
       $composableBuilder(column: $table.color, builder: (column) => column);
 
+  GeneratedColumn<String> get location =>
+      $composableBuilder(column: $table.location, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -8961,6 +9025,7 @@ class $$ItemsTableTableTableManager
                 Value<int?> reminderMinutesBefore = const Value.absent(),
                 Value<String?> moduleLink = const Value.absent(),
                 Value<String?> color = const Value.absent(),
+                Value<String?> location = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -8978,6 +9043,7 @@ class $$ItemsTableTableTableManager
                 reminderMinutesBefore: reminderMinutesBefore,
                 moduleLink: moduleLink,
                 color: color,
+                location: location,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -8997,6 +9063,7 @@ class $$ItemsTableTableTableManager
                 Value<int?> reminderMinutesBefore = const Value.absent(),
                 Value<String?> moduleLink = const Value.absent(),
                 Value<String?> color = const Value.absent(),
+                Value<String?> location = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -9014,6 +9081,7 @@ class $$ItemsTableTableTableManager
                 reminderMinutesBefore: reminderMinutesBefore,
                 moduleLink: moduleLink,
                 color: color,
+                location: location,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

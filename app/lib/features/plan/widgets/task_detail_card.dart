@@ -249,6 +249,16 @@ class TaskDetailCard extends ConsumerWidget {
                 color: textMuted,
               ),
             ],
+            // Место/локация (локальное поле). Показываем строку только если
+            // задано; пустое/null — не рисуем (как вложения/подзадачи).
+            if ((item.location ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _DetailRow(
+                icon: Icons.place_outlined,
+                text: item.location!.trim(),
+                color: textMuted,
+              ),
+            ],
 
             // Чеклист подзадач с инлайн-отметкой + прогресс (schemaVersion 14).
             // Для виртуального повтора серии показываем шаблон с якоря (read-only
