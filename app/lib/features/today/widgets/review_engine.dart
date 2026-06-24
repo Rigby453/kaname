@@ -104,6 +104,112 @@ Future<void> moveToDay(WidgetRef ref, ItemsTableData item, DateTime day) async {
       );
 }
 
+/// Считаем, что у задачи «есть своё время суток», если оно не совпадает с
+/// началом дня (полночь). Задачи без времени создаются на 00:00 локально —
+/// если перенести их «сохранив время суток», все они сольются в одну точку.
+bool _hasTimeOfDay(DateTime t) => t.hour != 0 || t.minute != 0;
+
+/// Чистая раскладка пачки [items] на день [day] так, чтобы их scheduledAt НЕ
+/// накладывались в одну точку. Возвращает карту itemId → новое время.
+///
+/// Правила:
+/// - Защищённые (is_protected) и main-задачи со своим временем суток —
+///   сохраняем их час:минуту, меняем только дату; такие слоты «забронированы»
+///   и не переиспользуются другими задачами.
+/// - Остальные задачи со своим временем суток встают на это же время, если
+///   слот ещё свободен; иначе — в следующий свободный слот сетки.
+/// - Задачи без времени (00:00) распределяются по последовательным свободным
+///   30-минутным слотам дня (08:00–22:00), начиная с первого свободного.
+/// [dayItems] — уже запланированное на [day] (для занятых слотов).
+Map<String, DateTime> distributeToDay(
+  List<ItemsTableData> items,
+  DateTime day,
+  List<ItemsTableData> dayItems,
+) {
+  final assign = <String, DateTime>{};
+  // Занятые слоты: то, что уже стоит на дне, плюс то, что назначаем по ходу.
+  final occupied = dayItems.map((i) => slotKey(i.scheduledAt)).toSet();
+
+  DateTime at(int h, int m) => DateTime(day.year, day.month, day.day, h, m);
+
+  // 1) Сначала закрепляем «якорные» задачи (protected/main) с собственным
+  //    временем суток — их слоты приоритетны и не уступаются.
+  final flexible = <ItemsTableData>[];
+  for (final item in items) {
+    final keepTime = (item.isProtected || item.priority == 'main') &&
+        _hasTimeOfDay(item.scheduledAt);
+    if (keepTime) {
+      final newAt = at(item.scheduledAt.hour, item.scheduledAt.minute);
+      assign[item.id] = newAt;
+      occupied.add(slotKey(newAt));
+    } else {
+      flexible.add(item);
+    }
+  }
+
+  // 2) Гибкие задачи. Со своим временем — пробуем сохранить его; без времени
+  //    или при коллизии — следующий свободный слот сетки. Сортируем по
+  //    приоритету, чтобы более важные занимали более ранние слоты при сливе.
+  flexible.sort(
+    (a, b) => priorityWeight(b.priority) - priorityWeight(a.priority),
+  );
+  final slots = freeSlots(day, occupied); // свободные 30-мин слоты по порядку
+  var nextSlot = 0;
+
+  DateTime takeNextFreeSlot() {
+    while (nextSlot < slots.length && occupied.contains(slotKey(slots[nextSlot]))) {
+      nextSlot++;
+    }
+    if (nextSlot < slots.length) {
+      final s = slots[nextSlot];
+      nextSlot++;
+      occupied.add(slotKey(s));
+      return s;
+    }
+    // Слоты дня закончились — кладём в конец дня с шагом 30 мин после 22:00,
+    // чтобы задачи всё равно не наложились друг на друга.
+    final overflow = at(22, 0).add(Duration(minutes: 30 * (assign.length)));
+    occupied.add(slotKey(overflow));
+    return overflow;
+  }
+
+  for (final item in flexible) {
+    if (_hasTimeOfDay(item.scheduledAt)) {
+      final desired = at(item.scheduledAt.hour, item.scheduledAt.minute);
+      if (!occupied.contains(slotKey(desired))) {
+        assign[item.id] = desired;
+        occupied.add(slotKey(desired));
+        continue;
+      }
+    }
+    assign[item.id] = takeNextFreeSlot();
+  }
+
+  return assign;
+}
+
+/// Перенести ПАЧКУ задач на день [day], распределив по разным слотам
+/// (не сваливая в одну точку). [dayItems] — уже запланированное на [day].
+Future<void> moveAllToDay(
+  WidgetRef ref,
+  List<ItemsTableData> items,
+  DateTime day,
+  List<ItemsTableData> dayItems,
+) async {
+  final assign = distributeToDay(items, day, dayItems);
+  final dao = ref.read(itemsDaoProvider);
+  final now = DateTime.now();
+  for (final entry in assign.entries) {
+    await dao.updateItem(
+      entry.key,
+      ItemsTableCompanion(
+        scheduledAt: Value(entry.value),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+}
+
 /// Применить вариант: переносим задачи на назначенное время (локально, Drift).
 Future<void> applyVariant(WidgetRef ref, PlanVariant variant) async {
   final dao = ref.read(itemsDaoProvider);

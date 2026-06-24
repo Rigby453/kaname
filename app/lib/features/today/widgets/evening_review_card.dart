@@ -220,9 +220,14 @@ class _EveningReviewSheetState extends ConsumerState<_EveningReviewSheet> {
                 if (pending.isNotEmpty)
                   TextButton(
                     onPressed: () async {
-                      for (final item in pending) {
-                        await moveToDay(ref, item, tomorrow);
-                      }
+                      // Распределяем по разным слотам завтрашнего дня, иначе
+                      // все задачи встали бы на одно и то же время (стак).
+                      await moveAllToDay(
+                        ref,
+                        pending,
+                        tomorrow,
+                        tomorrowItems,
+                      );
                     },
                     child: Text(context.s('today.move_all_tomorrow')),
                   ),

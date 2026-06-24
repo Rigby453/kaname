@@ -262,10 +262,14 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
                 if (overdue.isNotEmpty)
                   TextButton(
                     onPressed: () async {
-                      final now = DateTime.now();
-                      for (final item in overdue) {
-                        await moveToDay(ref, item, now);
-                      }
+                      // Распределяем по разным слотам, иначе все задачи
+                      // встали бы на одно и то же время (стак).
+                      await moveAllToDay(
+                        ref,
+                        overdue,
+                        DateTime.now(),
+                        today,
+                      );
                     },
                     child: Text(context.s('today.move_all_today')),
                   ),
