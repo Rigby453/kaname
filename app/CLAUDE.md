@@ -147,3 +147,45 @@ Tap [+] → AddEventSheet with type selector (task/event/exam/deadline).
 | Main limit | Max 3 items with priority=main per day — enforce in AddTaskBottomSheet |
 | Animations | Follow /docs/ANIMATIONS.md exactly (snap=120, fast=180, normal=280, slow=400; constants in core/animations/constants.dart); all disableable via MediaQuery.disableAnimations |
 | Tone | gentle/harsh stored in prefs, affects display strings ONLY (not logic) |
+
+---
+
+## 🚫 MANDATORY anti-regression rules (READ + ENFORCE every UI task)
+
+The two recurring bug classes in this project are **untranslated English text** and
+**RenderFlex "BOTTOM/RIGHT OVERFLOWED BY N PIXELS"**. They are now BLOCKING: do not
+finish a UI task until both gates below pass. No exceptions, including "content" data.
+
+### A. Localization — NO hardcoded user-facing text, ever
+- Every string the user can see goes through `context.s('key')`. This **includes content
+  data**, not just labels: meditation sessions, posture exercises, food staples, canned
+  advice, survey options, etc. A `const` list of English `name`/`steps`/`description`
+  strings is a BUG — store l10n **keys** in the data class and resolve with `context.s()`.
+- Units and counts use the plural/format helpers (`plMinutes`, `plSteps`, `plSeconds`,
+  `intl`), **never** string concatenation with English words like `'$mins min'` or
+  `'$seconds sec'` — those never translate.
+- When you add a key, add it for **all** active languages (at least `en` + `ru`). The
+  l10n system falls back to `en` silently, so a missing `ru` value renders as English and
+  reads as "half the app is in English". Missing ≠ visible error — you must check.
+- **Gate (run before finishing, fix every user-facing hit):**
+  ```bash
+  rg -n "(Text|hintText:|labelText:|title:|tooltip:|label:)\s*\(?\s*['\"][A-Za-z]" app/lib --glob '!**/l10n/**' --glob '!**/*.g.dart'
+  rg -n "'\\\$[a-zA-Z]+ (min|sec|hours?|days?|items?|steps?)'" app/lib   # hardcoded units
+  ```
+
+### B. Overflow — every screen must survive small width, big text, and the keyboard
+- Any `Row`/`Column` with text wraps the flexible child in `Expanded`/`Flexible` with
+  `overflow: TextOverflow.ellipsis` (or `FittedBox`/`scaleDown` for fixed-size circles).
+- **Keyboard rule:** on any screen with a text field, the layout must shrink when the
+  keyboard opens. Do not place a tall fixed-height widget (expanded calendar, big header,
+  hero image) above an `Expanded` in a column that the keyboard squeezes — collapse it,
+  make it scrollable, or hide it while a field is focused. (This is the Plan-search bug.)
+- **Test EVERY screen at all three:** width **320px**, `textScaleFactor` **1.5–2.0**, and
+  **keyboard open** (if it has any input). A change isn't done until checked at these.
+- Prefer a widget test that pumps the screen small + large-text and asserts
+  `tester.takeException() == null` (no overflow). Put it next to the feature's tests.
+
+### C. Commit discipline (so fixes don't silently regress)
+- After a fix is verified (`flutter analyze` = 0 + the gates above), **commit and push it**
+  on the working branch — do not leave verified work uncommitted across sessions. An
+  uncommitted fix that "we discussed before" but reappears = it was never committed.
