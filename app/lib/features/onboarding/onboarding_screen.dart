@@ -88,6 +88,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  void _back() {
+    if (_page > 0) {
+      _pageController.previousPage(
+        duration: effectiveDuration(context, kDurationNormal),
+        curve: kCurveLift,
+      );
+    }
+  }
+
   /// Тап на кнопку языка: выставляет locale LIVE и переходит к следующей странице.
   void _selectLocale(Locale locale) {
     ref.read(localeNotifierProvider.notifier).setLocale(locale);
@@ -183,22 +192,48 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
             const SizedBox(height: 32),
 
-            // CTA-кнопка: скрыта на language-слайде (переход идёт через кнопки языка).
-            // На остальных — Continue / Get started.
+            // Нижняя панель: скрыта на language-слайде (переход идёт через кнопки языка).
+            // На value-слайдах (1–3): кнопка «назад» (если не первый) + CTA.
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
               child: _isLangPage
                   ? const SizedBox.shrink()
-                  : SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _next,
-                        child: Text(
-                          _isLastPage
-                              ? context.s('onboarding.btn_get_started')
-                              : context.s('onboarding.btn_next'),
+                  : Row(
+                      children: [
+                        // Кнопка «назад» — только если есть предыдущий слайд.
+                        // На первом value-слайде (page 1) она видна; на page 0 скрыта
+                        // вместе со всей нижней панелью (_isLangPage выше).
+                        if (_page > 0) ...[
+                          SizedBox(
+                            width: 52,
+                            height: 52,
+                            child: OutlinedButton(
+                              onPressed: _back,
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Icon(Icons.arrow_back_rounded, size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: SizedBox(
+                            height: 52,
+                            child: FilledButton(
+                              onPressed: _next,
+                              child: Text(
+                                _isLastPage
+                                    ? context.s('onboarding.btn_get_started')
+                                    : context.s('onboarding.btn_next'),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
             ),
           ],
