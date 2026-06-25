@@ -215,6 +215,11 @@ class HabitsScreen extends ConsumerWidget {
           name: result.name,
           type: result.type,
           emoji: result.emoji,
+          targetPerDay: result.targetPerDay,
+          frequencyType: result.frequencyType,
+          weekdayMask: result.weekdayMask,
+          weeklyTarget: result.weeklyTarget,
+          // reminderMinutes — слайс 4, пока null.
         );
   }
 }
@@ -229,11 +234,33 @@ class _NewHabitResult {
     required this.name,
     required this.type,
     required this.emoji,
+    required this.targetPerDay,
+    required this.frequencyType,
+    required this.weekdayMask,
+    required this.weeklyTarget,
   });
   final String name;
   final String type;
   final String emoji;
+
+  /// Сколько раз в день нужно выполнить (1..N) — делает прогресс-бар осмысленным.
+  final int targetPerDay;
+
+  /// Режим частоты (ADR-053): daily | weekly_days | weekly_count.
+  final String frequencyType;
+
+  /// Битовая маска дней недели (Пн = бит 0 … Вс = бит 6) — для weekly_days.
+  final int weekdayMask;
+
+  /// Сколько раз в неделю (1..7) — для weekly_count.
+  final int weeklyTarget;
 }
+
+/// Тестовая обёртка: возвращает приватный диалог добавления привычки, чтобы
+/// его можно было запумпить в виджет-тесте (overflow на 320px / textScale 1.5)
+/// без БД и провайдеров. Не использовать в продакшен-коде.
+@visibleForTesting
+Widget addHabitDialogForTest() => const _AddHabitDialog();
 
 class _AddHabitDialog extends StatefulWidget {
   const _AddHabitDialog();
@@ -242,9 +269,27 @@ class _AddHabitDialog extends StatefulWidget {
   State<_AddHabitDialog> createState() => _AddHabitDialogState();
 }
 
+// Ключи l10n коротких подписей дней недели (Пн..Вс), reuse из Plan-модуля.
+// Индекс 0 = Пн (бит 0) … индекс 6 = Вс (бит 6), как weekdayMask в ADR-053.
+const _weekdayKeys = <String>[
+  'plan.weekday_mon',
+  'plan.weekday_tue',
+  'plan.weekday_wed',
+  'plan.weekday_thu',
+  'plan.weekday_fri',
+  'plan.weekday_sat',
+  'plan.weekday_sun',
+];
+
 class _AddHabitDialogState extends State<_AddHabitDialog> {
   late final TextEditingController _nameController;
   String _type = 'good';
+
+  // Частота (ADR-053). По умолчанию — ежедневная (как раньше).
+  String _frequencyType = 'daily';
+  int _weekdayMask = 127; // все 7 дней выбраны
+  int _weeklyTarget = 3; // для weekly_count
+  int _targetPerDay = 1; // сколько раз в день
 
   @override
   void initState() {
@@ -258,12 +303,35 @@ class _AddHabitDialogState extends State<_AddHabitDialog> {
     super.dispose();
   }
 
+  /// Переключить день недели (индекс 0=Пн..6=Вс). Минимум один день должен
+  /// остаться выбранным — последний день нельзя снять.
+  void _toggleWeekday(int index) {
+    final bit = 1 << index;
+    final isOn = (_weekdayMask & bit) != 0;
+    if (isOn) {
+      final next = _weekdayMask & ~bit;
+      if (next == 0) return; // хотя бы один день обязателен
+      setState(() => _weekdayMask = next);
+    } else {
+      setState(() => _weekdayMask |= bit);
+    }
+  }
+
   void _submit() {
     final name = _nameController.text.trim();
     // Пустое имя — ничего не делаем (валидация сохранена).
     if (name.isEmpty) return;
     Navigator.of(context).pop(
-      _NewHabitResult(name: name, type: _type, emoji: ''),
+      _NewHabitResult(
+        name: name,
+        type: _type,
+        emoji: '',
+        targetPerDay: _targetPerDay,
+        frequencyType: _frequencyType,
+        weekdayMask: _weekdayMask,
+        // weeklyTarget важен только для weekly_count; иначе 0 (как дефолт БД).
+        weeklyTarget: _frequencyType == 'weekly_count' ? _weeklyTarget : 0,
+      ),
     );
   }
 
@@ -271,34 +339,109 @@ class _AddHabitDialogState extends State<_AddHabitDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(context.s('habits.new_habit')),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _nameController,
-            autofocus: true,
-            onSubmitted: (_) => _submit(),
-            decoration: InputDecoration(labelText: context.s('habits.habit_name')),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Text(context.s('habits.type_label')),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: Text(context.s('habits.type_good')),
-                selected: _type == 'good',
-                onSelected: (_) => setState(() => _type = 'good'),
+      // SingleChildScrollView — контент высокий (частота + чипы), при textScale
+      // 1.5 и малой высоте экрана диалог должен скроллиться, а не переполняться.
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              autofocus: true,
+              onSubmitted: (_) => _submit(),
+              decoration:
+                  InputDecoration(labelText: context.s('habits.habit_name')),
+            ),
+            const SizedBox(height: 16),
+            // Тип: хорошая / плохая. Wrap — против overflow на 320px.
+            Text(context.s('habits.type_label')),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: Text(context.s('habits.type_good')),
+                  selected: _type == 'good',
+                  onSelected: (_) => setState(() => _type = 'good'),
+                ),
+                ChoiceChip(
+                  label: Text(context.s('habits.type_bad')),
+                  selected: _type == 'bad',
+                  onSelected: (_) => setState(() => _type = 'bad'),
+                ),
+              ],
+            ),
+            // Частота и «сколько раз в день» — только для хороших привычек
+            // (у плохих привычек прогресс/расписание не используются).
+            if (_type == 'good') ...[
+              const SizedBox(height: 16),
+              Text(context.s('habits.frequency_label')),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: Text(context.s('habits.freq_daily')),
+                    selected: _frequencyType == 'daily',
+                    onSelected: (_) =>
+                        setState(() => _frequencyType = 'daily'),
+                  ),
+                  ChoiceChip(
+                    label: Text(context.s('habits.freq_weekly_days')),
+                    selected: _frequencyType == 'weekly_days',
+                    onSelected: (_) =>
+                        setState(() => _frequencyType = 'weekly_days'),
+                  ),
+                  ChoiceChip(
+                    label: Text(context.s('habits.freq_weekly_count')),
+                    selected: _frequencyType == 'weekly_count',
+                    onSelected: (_) =>
+                        setState(() => _frequencyType = 'weekly_count'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: Text(context.s('habits.type_bad')),
-                selected: _type == 'bad',
-                onSelected: (_) => setState(() => _type = 'bad'),
+              // weekly_days → 7 чипов-дней (Wrap → переносятся на 320px).
+              if (_frequencyType == 'weekly_days') ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      FilterChip(
+                        label: Text(context.s(_weekdayKeys[i])),
+                        selected: (_weekdayMask & (1 << i)) != 0,
+                        onSelected: (_) => _toggleWeekday(i),
+                      ),
+                  ],
+                ),
+              ],
+              // weekly_count → степпер «X раз в неделю» (1..7).
+              if (_frequencyType == 'weekly_count') ...[
+                const SizedBox(height: 12),
+                _CountStepper(
+                  label: context.s('habits.weekly_target_label'),
+                  value: _weeklyTarget,
+                  min: 1,
+                  max: 7,
+                  onChanged: (v) => setState(() => _weeklyTarget = v),
+                ),
+              ],
+              const SizedBox(height: 16),
+              // «Сколько раз в день» — applies to all modes (1..10).
+              _CountStepper(
+                label: context.s('habits.target_per_day_label'),
+                value: _targetPerDay,
+                min: 1,
+                max: 10,
+                onChanged: (v) => setState(() => _targetPerDay = v),
               ),
             ],
-          ),
-        ],
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -309,6 +452,53 @@ class _AddHabitDialogState extends State<_AddHabitDialog> {
         FilledButton(
           onPressed: _submit,
           child: Text(context.s('btn.add')),
+        ),
+      ],
+    );
+  }
+}
+
+/// Маленький степпер «− N +» с подписью. Клемпит значение в [min]..[max].
+/// Текст подписи гибкий (Expanded + ellipsis) — переживает 320px / textScale.
+class _CountStepper extends StatelessWidget {
+  const _CountStepper({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, overflow: TextOverflow.ellipsis),
+        ),
+        IconButton(
+          icon: const Icon(Icons.remove_circle_outline),
+          color: ext.textMuted,
+          onPressed: value > min ? () => onChanged(value - 1) : null,
+        ),
+        SizedBox(
+          width: 24,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline),
+          color: ext.textMuted,
+          onPressed: value < max ? () => onChanged(value + 1) : null,
         ),
       ],
     );
@@ -402,19 +592,24 @@ class _GoodHabitCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                // Прогресс-бар: accent при done (success moment), иначе textMuted
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: ext.textMuted.withValues(alpha: 0.18),
-                    valueColor: AlwaysStoppedAnimation(
-                      done ? colorScheme.primary : ext.textMuted,
+                // Прогресс-бар осмыслен только при target > 1 (ADR-053).
+                // Бинарная привычка (target<=1) → бар скрыт, остаётся текст
+                // выполнено/стрик.
+                if (target > 1) ...[
+                  const SizedBox(height: 8),
+                  // Прогресс-бар: accent при done (success moment), иначе textMuted
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: ext.textMuted.withValues(alpha: 0.18),
+                      valueColor: AlwaysStoppedAnimation(
+                        done ? colorScheme.primary : ext.textMuted,
+                      ),
                     ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 6),
                 Row(
                   children: [

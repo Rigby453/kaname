@@ -1425,6 +1425,94 @@ const Map<String, Map<String, String>> healthAStrings = {
   },
 
   // ---------------------------------------------------------------------------
+  // Частота и цель привычки (ADR-053): диалог добавления привычки
+  // ---------------------------------------------------------------------------
+  // Заголовок секции выбора частоты.
+  'habits.frequency_label': {
+    'en': 'Frequency',
+    'ru': 'Частота',
+    'de': 'Häufigkeit',
+    'fr': 'Fréquence',
+    'it': 'Frequenza',
+    'pt': 'Frequência',
+    'es': 'Frecuencia',
+    'id': 'Frekuensi',
+    'hi': 'आवृत्ति',
+    'ja': '頻度',
+    'ko': '빈도',
+  },
+  // Режим частоты: каждый день.
+  'habits.freq_daily': {
+    'en': 'Every day',
+    'ru': 'Каждый день',
+    'de': 'Jeden Tag',
+    'fr': 'Chaque jour',
+    'it': 'Ogni giorno',
+    'pt': 'Todo dia',
+    'es': 'Cada día',
+    'id': 'Setiap hari',
+    'hi': 'हर दिन',
+    'ja': '毎日',
+    'ko': '매일',
+  },
+  // Режим частоты: по выбранным дням недели.
+  'habits.freq_weekly_days': {
+    'en': 'Days of week',
+    'ru': 'По дням недели',
+    'de': 'Wochentage',
+    'fr': 'Jours de la semaine',
+    'it': 'Giorni della settimana',
+    'pt': 'Dias da semana',
+    'es': 'Días de la semana',
+    'id': 'Hari dalam seminggu',
+    'hi': 'सप्ताह के दिन',
+    'ja': '曜日指定',
+    'ko': '요일 지정',
+  },
+  // Режим частоты: N раз в неделю.
+  'habits.freq_weekly_count': {
+    'en': 'Times a week',
+    'ru': 'Раз в неделю',
+    'de': 'Mal pro Woche',
+    'fr': 'Fois par semaine',
+    'it': 'Volte a settimana',
+    'pt': 'Vezes por semana',
+    'es': 'Veces por semana',
+    'id': 'Kali seminggu',
+    'hi': 'सप्ताह में बार',
+    'ja': '週あたり回数',
+    'ko': '주당 횟수',
+  },
+  // Подпись степпера «сколько раз в неделю».
+  'habits.weekly_target_label': {
+    'en': 'Times per week',
+    'ru': 'Сколько раз в неделю',
+    'de': 'Mal pro Woche',
+    'fr': 'Fois par semaine',
+    'it': 'Volte a settimana',
+    'pt': 'Vezes por semana',
+    'es': 'Veces por semana',
+    'id': 'Berapa kali seminggu',
+    'hi': 'प्रति सप्ताह कितनी बार',
+    'ja': '週に何回',
+    'ko': '주당 몇 회',
+  },
+  // Подпись степпера «сколько раз в день».
+  'habits.target_per_day_label': {
+    'en': 'Times per day',
+    'ru': 'Сколько раз в день',
+    'de': 'Mal pro Tag',
+    'fr': 'Fois par jour',
+    'it': 'Volte al giorno',
+    'pt': 'Vezes por dia',
+    'es': 'Veces por día',
+    'id': 'Berapa kali sehari',
+    'hi': 'प्रति दिन कितनी बार',
+    'ja': '1日に何回',
+    'ko': '하루 몇 회',
+  },
+
+  // ---------------------------------------------------------------------------
   // Health profile (health_profile_provider.dart, setup_flow.dart, profile_screen.dart)
   // ---------------------------------------------------------------------------
   'health_profile.section_title': {
