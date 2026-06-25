@@ -338,14 +338,24 @@ class _ExpandableWeekCalendarState
                 ),
               ),
               // --- Ручка-грабер (подсказка о жесте) ---
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 2),
-                child: Container(
-                  width: 32,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: textFaint.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
+              // GestureDetector здесь решает баг «два тапа»: внешний GD обрабатывает
+              // только drag-события и игнорирует тапы (в dragEnd _dragActive==false →
+              // ранний выход). Тап по грабберу теперь явно переключает состояние.
+              // SizedBox(height: 24) даёт достаточную тач-зону вокруг 4px-пилюли.
+              GestureDetector(
+                onTap: () => _settle(_controller.value < 0.5),
+                behavior: HitTestBehavior.opaque,
+                child: SizedBox(
+                  height: 24,
+                  child: Center(
+                    child: Container(
+                      width: 32,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: textFaint.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
                 ),
               ),
