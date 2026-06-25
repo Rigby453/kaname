@@ -42,6 +42,16 @@ class TermsScreen extends StatelessWidget {
             context.s('profile.privacy_body'),
             style: textTheme.bodyMedium,
           ),
+          const SizedBox(height: 32),
+          // Разделитель перед разделом о здоровье
+          Divider(color: ext.border),
+          const SizedBox(height: 32),
+          Text(context.s('profile.health_disclaimer_title'), style: textTheme.headlineSmall),
+          const SizedBox(height: 16),
+          Text(
+            context.s('profile.health_disclaimer_body'),
+            style: textTheme.bodyMedium,
+          ),
           const SizedBox(height: 48),
           // Tagline — textFaint (третичный, самый тихий)
           Text(

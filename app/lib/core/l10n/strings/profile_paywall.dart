@@ -1248,6 +1248,67 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ko': 'Kaizen — 중요한 것은 놓치지 않아요.',
   },
 
+  // ---- Дисклеймер о здоровье ----
+  'profile.health_disclaimer_title': {
+    'en': 'Health & wellness disclaimer',
+    'ru': 'Дисклеймер о здоровье',
+    'de': 'Gesundheitshinweis',
+    'fr': 'Avertissement santé',
+    'it': 'Avviso sulla salute',
+    'pt': 'Aviso de saúde',
+    'es': 'Aviso de salud',
+    'id': 'Pernyataan kesehatan',
+    'hi': 'स्वास्थ्य संबंधी अस्वीकरण',
+    'ja': '健康に関する免責事項',
+    'ko': '건강 고지사항',
+  },
+  'profile.health_disclaimer_body': {
+    'en': 'Kaizen is a productivity and lifestyle app. It is NOT a medical device, healthcare provider, or a substitute for professional advice.\n\n'
+        'All health-related features — calorie and macro (КБЖУ) targets, water intake, sleep schedule, workouts, posture, breathing, and any AI suggestions — are for general informational and educational purposes only. The numbers are estimates and general guidance, not personalized medical, nutritional, or fitness advice.\n\n'
+        'Always consult a qualified doctor, dietitian, or relevant professional before making decisions about your diet, exercise, sleep, or health — especially if you have a medical condition, are pregnant or nursing, or take medication.\n\n'
+        'You use these features at your own risk. We are not liable for any outcomes resulting from reliance on the app\'s suggestions.',
+    'ru': 'Kaizen — это приложение для продуктивности и образа жизни. Оно НЕ является медицинским устройством, поставщиком медицинских услуг или заменой профессиональной консультации.\n\n'
+        'Все функции, связанные со здоровьем, — цели по калориям и КБЖУ, потребление воды, режим сна, тренировки, осанка, дыхание и любые подсказки ИИ — носят исключительно общий информационный и образовательный характер. Приведённые цифры являются оценками и общими ориентирами, а не персональными медицинскими, нутрициологическими или спортивными рекомендациями.\n\n'
+        'Перед принятием решений о диете, физических нагрузках, сне или здоровье всегда консультируйся с квалифицированным врачом, диетологом или специалистом — особенно при наличии заболеваний, беременности, кормлении грудью или приёме лекарств.\n\n'
+        'Ты используешь эти функции на свой страх и риск. Мы не несём ответственности за последствия, возникшие в результате следования рекомендациям приложения.',
+    'de': 'Kaizen ist eine Produktivitäts- und Lifestyle-App. Sie ist KEIN Medizinprodukt, kein Gesundheitsdienstleister und kein Ersatz für professionellen Rat.\n\n'
+        'Alle gesundheitsbezogenen Funktionen — Kalorien- und Makronährstoffziele, Wasseraufnahme, Schlafplan, Workouts, Haltung, Atmung und KI-Vorschläge — dienen ausschließlich allgemeinen Informations- und Bildungszwecken. Die Zahlen sind Schätzungen und allgemeine Richtwerte, keine personalisierten medizinischen, ernährungsbezogenen oder sportlichen Empfehlungen.\n\n'
+        'Konsultiere immer einen qualifizierten Arzt, Ernährungsberater oder relevanten Fachmann, bevor du Entscheidungen über deine Ernährung, Bewegung, deinen Schlaf oder deine Gesundheit triffst — insbesondere wenn du eine Erkrankung hast, schwanger bist, stillst oder Medikamente nimmst.\n\n'
+        'Du nutzt diese Funktionen auf eigenes Risiko. Wir haften nicht für Ergebnisse, die aus dem Vertrauen auf die Vorschläge der App entstehen.',
+    'fr': 'Kaizen est une application de productivité et de style de vie. Elle N\'EST PAS un dispositif médical, un prestataire de soins de santé ni un substitut à un avis professionnel.\n\n'
+        'Toutes les fonctionnalités liées à la santé — objectifs caloriques et en macronutriments, apport en eau, programme de sommeil, entraînements, posture, respiration et suggestions de l\'IA — sont fournies à des fins d\'information générale et d\'éducation uniquement. Les chiffres sont des estimations et des conseils généraux, non des conseils médicaux, nutritionnels ou sportifs personnalisés.\n\n'
+        'Consulte toujours un médecin qualifié, un diététicien ou un professionnel compétent avant de prendre des décisions concernant ton alimentation, ton exercice, ton sommeil ou ta santé — surtout si tu as une condition médicale, si tu es enceinte ou si tu allaitez, ou si tu prends des médicaments.\n\n'
+        'Tu utilises ces fonctionnalités à tes propres risques. Nous ne sommes pas responsables des résultats découlant de la confiance accordée aux suggestions de l\'application.',
+    'it': 'Kaizen è un\'app di produttività e stile di vita. NON è un dispositivo medico, un fornitore di assistenza sanitaria o un sostituto della consulenza professionale.\n\n'
+        'Tutte le funzioni relative alla salute — obiettivi calorici e di macronutrienti, apporto idrico, programma del sonno, allenamenti, postura, respirazione e suggerimenti dell\'IA — sono fornite a soli scopi informativi e educativi generali. I numeri sono stime e linee guida generali, non consigli medici, nutrizionali o di fitness personalizzati.\n\n'
+        'Consulta sempre un medico qualificato, un dietologo o un professionista competente prima di prendere decisioni riguardo a dieta, esercizio fisico, sonno o salute — soprattutto se hai una condizione medica, sei incinta o stai allattando, o assumi farmaci.\n\n'
+        'Utilizzi queste funzioni a tuo rischio. Non siamo responsabili per eventuali conseguenze derivanti dall\'affidamento ai suggerimenti dell\'app.',
+    'pt': 'Kaizen é um app de produtividade e estilo de vida. NÃO é um dispositivo médico, prestador de serviços de saúde ou substituto para orientação profissional.\n\n'
+        'Todos os recursos relacionados à saúde — metas de calorias e macros, ingestão de água, horário de sono, treinos, postura, respiração e sugestões de IA — são apenas para fins informativos e educacionais gerais. Os números são estimativas e orientações gerais, não conselhos médicos, nutricionais ou de condicionamento personalizados.\n\n'
+        'Consulte sempre um médico qualificado, nutricionista ou profissional relevante antes de tomar decisões sobre dieta, exercício, sono ou saúde — especialmente se tiver uma condição médica, estiver grávida ou amamentando, ou tomar medicamentos.\n\n'
+        'Você usa esses recursos por sua própria conta e risco. Não somos responsáveis por quaisquer resultados decorrentes da confiança nas sugestões do app.',
+    'es': 'Kaizen es una app de productividad y estilo de vida. NO es un dispositivo médico, proveedor de atención médica ni sustituto del asesoramiento profesional.\n\n'
+        'Todas las funciones relacionadas con la salud — objetivos de calorías y macros, ingesta de agua, horario de sueño, entrenamientos, postura, respiración y sugerencias de IA — son únicamente para fines informativos y educativos generales. Los números son estimaciones y orientación general, no consejos médicos, nutricionales o de acondicionamiento personalizados.\n\n'
+        'Consulta siempre a un médico calificado, dietista o profesional relevante antes de tomar decisiones sobre tu dieta, ejercicio, sueño o salud — especialmente si tienes una condición médica, estás embarazada o en período de lactancia, o tomas medicación.\n\n'
+        'Usas estas funciones bajo tu propio riesgo. No somos responsables de ningún resultado derivado de confiar en las sugerencias de la app.',
+    'id': 'Kaizen adalah app produktivitas dan gaya hidup. App ini BUKAN perangkat medis, penyedia layanan kesehatan, atau pengganti saran profesional.\n\n'
+        'Semua fitur terkait kesehatan — target kalori dan makro, asupan air, jadwal tidur, olahraga, postur, pernapasan, dan saran AI — hanya untuk tujuan informasi dan edukasi umum. Angka-angka tersebut adalah estimasi dan panduan umum, bukan saran medis, nutrisi, atau kebugaran yang dipersonalisasi.\n\n'
+        'Selalu konsultasikan dengan dokter, ahli gizi, atau profesional terkait sebelum membuat keputusan tentang diet, olahraga, tidur, atau kesehatan — terutama jika kamu memiliki kondisi medis, sedang hamil atau menyusui, atau mengonsumsi obat-obatan.\n\n'
+        'Kamu menggunakan fitur-fitur ini dengan risiko sendiri. Kami tidak bertanggung jawab atas hasil apa pun yang timbul dari ketergantungan pada saran app.',
+    'hi': 'Kaizen एक प्रोडक्टिविटी और लाइफस्टाइल ऐप है। यह कोई मेडिकल डिवाइस, स्वास्थ्य सेवा प्रदाता या पेशेवर सलाह का विकल्प नहीं है।\n\n'
+        'सभी स्वास्थ्य-संबंधी फीचर — कैलोरी और मैक्रो (КБЖУ) लक्ष्य, पानी का सेवन, नींद का शेड्यूल, वर्कआउट, पॉस्चर, श्वास और AI सुझाव — केवल सामान्य जानकारी और शैक्षिक उद्देश्यों के लिए हैं। संख्याएं अनुमान और सामान्य मार्गदर्शन हैं, न कि व्यक्तिगत चिकित्सा, पोषण या फिटनेस सलाह।\n\n'
+        'आहार, व्यायाम, नींद या स्वास्थ्य के बारे में निर्णय लेने से पहले हमेशा किसी योग्य डॉक्टर, आहार विशेषज्ञ या संबंधित पेशेवर से परामर्श करो — विशेष रूप से यदि तुम्हें कोई चिकित्सीय स्थिति है, गर्भावस्था या स्तनपान है, या दवाएं लेते हो।\n\n'
+        'तुम इन फीचर का उपयोग अपनी जोखिम पर करते हो। ऐप के सुझावों पर निर्भरता से होने वाले किसी भी परिणाम के लिए हम उत्तरदायी नहीं हैं।',
+    'ja': 'Kaizenは生産性とライフスタイルのアプリです。医療機器、医療サービス提供者、または専門家のアドバイスの代替ではありません。\n\n'
+        'カロリー・マクロ栄養素の目標、水分摂取、睡眠スケジュール、ワークアウト、姿勢、呼吸、AIの提案など、健康に関連するすべての機能は、一般的な情報提供および教育目的のみのものです。表示される数値は推定値と一般的な目安であり、個別の医療・栄養・フィットネスアドバイスではありません。\n\n'
+        '食事、運動、睡眠、または健康に関する決定を行う前に、必ず資格を持つ医師、管理栄養士、または関連する専門家に相談してください。特に、持病がある場合、妊娠中または授乳中の場合、薬を服用している場合は必ずご相談ください。\n\n'
+        'これらの機能はご自身の責任においてご使用ください。アプリの提案を参考にした結果生じたいかなる損害についても、当社は責任を負いません。',
+    'ko': 'Kaizen은 생산성 및 라이프스타일 앱입니다. 의료 기기, 의료 서비스 제공자 또는 전문적인 조언을 대체하지 않습니다.\n\n'
+        '칼로리 및 영양소 목표, 수분 섭취, 수면 일정, 운동, 자세, 호흡, AI 제안 등 모든 건강 관련 기능은 일반적인 정보 제공 및 교육 목적으로만 제공됩니다. 제시된 수치는 추정값과 일반적인 지침으로, 개인화된 의료, 영양 또는 피트니스 조언이 아닙니다.\n\n'
+        '식이요법, 운동, 수면 또는 건강에 관한 결정을 내리기 전에 자격을 갖춘 의사, 영양사 또는 관련 전문가와 반드시 상담하세요. 특히 의학적 질환이 있거나, 임신 중이거나 수유 중이거나, 약을 복용하는 경우에는 더욱 중요합니다.\n\n'
+        '이러한 기능은 사용자 본인의 책임 하에 사용됩니다. 앱의 제안에 의존하여 발생한 결과에 대해 당사는 책임을 지지 않습니다.',
+  },
+
   // ---- Paywall ----
   'paywall.title': {
     'en': 'Kaizen Premium',
