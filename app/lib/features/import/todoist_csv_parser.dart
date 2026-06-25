@@ -8,6 +8,7 @@ class TodoistTask {
     required this.content,
     required this.date,
     required this.priority,
+    this.description,
   });
 
   /// Заголовок задачи (поле CONTENT)
@@ -18,6 +19,11 @@ class TodoistTask {
 
   /// Приоритет: "1"=urgent→main, "2"=high→medium, "3"/"4"=low
   final String priority;
+
+  /// Описание задачи (поле DESCRIPTION) или null, если пусто/нет колонки.
+  /// Парсится для полноты; в текущей схеме items нет колонки заметок
+  /// (data-model.md), поэтому в Drift пока не сохраняется.
+  final String? description;
 }
 
 /// Парсер Todoist CSV
@@ -41,6 +47,7 @@ class TodoistCsvParser {
     final contentIdx = _indexOf(headers, 'CONTENT');
     final priorityIdx = _indexOf(headers, 'PRIORITY');
     final dateIdx = _indexOf(headers, 'DATE');
+    final descriptionIdx = _indexOf(headers, 'DESCRIPTION');
 
     // Если обязательных колонок нет — возвращаем пустой список
     if (typeIdx < 0 || contentIdx < 0) return tasks;
@@ -60,16 +67,23 @@ class TodoistCsvParser {
       final content = contentIdx < cols.length ? cols[contentIdx].trim() : '';
       if (content.isEmpty) continue;
 
-      final priority = priorityIdx < cols.length
+      final priority = (priorityIdx >= 0 && priorityIdx < cols.length)
           ? cols[priorityIdx].trim()
           : '4';
 
-      final date = dateIdx < cols.length ? cols[dateIdx].trim() : '';
+      final date = (dateIdx >= 0 && dateIdx < cols.length)
+          ? cols[dateIdx].trim()
+          : '';
+
+      final description = (descriptionIdx >= 0 && descriptionIdx < cols.length)
+          ? cols[descriptionIdx].trim()
+          : '';
 
       tasks.add(TodoistTask(
         content: content,
         date: date.isEmpty ? null : date,
         priority: priority,
+        description: description.isEmpty ? null : description,
       ));
     }
 
