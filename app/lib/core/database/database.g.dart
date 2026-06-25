@@ -8894,6 +8894,369 @@ class WorkoutSetLogsTableCompanion
   }
 }
 
+class $CustomBreathingTableTable extends CustomBreathingTable
+    with TableInfo<$CustomBreathingTableTable, CustomBreathingTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomBreathingTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _phasesJsonMeta = const VerificationMeta(
+    'phasesJson',
+  );
+  @override
+  late final GeneratedColumn<String> phasesJson = GeneratedColumn<String>(
+    'phases_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cyclesMeta = const VerificationMeta('cycles');
+  @override
+  late final GeneratedColumn<int> cycles = GeneratedColumn<int>(
+    'cycles',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(4),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    phasesJson,
+    cycles,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'custom_breathing';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomBreathingTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('phases_json')) {
+      context.handle(
+        _phasesJsonMeta,
+        phasesJson.isAcceptableOrUnknown(data['phases_json']!, _phasesJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_phasesJsonMeta);
+    }
+    if (data.containsKey('cycles')) {
+      context.handle(
+        _cyclesMeta,
+        cycles.isAcceptableOrUnknown(data['cycles']!, _cyclesMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomBreathingTableData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomBreathingTableData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      phasesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phases_json'],
+      )!,
+      cycles: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cycles'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomBreathingTableTable createAlias(String alias) {
+    return $CustomBreathingTableTable(attachedDatabase, alias);
+  }
+}
+
+class CustomBreathingTableData extends DataClass
+    implements Insertable<CustomBreathingTableData> {
+  final String id;
+  final String name;
+  final String phasesJson;
+  final int cycles;
+  final DateTime createdAt;
+  const CustomBreathingTableData({
+    required this.id,
+    required this.name,
+    required this.phasesJson,
+    required this.cycles,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['phases_json'] = Variable<String>(phasesJson);
+    map['cycles'] = Variable<int>(cycles);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  CustomBreathingTableCompanion toCompanion(bool nullToAbsent) {
+    return CustomBreathingTableCompanion(
+      id: Value(id),
+      name: Value(name),
+      phasesJson: Value(phasesJson),
+      cycles: Value(cycles),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory CustomBreathingTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomBreathingTableData(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      phasesJson: serializer.fromJson<String>(json['phasesJson']),
+      cycles: serializer.fromJson<int>(json['cycles']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'phasesJson': serializer.toJson<String>(phasesJson),
+      'cycles': serializer.toJson<int>(cycles),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  CustomBreathingTableData copyWith({
+    String? id,
+    String? name,
+    String? phasesJson,
+    int? cycles,
+    DateTime? createdAt,
+  }) => CustomBreathingTableData(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    phasesJson: phasesJson ?? this.phasesJson,
+    cycles: cycles ?? this.cycles,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  CustomBreathingTableData copyWithCompanion(
+    CustomBreathingTableCompanion data,
+  ) {
+    return CustomBreathingTableData(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      phasesJson: data.phasesJson.present
+          ? data.phasesJson.value
+          : this.phasesJson,
+      cycles: data.cycles.present ? data.cycles.value : this.cycles,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomBreathingTableData(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('phasesJson: $phasesJson, ')
+          ..write('cycles: $cycles, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, phasesJson, cycles, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomBreathingTableData &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.phasesJson == this.phasesJson &&
+          other.cycles == this.cycles &&
+          other.createdAt == this.createdAt);
+}
+
+class CustomBreathingTableCompanion
+    extends UpdateCompanion<CustomBreathingTableData> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> phasesJson;
+  final Value<int> cycles;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const CustomBreathingTableCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.phasesJson = const Value.absent(),
+    this.cycles = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CustomBreathingTableCompanion.insert({
+    required String id,
+    required String name,
+    required String phasesJson,
+    this.cycles = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       phasesJson = Value(phasesJson);
+  static Insertable<CustomBreathingTableData> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? phasesJson,
+    Expression<int>? cycles,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (phasesJson != null) 'phases_json': phasesJson,
+      if (cycles != null) 'cycles': cycles,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CustomBreathingTableCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? phasesJson,
+    Value<int>? cycles,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return CustomBreathingTableCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phasesJson: phasesJson ?? this.phasesJson,
+      cycles: cycles ?? this.cycles,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (phasesJson.present) {
+      map['phases_json'] = Variable<String>(phasesJson.value);
+    }
+    if (cycles.present) {
+      map['cycles'] = Variable<int>(cycles.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomBreathingTableCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('phasesJson: $phasesJson, ')
+          ..write('cycles: $cycles, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -8923,6 +9286,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SubtasksTableTable subtasksTable = $SubtasksTableTable(this);
   late final $WorkoutSetLogsTableTable workoutSetLogsTable =
       $WorkoutSetLogsTableTable(this);
+  late final $CustomBreathingTableTable customBreathingTable =
+      $CustomBreathingTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -8948,6 +9313,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     itemAttachmentsTable,
     subtasksTable,
     workoutSetLogsTable,
+    customBreathingTable,
   ];
 }
 
@@ -14001,6 +14367,224 @@ typedef $$WorkoutSetLogsTableTableProcessedTableManager =
       WorkoutSetLogsTableData,
       PrefetchHooks Function()
     >;
+typedef $$CustomBreathingTableTableCreateCompanionBuilder =
+    CustomBreathingTableCompanion Function({
+      required String id,
+      required String name,
+      required String phasesJson,
+      Value<int> cycles,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$CustomBreathingTableTableUpdateCompanionBuilder =
+    CustomBreathingTableCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> phasesJson,
+      Value<int> cycles,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$CustomBreathingTableTableFilterComposer
+    extends Composer<_$AppDatabase, $CustomBreathingTableTable> {
+  $$CustomBreathingTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phasesJson => $composableBuilder(
+    column: $table.phasesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cycles => $composableBuilder(
+    column: $table.cycles,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CustomBreathingTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $CustomBreathingTableTable> {
+  $$CustomBreathingTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get phasesJson => $composableBuilder(
+    column: $table.phasesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cycles => $composableBuilder(
+    column: $table.cycles,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CustomBreathingTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CustomBreathingTableTable> {
+  $$CustomBreathingTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get phasesJson => $composableBuilder(
+    column: $table.phasesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cycles =>
+      $composableBuilder(column: $table.cycles, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$CustomBreathingTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CustomBreathingTableTable,
+          CustomBreathingTableData,
+          $$CustomBreathingTableTableFilterComposer,
+          $$CustomBreathingTableTableOrderingComposer,
+          $$CustomBreathingTableTableAnnotationComposer,
+          $$CustomBreathingTableTableCreateCompanionBuilder,
+          $$CustomBreathingTableTableUpdateCompanionBuilder,
+          (
+            CustomBreathingTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $CustomBreathingTableTable,
+              CustomBreathingTableData
+            >,
+          ),
+          CustomBreathingTableData,
+          PrefetchHooks Function()
+        > {
+  $$CustomBreathingTableTableTableManager(
+    _$AppDatabase db,
+    $CustomBreathingTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomBreathingTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomBreathingTableTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CustomBreathingTableTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> phasesJson = const Value.absent(),
+                Value<int> cycles = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CustomBreathingTableCompanion(
+                id: id,
+                name: name,
+                phasesJson: phasesJson,
+                cycles: cycles,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required String phasesJson,
+                Value<int> cycles = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CustomBreathingTableCompanion.insert(
+                id: id,
+                name: name,
+                phasesJson: phasesJson,
+                cycles: cycles,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CustomBreathingTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CustomBreathingTableTable,
+      CustomBreathingTableData,
+      $$CustomBreathingTableTableFilterComposer,
+      $$CustomBreathingTableTableOrderingComposer,
+      $$CustomBreathingTableTableAnnotationComposer,
+      $$CustomBreathingTableTableCreateCompanionBuilder,
+      $$CustomBreathingTableTableUpdateCompanionBuilder,
+      (
+        CustomBreathingTableData,
+        BaseReferences<
+          _$AppDatabase,
+          $CustomBreathingTableTable,
+          CustomBreathingTableData
+        >,
+      ),
+      CustomBreathingTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -14048,4 +14632,6 @@ class $AppDatabaseManager {
       $$SubtasksTableTableTableManager(_db, _db.subtasksTable);
   $$WorkoutSetLogsTableTableTableManager get workoutSetLogsTable =>
       $$WorkoutSetLogsTableTableTableManager(_db, _db.workoutSetLogsTable);
+  $$CustomBreathingTableTableTableManager get customBreathingTable =>
+      $$CustomBreathingTableTableTableManager(_db, _db.customBreathingTable);
 }

@@ -6,11 +6,16 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/animations/constants.dart';
+import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/undo_snack_bar.dart';
+import 'breathing_custom_providers.dart';
+import 'breathing_editor_screen.dart';
 import 'breathing_engine.dart';
 
 // Доступные длительности сессии
@@ -38,18 +43,27 @@ const _kJitterPeriod = Duration(milliseconds: 900);
 /// Амплитуда джиттера в долях масштаба (крошечная: ±0.015).
 const _kJitterAmplitude = 0.015;
 
-class BreathingScreen extends StatefulWidget {
+class BreathingScreen extends ConsumerStatefulWidget {
   const BreathingScreen({super.key});
 
   @override
-  State<BreathingScreen> createState() => _BreathingScreenState();
+  ConsumerState<BreathingScreen> createState() => _BreathingScreenState();
 }
 
-class _BreathingScreenState extends State<BreathingScreen>
+class _BreathingScreenState extends ConsumerState<BreathingScreen>
     with TickerProviderStateMixin {
   // --- Настройки ---
-  int _presetIndex = 0;
+  // Выбранная техника: 'builtin:<index>' для встроенного пресета либо id
+  // пользовательской техники из БД.
+  String _selectedId = 'builtin:0';
   int _durationMinutes = 3;
+
+  // Снапшот фаз запущенной сессии (захватывается на _start, чтобы изменения
+  // списка техник во время сессии не ломали анимацию).
+  List<BreathPhase> _runningPhases = const [];
+
+  // Последний известный список пользовательских техник (обновляется в build).
+  List<CustomTechnique> _customTechniques = const [];
 
   // --- Состояние сессии ---
   bool _running = false;
@@ -90,8 +104,58 @@ class _BreathingScreenState extends State<BreathingScreen>
   // --- Текущая фаза ---
   String _lastPhaseLabel = '';
 
-  BreathingPreset get _preset => breathingPresets[_presetIndex];
   Duration get _totalDuration => Duration(minutes: _durationMinutes);
+
+  /// Фазы выбранной техники (встроенной или пользовательской).
+  /// Если выбранная пользовательская техника удалена — откат на первый пресет.
+  List<BreathPhase> _phasesForSelected() {
+    if (_selectedId.startsWith('builtin:')) {
+      final idx = int.tryParse(_selectedId.substring('builtin:'.length)) ?? 0;
+      final i = idx.clamp(0, breathingPresets.length - 1);
+      return breathingPresets[i].phases;
+    }
+    for (final t in _customTechniques) {
+      if (t.id == _selectedId) return t.phases;
+    }
+    return breathingPresets[0].phases;
+  }
+
+  /// Локализация имени встроенного пресета (имена-данные → ключи переводов).
+  String _localizePresetName(String name) {
+    switch (name) {
+      case 'Box 4-4-4-4':
+        return context.s('breathing.preset_box');
+      case 'Calm 4-7-8':
+        return context.s('breathing.preset_calm');
+      case 'Simple 5-5':
+        return context.s('breathing.preset_simple');
+      default:
+        return name;
+    }
+  }
+
+  void _openEditor() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const BreathingEditorScreen()),
+    );
+  }
+
+  /// Удаление пользовательской техники с Undo (паттерн привычек).
+  Future<void> _deleteCustom(CustomTechnique t) async {
+    final dao = ref.read(customBreathingDaoProvider);
+    final snapshot = await dao.getById(t.id);
+    if (snapshot == null) return;
+    await dao.deleteTechnique(t.id);
+    if (_selectedId == t.id) {
+      setState(() => _selectedId = 'builtin:0');
+    }
+    if (!mounted) return;
+    showUndoSnackBar(
+      context,
+      message: '"${t.name}" ${context.s('breathing.removed')}',
+      onUndo: () async => dao.restore(snapshot),
+    );
+  }
 
   @override
   void initState() {
@@ -199,6 +263,8 @@ class _BreathingScreenState extends State<BreathingScreen>
 
   void _start() {
     final total = _totalDuration;
+    // Захватываем фазы выбранной техники на всё время сессии.
+    _runningPhases = _phasesForSelected();
     // Инициализируем цвет для начальной фазы (Inhale)
     _currentCircleColor = _colorForPhaseLabel('Inhale');
     _targetCircleColor = _currentCircleColor;
@@ -270,7 +336,7 @@ class _BreathingScreenState extends State<BreathingScreen>
     // reduceMotion: при включённом режиме — не анимируем масштаб
     final reduce = reduceMotionOf(context);
 
-    final result = phaseAt(_preset.phases, _elapsed);
+    final result = phaseAt(_runningPhases, _elapsed);
     final phase = result.phase;
 
     if (phase.label != _lastPhaseLabel) {
@@ -384,6 +450,11 @@ class _BreathingScreenState extends State<BreathingScreen>
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
 
+    // Пользовательские техники из БД (пустой список, пока стрим грузится).
+    final custom = ref.watch(customTechniquesProvider).valueOrNull ??
+        const <CustomTechnique>[];
+    _customTechniques = custom;
+
     return Scaffold(
       appBar: AppBar(title: Text(context.s('breathing.title'))),
       body: SafeArea(
@@ -394,7 +465,7 @@ class _BreathingScreenState extends State<BreathingScreen>
               ? _buildDone(textTheme)
               : _running
                   ? _buildRunning(textTheme)
-                  : _buildIdle(textTheme),
+                  : _buildIdle(textTheme, custom),
         ),
       ),
     );
@@ -404,45 +475,83 @@ class _BreathingScreenState extends State<BreathingScreen>
   // Экран выбора пресета и длительности
   // ---------------------------------------------------------------------------
 
-  Widget _buildIdle(TextTheme textTheme) {
+  Widget _buildIdle(TextTheme textTheme, List<CustomTechnique> custom) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // headlineSmall — display font (серифный), заголовок секции
-        Text(context.s('breathing.choose_technique'), style: textTheme.headlineSmall),
-        const SizedBox(height: 24),
+        // Прокручиваемая область: список техник может расти, а textScale —
+        // увеличивать высоту. Start закреплён внизу, вне прокрутки.
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // headlineSmall — display font (серифный), заголовок секции
+                Text(context.s('breathing.choose_technique'),
+                    style: textTheme.headlineSmall),
+                const SizedBox(height: 24),
 
-        // Выбор пресета — ChoiceChip ряд
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: List.generate(breathingPresets.length, (i) {
-            return ChoiceChip(
-              label: Text(breathingPresets[i].name),
-              selected: _presetIndex == i,
-              onSelected: (_) => setState(() => _presetIndex = i),
-            );
-          }),
+                // Выбор техники: встроенные пресеты + пользовательские.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < breathingPresets.length; i++)
+                      ChoiceChip(
+                        label: Text(
+                          _localizePresetName(breathingPresets[i].name),
+                        ),
+                        selected: _selectedId == 'builtin:$i',
+                        onSelected: (_) =>
+                            setState(() => _selectedId = 'builtin:$i'),
+                      ),
+                    // Пользовательские техники — InputChip с кнопкой удаления.
+                    for (final t in custom)
+                      InputChip(
+                        label: Text(t.name),
+                        selected: _selectedId == t.id,
+                        onSelected: (_) => setState(() => _selectedId = t.id),
+                        onDeleted: () => _deleteCustom(t),
+                        deleteIcon: const Icon(Icons.close, size: 18),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Создать свою технику
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _openEditor,
+                    icon: const Icon(Icons.add),
+                    label: Text(context.s('breathing.create_button')),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                Text(context.s('breathing.duration'),
+                    style: textTheme.titleMedium),
+                const SizedBox(height: 12),
+
+                // Выбор длительности — SegmentedButton
+                SegmentedButton<int>(
+                  segments: _sessionDurations
+                      .map((d) => ButtonSegment<int>(
+                            value: d.minutes,
+                            label: Text(d.label),
+                          ))
+                      .toList(),
+                  selected: {_durationMinutes},
+                  onSelectionChanged: (s) =>
+                      setState(() => _durationMinutes = s.first),
+                  showSelectedIcon: false,
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 32),
-
-        Text(context.s('breathing.duration'), style: textTheme.titleMedium),
-        const SizedBox(height: 12),
-
-        // Выбор длительности — SegmentedButton
-        SegmentedButton<int>(
-          segments: _sessionDurations
-              .map((d) => ButtonSegment<int>(
-                    value: d.minutes,
-                    label: Text(d.label),
-                  ))
-              .toList(),
-          selected: {_durationMinutes},
-          onSelectionChanged: (s) =>
-              setState(() => _durationMinutes = s.first),
-          showSelectedIcon: false,
-        ),
-        const Spacer(),
+        const SizedBox(height: 16),
 
         // Единственное первичное действие — FilledButton (Start)
         FilledButton.icon(
@@ -463,7 +572,7 @@ class _BreathingScreenState extends State<BreathingScreen>
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final reduce = reduceMotionOf(context);
 
-    final result = phaseAt(_preset.phases, _elapsed);
+    final result = phaseAt(_runningPhases, _elapsed);
     final phase = result.phase;
     final secsLeft = _phaseSecondsLeft(phase, result.phaseProgress);
 

@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import 'daos/habits_dao.dart';
+import 'daos/custom_breathing_dao.dart';
 
 // Импорт сгенерированного файла (создаётся build_runner)
 part 'database.g.dart';
@@ -531,6 +532,33 @@ class SubtasksTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Пользовательские дыхательные техники (Phase 2). Локальные, без синхронизации.
+/// Фазы хранятся как JSON-строка (кодек в features/health/breathing_custom.dart),
+/// движок дыхания (breathing_engine.dart) работает с раскодированным списком.
+/// Добавлено в schemaVersion 20.
+class CustomBreathingTable extends Table {
+  @override
+  String get tableName => 'custom_breathing';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Название техники (задаёт пользователь)
+  TextColumn get name => text()();
+
+  // JSON-массив фаз (см. breathing_custom.dart: encodePhases/decodePhases)
+  TextColumn get phasesJson => text()();
+
+  // Число циклов (для превью суммарной длительности в редакторе)
+  IntColumn get cycles => integer().withDefault(const Constant(4))();
+
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Очередь синхронизации: записи, ожидающие отправки на сервер
 /// id — autoincrement int (локальный, не синхронизируется)
 class SyncQueueTable extends Table {
@@ -580,6 +608,7 @@ class SyncQueueTable extends Table {
     ItemAttachmentsTable,
     SubtasksTable,
     WorkoutSetLogsTable,
+    CustomBreathingTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -591,8 +620,11 @@ class AppDatabase extends _$AppDatabase {
   /// DAO для трекера привычек (schemaVersion 10).
   HabitsDao get habitsDao => HabitsDao(this);
 
+  /// DAO для пользовательских дыхательных техник (schemaVersion 20).
+  CustomBreathingDao get customBreathingDao => CustomBreathingDao(this);
+
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -683,6 +715,11 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(habitsTable, habitsTable.weekdayMask);
             await m.addColumn(habitsTable, habitsTable.weeklyTarget);
             await m.addColumn(habitsTable, habitsTable.reminderMinutes);
+          }
+          // v20: добавлена таблица custom_breathing (пользовательские
+          // дыхательные техники, Phase 2). Локальная, без синхронизации.
+          if (from < 20) {
+            await m.createTable(customBreathingTable);
           }
         },
       );
