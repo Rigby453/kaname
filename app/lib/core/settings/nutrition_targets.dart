@@ -11,6 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/theme_provider.dart'; // sharedPreferencesProvider
+import 'macro_override_provider.dart'; // macroOverrideProvider, MacroOverrideState
 import 'water_goal_provider.dart'; // kUser*Key
 
 // ---------------------------------------------------------------------------
@@ -140,10 +141,22 @@ NutritionTargets computeNutritionTargets({
 }
 
 /// Riverpod-провайдер персональных норм питания.
-/// Читает антропометрию из SharedPreferences (сохранённую на шаге онбординга)
-/// и цель из food_goal (food_preferences_provider.dart).
-/// Если данные отсутствуют или неполны — возвращает NutritionTargets.fallback.
+///
+/// Логика приоритетов:
+/// 1. Если [macroOverrideProvider].enabled == true → возвращает переопределённые
+///    значения (ручной режим или авто-баланс из MacroOverrideState).
+/// 2. Иначе → вычисляет нормы из антропометрии через [computeNutritionTargets].
+///    Если антропометрия неполна → [NutritionTargets.fallback].
+///
+/// Клетчатка и сахар всегда берутся из расчёта по ккал (не переопределяются).
 final nutritionTargetsProvider = Provider<NutritionTargets>((ref) {
+  // Смотрим на переопределение макросов — если включено, используем его
+  final override = ref.watch(macroOverrideProvider);
+  if (override.enabled) {
+    return _nutritionTargetsFromOverride(override);
+  }
+
+  // Иначе — стандартный расчёт по антропометрии
   final prefs = ref.watch(sharedPreferencesProvider);
 
   final weightKg = prefs.getDouble(kUserWeightKgKey);
@@ -170,3 +183,21 @@ final nutritionTargetsProvider = Provider<NutritionTargets>((ref) {
     goal: goal,
   );
 });
+
+/// Строит [NutritionTargets] из состояния переопределения макросов.
+/// Клетчатка и сахар производятся от эффективных ккал.
+NutritionTargets _nutritionTargetsFromOverride(MacroOverrideState o) {
+  final kcal = o.effectiveKcal;
+  // Клетчатка: 14 г на 1000 ккал (ВОЗ/ADA), минимум 25 г
+  final fiberG = math.max(25, (14.0 * kcal / 1000.0).round());
+  // Сахар: не более 10% от ккал (ВОЗ)
+  final sugarMaxG = (kcal * 0.10 / 4).round();
+  return NutritionTargets(
+    kcal: kcal,
+    proteinG: o.proteinG,
+    fatG: o.fatG,
+    carbsG: o.carbsG,
+    fiberG: fiberG,
+    sugarMaxG: sugarMaxG,
+  );
+}
