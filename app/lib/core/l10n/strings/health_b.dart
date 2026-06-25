@@ -2159,6 +2159,82 @@ const Map<String, Map<String, String>> healthBStrings = {
   },
 
   // ---------------------------------------------------------------------------
+  // meditation.* pose preview  —  shown BEFORE the player starts.
+  // Только en + ru (остальные языки добавит локализация позже, после ревью).
+  // ---------------------------------------------------------------------------
+
+  // Кнопка запуска сессии из экрана-превью позы.
+  'meditation.start': {
+    'en': 'Start',
+    'ru': 'Начать',
+  },
+  // Подпись-заголовок над позой на экране превью.
+  'meditation.pose_heading': {
+    'en': 'Take this pose',
+    'ru': 'Примите эту позу',
+  },
+
+  // — Body Scan: лёжа на спине —
+  'meditation.body_scan.pose_name': {
+    'en': 'Resting pose',
+    'ru': 'Поза покоя',
+  },
+  'meditation.body_scan.pose_desc': {
+    'en':
+        'Lie comfortably on your back with your legs slightly apart and your arms resting at your sides, palms facing up. Let your eyes close softly and your breath settle into its own gentle rhythm.',
+    'ru':
+        'Лягте удобно на спину, ноги слегка разведены, руки лежат вдоль тела ладонями вверх. Мягко закройте глаза и позвольте дыханию течь в своём спокойном ритме.',
+  },
+
+  // — Focus Reset: прямая посадка на стуле —
+  'meditation.focus_reset.pose_name': {
+    'en': 'Upright seat',
+    'ru': 'Прямая посадка',
+  },
+  'meditation.focus_reset.pose_desc': {
+    'en':
+        'Sit tall in your chair with both feet flat on the floor and your hands resting on your thighs. Lengthen your spine, relax your shoulders, and let your gaze soften or your eyes close.',
+    'ru':
+        'Сядьте ровно на стул, обе стопы плоско на полу, руки лежат на бёдрах. Вытяните позвоночник, расслабьте плечи и мягко опустите взгляд или закройте глаза.',
+  },
+
+  // — Exam Calm: устойчивая, заземлённая посадка —
+  'meditation.exam_calm.pose_name': {
+    'en': 'Grounded seat',
+    'ru': 'Устойчивая посадка',
+  },
+  'meditation.exam_calm.pose_desc': {
+    'en':
+        'Sit upright with your feet planted firmly on the ground and your hands resting open on your knees. Feel the steady support beneath you and take one slow breath to arrive.',
+    'ru':
+        'Сядьте прямо, стопы уверенно стоят на полу, раскрытые ладони лежат на коленях. Почувствуйте надёжную опору под собой и сделайте один медленный вдох, чтобы настроиться.',
+  },
+
+  // — Sleep Prep: лёжа в постели —
+  'meditation.sleep_prep.pose_name': {
+    'en': 'Lying at rest',
+    'ru': 'Поза лёжа',
+  },
+  'meditation.sleep_prep.pose_desc': {
+    'en':
+        'Lie down on your back in bed, arms resting gently at your sides and legs relaxed. Close your eyes, let your body sink into the mattress, and breathe slowly.',
+    'ru':
+        'Лягте на спину в постели, руки мягко лежат вдоль тела, ноги расслаблены. Закройте глаза, позвольте телу погрузиться в матрас и дышите медленно.',
+  },
+
+  // — Stress Relief: удобная поза сидя —
+  'meditation.stress_relief.pose_name': {
+    'en': 'Easy cross-legged seat',
+    'ru': 'Удобная поза сидя',
+  },
+  'meditation.stress_relief.pose_desc': {
+    'en':
+        'Sit comfortably cross-legged or on a cushion, with your hands resting on your knees and your back gently upright. Soften your shoulders, unclench your jaw, and let your breath slow down.',
+    'ru':
+        'Сядьте удобно по-турецки или на подушку, руки лежат на коленях, спина мягко выпрямлена. Расслабьте плечи, разожмите челюсть и позвольте дыханию замедлиться.',
+  },
+
+  // ---------------------------------------------------------------------------
   // screentime.*  —  screen_time_screen.dart
   // ---------------------------------------------------------------------------
 

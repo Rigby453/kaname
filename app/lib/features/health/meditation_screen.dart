@@ -58,6 +58,8 @@ class _RunSession {
 }
 
 // Сессия медитации: nameKey/descKey/steps — l10n-ключи; id и duration — стабильные.
+// poseNameKey/poseDescKey — l10n-ключи позы, показываемой ПЕРЕД стартом плеера;
+// poseIcon — нейтральная Material-иконка позы (сидя/лёжа), без своей графики.
 class _Session {
   const _Session({
     required this.id,
@@ -65,12 +67,18 @@ class _Session {
     required this.duration,
     required this.descKey,
     required this.steps,
+    required this.poseNameKey,
+    required this.poseDescKey,
+    required this.poseIcon,
   });
   final String id;
   final String nameKey;
   final int duration; // минуты
   final String descKey;
   final List<_Step> steps;
+  final String poseNameKey;
+  final String poseDescKey;
+  final IconData poseIcon;
 }
 
 const _sessions = <_Session>[
@@ -79,6 +87,9 @@ const _sessions = <_Session>[
     nameKey: 'meditation.body_scan.name',
     duration: 10,
     descKey: 'meditation.body_scan.desc',
+    poseNameKey: 'meditation.body_scan.pose_name',
+    poseDescKey: 'meditation.body_scan.pose_desc',
+    poseIcon: Icons.airline_seat_flat, // лёжа на спине
     steps: [
       _Step(textKey: 'meditation.body_scan.step1', seconds: 60),
       _Step(textKey: 'meditation.body_scan.step2', seconds: 90),
@@ -93,6 +104,9 @@ const _sessions = <_Session>[
     nameKey: 'meditation.focus_reset.name',
     duration: 5,
     descKey: 'meditation.focus_reset.desc',
+    poseNameKey: 'meditation.focus_reset.pose_name',
+    poseDescKey: 'meditation.focus_reset.pose_desc',
+    poseIcon: Icons.self_improvement, // прямая посадка
     steps: [
       _Step(textKey: 'meditation.focus_reset.step1', seconds: 30),
       _Step(textKey: 'meditation.focus_reset.step2', seconds: 60),
@@ -106,6 +120,9 @@ const _sessions = <_Session>[
     nameKey: 'meditation.exam_calm.name',
     duration: 7,
     descKey: 'meditation.exam_calm.desc',
+    poseNameKey: 'meditation.exam_calm.pose_name',
+    poseDescKey: 'meditation.exam_calm.pose_desc',
+    poseIcon: Icons.self_improvement, // устойчивая посадка
     steps: [
       _Step(textKey: 'meditation.exam_calm.step1', seconds: 60),
       _Step(textKey: 'meditation.exam_calm.step2', seconds: 90),
@@ -119,6 +136,9 @@ const _sessions = <_Session>[
     nameKey: 'meditation.sleep_prep.name',
     duration: 15,
     descKey: 'meditation.sleep_prep.desc',
+    poseNameKey: 'meditation.sleep_prep.pose_name',
+    poseDescKey: 'meditation.sleep_prep.pose_desc',
+    poseIcon: Icons.airline_seat_flat, // лёжа в постели
     steps: [
       _Step(textKey: 'meditation.sleep_prep.step1', seconds: 60),
       _Step(textKey: 'meditation.sleep_prep.step2', seconds: 90),
@@ -134,6 +154,9 @@ const _sessions = <_Session>[
     nameKey: 'meditation.stress_relief.name',
     duration: 8,
     descKey: 'meditation.stress_relief.desc',
+    poseNameKey: 'meditation.stress_relief.pose_name',
+    poseDescKey: 'meditation.stress_relief.pose_desc',
+    poseIcon: Icons.self_improvement, // удобная поза сидя
     steps: [
       _Step(textKey: 'meditation.stress_relief.step1', seconds: 40),
       _Step(textKey: 'meditation.stress_relief.step2', seconds: 80),
@@ -171,6 +194,15 @@ void _openPlayer(BuildContext context, _RunSession session) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => _SessionPlayerScreen(session: session),
+    ),
+  );
+}
+
+// Превью позы для встроенной сессии — показываем ПЕРЕД плеером.
+void _openPosePreview(BuildContext context, _Session session) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => _PosePreviewScreen(session: session),
     ),
   );
 }
@@ -268,7 +300,7 @@ class _SessionCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => _openPlayer(context, _builtinToRun(context, session)),
+        onTap: () => _openPosePreview(context, session),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -381,6 +413,98 @@ class _CustomSessionCard extends StatelessWidget {
                 icon: Icon(Icons.delete_outline, color: ext.ember),
                 tooltip: context.s('btn.delete'),
                 onPressed: onDelete,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pose preview screen — показывается ПЕРЕД плеером для встроенных сессий.
+// Простой экран: иконка позы + название + описание + кнопка «Начать».
+// Без своей графики (визуал делается отдельно). Переживает 320px + textScale 2.0:
+// весь контент в SingleChildScrollView, текст переносится, кнопка на всю ширину.
+// ---------------------------------------------------------------------------
+
+class _PosePreviewScreen extends StatelessWidget {
+  const _PosePreviewScreen({required this.session});
+
+  final _Session session;
+
+  void _start(BuildContext context) {
+    // Заменяем превью плеером: возврат из плеера (или «Завершить») ведёт
+    // сразу к списку сессий, а не обратно на экран позы.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => _SessionPlayerScreen(
+          session: _builtinToRun(context, session),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(context.s(session.nameKey)),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Иконка позы — нейтральный круг (как карточки сессий).
+              Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: ext.accentMuted,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  session.poseIcon,
+                  color: ext.textMuted,
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Подпись-приглашение — bodyMedium + textMuted.
+              Text(
+                context.s('meditation.pose_heading'),
+                style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              // Название позы — titleLarge.
+              Text(
+                context.s(session.poseNameKey),
+                style: textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              // Описание позы — bodyLarge, переносится по словам.
+              Text(
+                context.s(session.poseDescKey),
+                style: textTheme.bodyLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              // Первичное действие — кнопка «Начать» на всю ширину.
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => _start(context),
+                  child: Text(context.s('meditation.start')),
+                ),
               ),
             ],
           ),
