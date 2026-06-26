@@ -9570,6 +9570,454 @@ class CustomMeditationTableCompanion
   }
 }
 
+class $MoodLogsTableTable extends MoodLogsTable
+    with TableInfo<$MoodLogsTableTable, MoodLogsTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MoodLogsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _moodMeta = const VerificationMeta('mood');
+  @override
+  late final GeneratedColumn<int> mood = GeneratedColumn<int>(
+    'mood',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('meditation'),
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _loggedAtMeta = const VerificationMeta(
+    'loggedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> loggedAt = GeneratedColumn<DateTime>(
+    'logged_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    mood,
+    note,
+    source,
+    sessionId,
+    loggedAt,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'mood_logs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MoodLogsTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('mood')) {
+      context.handle(
+        _moodMeta,
+        mood.isAcceptableOrUnknown(data['mood']!, _moodMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_moodMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    }
+    if (data.containsKey('logged_at')) {
+      context.handle(
+        _loggedAtMeta,
+        loggedAt.isAcceptableOrUnknown(data['logged_at']!, _loggedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_loggedAtMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MoodLogsTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MoodLogsTableData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      mood: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}mood'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      ),
+      loggedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}logged_at'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $MoodLogsTableTable createAlias(String alias) {
+    return $MoodLogsTableTable(attachedDatabase, alias);
+  }
+}
+
+class MoodLogsTableData extends DataClass
+    implements Insertable<MoodLogsTableData> {
+  final String id;
+  final int mood;
+  final String? note;
+  final String source;
+  final String? sessionId;
+  final DateTime loggedAt;
+  final DateTime createdAt;
+  const MoodLogsTableData({
+    required this.id,
+    required this.mood,
+    this.note,
+    required this.source,
+    this.sessionId,
+    required this.loggedAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['mood'] = Variable<int>(mood);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['source'] = Variable<String>(source);
+    if (!nullToAbsent || sessionId != null) {
+      map['session_id'] = Variable<String>(sessionId);
+    }
+    map['logged_at'] = Variable<DateTime>(loggedAt);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  MoodLogsTableCompanion toCompanion(bool nullToAbsent) {
+    return MoodLogsTableCompanion(
+      id: Value(id),
+      mood: Value(mood),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      source: Value(source),
+      sessionId: sessionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sessionId),
+      loggedAt: Value(loggedAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory MoodLogsTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MoodLogsTableData(
+      id: serializer.fromJson<String>(json['id']),
+      mood: serializer.fromJson<int>(json['mood']),
+      note: serializer.fromJson<String?>(json['note']),
+      source: serializer.fromJson<String>(json['source']),
+      sessionId: serializer.fromJson<String?>(json['sessionId']),
+      loggedAt: serializer.fromJson<DateTime>(json['loggedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'mood': serializer.toJson<int>(mood),
+      'note': serializer.toJson<String?>(note),
+      'source': serializer.toJson<String>(source),
+      'sessionId': serializer.toJson<String?>(sessionId),
+      'loggedAt': serializer.toJson<DateTime>(loggedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  MoodLogsTableData copyWith({
+    String? id,
+    int? mood,
+    Value<String?> note = const Value.absent(),
+    String? source,
+    Value<String?> sessionId = const Value.absent(),
+    DateTime? loggedAt,
+    DateTime? createdAt,
+  }) => MoodLogsTableData(
+    id: id ?? this.id,
+    mood: mood ?? this.mood,
+    note: note.present ? note.value : this.note,
+    source: source ?? this.source,
+    sessionId: sessionId.present ? sessionId.value : this.sessionId,
+    loggedAt: loggedAt ?? this.loggedAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  MoodLogsTableData copyWithCompanion(MoodLogsTableCompanion data) {
+    return MoodLogsTableData(
+      id: data.id.present ? data.id.value : this.id,
+      mood: data.mood.present ? data.mood.value : this.mood,
+      note: data.note.present ? data.note.value : this.note,
+      source: data.source.present ? data.source.value : this.source,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      loggedAt: data.loggedAt.present ? data.loggedAt.value : this.loggedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoodLogsTableData(')
+          ..write('id: $id, ')
+          ..write('mood: $mood, ')
+          ..write('note: $note, ')
+          ..write('source: $source, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('loggedAt: $loggedAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, mood, note, source, sessionId, loggedAt, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MoodLogsTableData &&
+          other.id == this.id &&
+          other.mood == this.mood &&
+          other.note == this.note &&
+          other.source == this.source &&
+          other.sessionId == this.sessionId &&
+          other.loggedAt == this.loggedAt &&
+          other.createdAt == this.createdAt);
+}
+
+class MoodLogsTableCompanion extends UpdateCompanion<MoodLogsTableData> {
+  final Value<String> id;
+  final Value<int> mood;
+  final Value<String?> note;
+  final Value<String> source;
+  final Value<String?> sessionId;
+  final Value<DateTime> loggedAt;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const MoodLogsTableCompanion({
+    this.id = const Value.absent(),
+    this.mood = const Value.absent(),
+    this.note = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.loggedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MoodLogsTableCompanion.insert({
+    required String id,
+    required int mood,
+    this.note = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    required DateTime loggedAt,
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       mood = Value(mood),
+       loggedAt = Value(loggedAt);
+  static Insertable<MoodLogsTableData> custom({
+    Expression<String>? id,
+    Expression<int>? mood,
+    Expression<String>? note,
+    Expression<String>? source,
+    Expression<String>? sessionId,
+    Expression<DateTime>? loggedAt,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (mood != null) 'mood': mood,
+      if (note != null) 'note': note,
+      if (source != null) 'source': source,
+      if (sessionId != null) 'session_id': sessionId,
+      if (loggedAt != null) 'logged_at': loggedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MoodLogsTableCompanion copyWith({
+    Value<String>? id,
+    Value<int>? mood,
+    Value<String?>? note,
+    Value<String>? source,
+    Value<String?>? sessionId,
+    Value<DateTime>? loggedAt,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return MoodLogsTableCompanion(
+      id: id ?? this.id,
+      mood: mood ?? this.mood,
+      note: note ?? this.note,
+      source: source ?? this.source,
+      sessionId: sessionId ?? this.sessionId,
+      loggedAt: loggedAt ?? this.loggedAt,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (mood.present) {
+      map['mood'] = Variable<int>(mood.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (loggedAt.present) {
+      map['logged_at'] = Variable<DateTime>(loggedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoodLogsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('mood: $mood, ')
+          ..write('note: $note, ')
+          ..write('source: $source, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('loggedAt: $loggedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9603,6 +10051,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $CustomBreathingTableTable(this);
   late final $CustomMeditationTableTable customMeditationTable =
       $CustomMeditationTableTable(this);
+  late final $MoodLogsTableTable moodLogsTable = $MoodLogsTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9630,6 +10079,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     workoutSetLogsTable,
     customBreathingTable,
     customMeditationTable,
+    moodLogsTable,
   ];
 }
 
@@ -15101,6 +15551,248 @@ typedef $$CustomMeditationTableTableProcessedTableManager =
       CustomMeditationTableData,
       PrefetchHooks Function()
     >;
+typedef $$MoodLogsTableTableCreateCompanionBuilder =
+    MoodLogsTableCompanion Function({
+      required String id,
+      required int mood,
+      Value<String?> note,
+      Value<String> source,
+      Value<String?> sessionId,
+      required DateTime loggedAt,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$MoodLogsTableTableUpdateCompanionBuilder =
+    MoodLogsTableCompanion Function({
+      Value<String> id,
+      Value<int> mood,
+      Value<String?> note,
+      Value<String> source,
+      Value<String?> sessionId,
+      Value<DateTime> loggedAt,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$MoodLogsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $MoodLogsTableTable> {
+  $$MoodLogsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get mood => $composableBuilder(
+    column: $table.mood,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get loggedAt => $composableBuilder(
+    column: $table.loggedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MoodLogsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $MoodLogsTableTable> {
+  $$MoodLogsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get mood => $composableBuilder(
+    column: $table.mood,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get loggedAt => $composableBuilder(
+    column: $table.loggedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MoodLogsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MoodLogsTableTable> {
+  $$MoodLogsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get mood =>
+      $composableBuilder(column: $table.mood, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get loggedAt =>
+      $composableBuilder(column: $table.loggedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$MoodLogsTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MoodLogsTableTable,
+          MoodLogsTableData,
+          $$MoodLogsTableTableFilterComposer,
+          $$MoodLogsTableTableOrderingComposer,
+          $$MoodLogsTableTableAnnotationComposer,
+          $$MoodLogsTableTableCreateCompanionBuilder,
+          $$MoodLogsTableTableUpdateCompanionBuilder,
+          (
+            MoodLogsTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $MoodLogsTableTable,
+              MoodLogsTableData
+            >,
+          ),
+          MoodLogsTableData,
+          PrefetchHooks Function()
+        > {
+  $$MoodLogsTableTableTableManager(_$AppDatabase db, $MoodLogsTableTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MoodLogsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MoodLogsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MoodLogsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<int> mood = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sessionId = const Value.absent(),
+                Value<DateTime> loggedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MoodLogsTableCompanion(
+                id: id,
+                mood: mood,
+                note: note,
+                source: source,
+                sessionId: sessionId,
+                loggedAt: loggedAt,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required int mood,
+                Value<String?> note = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sessionId = const Value.absent(),
+                required DateTime loggedAt,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MoodLogsTableCompanion.insert(
+                id: id,
+                mood: mood,
+                note: note,
+                source: source,
+                sessionId: sessionId,
+                loggedAt: loggedAt,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MoodLogsTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MoodLogsTableTable,
+      MoodLogsTableData,
+      $$MoodLogsTableTableFilterComposer,
+      $$MoodLogsTableTableOrderingComposer,
+      $$MoodLogsTableTableAnnotationComposer,
+      $$MoodLogsTableTableCreateCompanionBuilder,
+      $$MoodLogsTableTableUpdateCompanionBuilder,
+      (
+        MoodLogsTableData,
+        BaseReferences<_$AppDatabase, $MoodLogsTableTable, MoodLogsTableData>,
+      ),
+      MoodLogsTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15152,4 +15844,6 @@ class $AppDatabaseManager {
       $$CustomBreathingTableTableTableManager(_db, _db.customBreathingTable);
   $$CustomMeditationTableTableTableManager get customMeditationTable =>
       $$CustomMeditationTableTableTableManager(_db, _db.customMeditationTable);
+  $$MoodLogsTableTableTableManager get moodLogsTable =>
+      $$MoodLogsTableTableTableManager(_db, _db.moodLogsTable);
 }

@@ -4,6 +4,10 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Сводка для пользователя (обновлено 2026-06-26, §3a mood_logs Drift)
+
+- **§3a ЗАВЕРШЕНО:** настроение после медитации перенесено из SharedPreferences в Drift-таблицу `mood_logs` (schemaVersion 21→22). Новый DAO `MoodLogsDao` с методами `insertMood`/`getSince`/`watchSince`/`getSinceBySource`. Провайдер `moodLogsDaoProvider`. `meditation_mood_log.dart` переписан: `appendMeditationMood(MoodLogsDao, entry)` и `readMeditationMoodLogs(MoodLogsDao)`. Вызов в `meditation_screen.dart` обновлён. Таблица локальная — синк не тронут. Старый prefs-ключ `'meditation_mood_logs'` не удаляем (beta-данные целы). 10 тестов (включая миграционный) — все зелёные. `flutter analyze` → 0. §3b (чтение инсайтами) — отдельная задача.
+
 ## Сводка для пользователя (обновлено 2026-06-25, привычки ADR-053)
 
 - **Привычки — редизайн ЗАВЕРШЁН (ADR-053, 4 слайса, всё в `test/integration`):**

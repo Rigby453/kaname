@@ -1,24 +1,19 @@
-// Лёгкое хранилище настроения после медитации.
+// Хранилище настроения после медитации — Drift-таблица mood_logs.
 //
-// НАМЕРЕННО не использует Drift — чтобы избежать миграции схемы.
-// Данные хранятся в SharedPreferences как append-only JSON-список
-// под ключом 'meditation_mood_logs'.
+// Ранее использовалась SharedPreferences ('meditation_mood_logs'), перенесено
+// в Drift (schemaVersion 22) чтобы инсайт-модуль мог читать данные через DAO.
 //
 // Запись ПОЛНОСТЬЮ независима от DayLogsTable.mood (дневник).
 // Дневник управляет своим mood отдельно через DayLogsDao.saveForDate —
 // этот модуль его НИКОГДА не трогает.
 //
-// TODO(analytics): когда появится отдельная таблица или аналитика-модуль,
-// перенести записи отсюда в Drift (схема: id, session_id, mood 1-5,
-// note TEXT?, logged_at DATETIME). На чтение-запись SheetUI — достаточно.
+// SharedPreferences-ключ 'meditation_mood_logs' не удаляется (beta-данные
+// остаются нетронутыми), но этот модуль его больше не читает и не пишет.
 
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
-const _kPrefsKey = 'meditation_mood_logs';
+import '../database/daos/mood_logs_dao.dart';
 
 /// Одна запись настроения после медитационной сессии.
+/// Модель используется UI (диалог завершения медитации) независимо от слоя БД.
 class MeditationMoodEntry {
   const MeditationMoodEntry({
     required this.sessionId,
@@ -38,68 +33,54 @@ class MeditationMoodEntry {
 
   /// Момент завершения сессии.
   final DateTime loggedAt;
-
-  Map<String, dynamic> toJson() => {
-        'session_id': sessionId,
-        'mood': mood,
-        if (note != null && note!.isNotEmpty) 'note': note,
-        'logged_at': loggedAt.toIso8601String(),
-      };
-
-  factory MeditationMoodEntry.fromJson(Map<String, dynamic> json) =>
-      MeditationMoodEntry(
-        sessionId: json['session_id'] as String,
-        mood: (json['mood'] as num).toInt(),
-        note: json['note'] as String?,
-        loggedAt: DateTime.parse(json['logged_at'] as String),
-      );
 }
 
-/// Добавить запись настроения в список.
+/// Добавить запись настроения в Drift-таблицу mood_logs.
 /// Вызывается один раз при нажатии «Done» в диалоге завершения медитации.
 ///
-/// [prefs] — SharedPreferences, полученный через sharedPreferencesProvider.
+/// [dao] — MoodLogsDao, полученный через ref.read(moodLogsDaoProvider).
 /// Дневник ([DayLogsTable.mood]) остаётся неизменным.
 ///
-/// Защита от повреждённых данных: если сохранённое значение не является
-/// валидным JSON-массивом (например, обрезанный JSON, одиночный объект или
-/// остаток от другого ключа), список сбрасывается до пустого и запись
-/// добавляется заново. Данные не теряются — только «плохой» предыдущий
-/// JSON заменяется свежим корректным массивом.
+/// Защита от ошибок: функция не бросает исключений — все ошибки
+/// поглощаются (UI не краш), но могут быть залогированы.
 Future<void> appendMeditationMood(
-  SharedPreferences prefs,
+  MoodLogsDao dao,
   MeditationMoodEntry entry,
 ) async {
-  final raw = prefs.getString(_kPrefsKey);
-  List<dynamic> list;
-  if (raw == null) {
-    list = [];
-  } else {
-    try {
-      final decoded = jsonDecode(raw);
-      // Если декодирование вернуло не список (например, одиночный объект
-      // или другой тип) — начинаем с чистого листа.
-      list = decoded is List ? decoded : [];
-    } catch (_) {
-      // FormatException или _CastError — повреждённые/несовместимые данные.
-      list = [];
-    }
+  try {
+    await dao.insertMood(
+      mood: entry.mood,
+      loggedAt: entry.loggedAt,
+      source: 'meditation',
+      sessionId: entry.sessionId,
+      note: entry.note,
+    );
+  } catch (_) {
+    // БД недоступна или другая ошибка — не крашим UI, просто игнорируем.
   }
-  list.add(entry.toJson());
-  await prefs.setString(_kPrefsKey, jsonEncode(list));
 }
 
-/// Прочитать все записи (для аналитики / будущего экрана истории).
-List<MeditationMoodEntry> readMeditationMoodLogs(SharedPreferences prefs) {
-  final raw = prefs.getString(_kPrefsKey);
-  if (raw == null) return const [];
+/// Прочитать все записи настроения начиная с [since] (для аналитики / истории).
+/// Возвращает список MeditationMoodEntry, отсортированный по loggedAt asc.
+Future<List<MeditationMoodEntry>> readMeditationMoodLogs(
+  MoodLogsDao dao, {
+  DateTime? since,
+}) async {
   try {
-    final list = jsonDecode(raw) as List<dynamic>;
-    return list
-        .map((e) => MeditationMoodEntry.fromJson(e as Map<String, dynamic>))
+    final from = since ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final rows = await dao.getSinceBySource(from, 'meditation');
+    return rows
+        .map(
+          (r) => MeditationMoodEntry(
+            sessionId: r.sessionId ?? '',
+            mood: r.mood,
+            note: r.note,
+            loggedAt: r.loggedAt,
+          ),
+        )
         .toList();
   } catch (_) {
-    // Повреждённые данные → возвращаем пустой список (никогда не крашим).
+    // Повреждённые данные или закрытая БД → пустой список (никогда не крашим).
     return const [];
   }
 }

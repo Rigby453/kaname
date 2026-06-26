@@ -9,6 +9,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'daos/habits_dao.dart';
 import 'daos/custom_breathing_dao.dart';
 import 'daos/custom_meditation_dao.dart';
+import 'daos/mood_logs_dao.dart';
 
 // Импорт сгенерированного файла (создаётся build_runner)
 part 'database.g.dart';
@@ -585,6 +586,40 @@ class CustomMeditationTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Записи настроения после медитационных (и в будущем других) сессий.
+/// Локальная таблица — НЕ синхронизируется с сервером. Добавлено в schemaVersion 22.
+/// source всегда 'meditation' сейчас; поле зарезервировано для будущего расширения
+/// (дневник, дыхание и т.п.), чтобы инсайт-модуль мог читать единую таблицу.
+class MoodLogsTable extends Table {
+  @override
+  String get tableName => 'mood_logs';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Настроение 1..5 (та же шкала, что и DayLogsTable.mood)
+  IntColumn get mood => integer()();
+
+  // Необязательная заметка к сессии
+  TextColumn get note => text().nullable()();
+
+  // Источник записи: 'meditation' | (в будущем: 'diary', 'breathing' …)
+  TextColumn get source => text().withDefault(const Constant('meditation'))();
+
+  // ID сессии (например 'body_scan' или uuid пользовательской сессии)
+  TextColumn get sessionId => text().nullable()();
+
+  // Момент завершения сессии / сохранения настроения
+  DateTimeColumn get loggedAt => dateTime()();
+
+  // Момент вставки строки в БД
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Очередь синхронизации: записи, ожидающие отправки на сервер
 /// id — autoincrement int (локальный, не синхронизируется)
 class SyncQueueTable extends Table {
@@ -636,6 +671,7 @@ class SyncQueueTable extends Table {
     WorkoutSetLogsTable,
     CustomBreathingTable,
     CustomMeditationTable,
+    MoodLogsTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -653,8 +689,11 @@ class AppDatabase extends _$AppDatabase {
   /// DAO для пользовательских медитативных сессий (schemaVersion 21).
   CustomMeditationDao get customMeditationDao => CustomMeditationDao(this);
 
+  /// DAO для логов настроения после медитации (schemaVersion 22). Локальный.
+  MoodLogsDao get moodLogsDao => MoodLogsDao(this);
+
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -755,6 +794,13 @@ class AppDatabase extends _$AppDatabase {
           // медитативные сессии, Phase 2). Локальная, без синхронизации.
           if (from < 21) {
             await m.createTable(customMeditationTable);
+          }
+          // v22: добавлена таблица mood_logs (настроение после медитации).
+          // Локальная, без синхронизации. Старые записи из SharedPreferences
+          // ('meditation_mood_logs') не переносятся (beta-данные, мало записей);
+          // ключ в prefs не удаляем — потеря данных исключена.
+          if (from < 22) {
+            await m.createTable(moodLogsTable);
           }
         },
       );

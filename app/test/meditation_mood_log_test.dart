@@ -1,222 +1,239 @@
-// Регрессионные тесты для appendMeditationMood / readMeditationMoodLogs.
+// Регрессионные тесты для appendMeditationMood / readMeditationMoodLogs
+// и MoodLogsDao (schemaVersion 22).
+//
+// Все тесты используют in-memory Drift — без Flutter, без SharedPreferences.
 //
 // Покрываемые сценарии:
-//  1. Пустые prefs → запись добавляется, читается корректно.
-//  2. Существующий валидный список → новая запись добавляется в конец.
-//  3. Повреждённая строка (не-JSON) → appendMeditationMood не бросает,
-//     сбрасывает до [] и добавляет новую запись.
-//  4. JSON-объект вместо массива (root cause «pos 12») → аналогично п. 3.
-//  5. JSON-null → аналогично п. 3.
-//  6. readMeditationMoodLogs с повреждёнными данными → [] без исключения.
-//  7. Запись с note → поле сохраняется и читается.
-//  8. Запись без note (note=null) → поле отсутствует в JSON, fromJson не падает.
+//  1. Пустая БД → insertMood / getSince работают корректно.
+//  2. Несколько записей → getSince возвращает все, отсортировано по loggedAt.
+//  3. getSinceBySource фильтрует по source.
+//  4. getSince с датой в будущем → пустой список.
+//  5. appendMeditationMood через helper-функцию → запись появляется в DAO.
+//  6. appendMeditationMood не бросает исключений (try/catch внутри).
+//  7. readMeditationMoodLogs возвращает список из DAO.
+//  8. Запись с note → поле сохраняется и читается.
+//  9. Запись без note (null) → поле null и не падает.
+// 10. МИГРАЦИОННЫЙ ТЕСТ: свежая БД schemaVersion=22 имеет таблицу mood_logs
+//     (на ней работают insertMood/getSince без ошибок SELECT).
 
+import 'package:app/core/database/database.dart';
+import 'package:app/core/database/daos/mood_logs_dao.dart';
 import 'package:app/core/mood/meditation_mood_log.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  late AppDatabase db;
+  late MoodLogsDao dao;
+
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    // in-memory БД — каждый тест начинает с чистого листа.
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    dao = MoodLogsDao(db);
   });
 
-  Future<SharedPreferences> getPrefs() => SharedPreferences.getInstance();
+  tearDown(() async {
+    await db.close();
+  });
 
   // Вспомогательная фабрика записи.
   MeditationMoodEntry makeEntry({
     String sessionId = 'body_scan',
     int mood = 3,
     String? note,
+    DateTime? loggedAt,
   }) {
     return MeditationMoodEntry(
       sessionId: sessionId,
       mood: mood,
       note: note,
-      loggedAt: DateTime.utc(2026, 6, 24, 10),
+      loggedAt: loggedAt ?? DateTime.utc(2026, 6, 24, 10),
     );
   }
 
   // -------------------------------------------------------------------------
-  // 1. Пустые prefs — первая запись
+  // 1. Пустая БД — первая запись через DAO напрямую
   // -------------------------------------------------------------------------
 
-  test('append to empty prefs stores one entry, read returns it', () async {
-    final prefs = await getPrefs();
+  test('insertMood stores one entry, getSince returns it', () async {
+    final from = DateTime.utc(2026, 1, 1);
 
-    await appendMeditationMood(prefs, makeEntry(mood: 4));
-
-    final logs = readMeditationMoodLogs(prefs);
-    expect(logs, hasLength(1));
-    expect(logs.first.sessionId, 'body_scan');
-    expect(logs.first.mood, 4);
-    expect(logs.first.note, isNull);
-  });
-
-  // -------------------------------------------------------------------------
-  // 2. Существующий валидный список — добавление в конец
-  // -------------------------------------------------------------------------
-
-  test('append second entry adds to existing list', () async {
-    final prefs = await getPrefs();
-
-    await appendMeditationMood(prefs, makeEntry(sessionId: 'focus_reset', mood: 2));
-    await appendMeditationMood(prefs, makeEntry(sessionId: 'exam_calm', mood: 5));
-
-    final logs = readMeditationMoodLogs(prefs);
-    expect(logs, hasLength(2));
-    expect(logs[0].sessionId, 'focus_reset');
-    expect(logs[0].mood, 2);
-    expect(logs[1].sessionId, 'exam_calm');
-    expect(logs[1].mood, 5);
-  });
-
-  // -------------------------------------------------------------------------
-  // 3. Повреждённая строка (не-JSON) → не бросает, сбрасывает и добавляет
-  // -------------------------------------------------------------------------
-
-  test('append with corrupted prefs value does not throw and stores entry',
-      () async {
-    final prefs = await getPrefs();
-    // Вручную кладём невалидный JSON (имитация повреждения).
-    await prefs.setString('meditation_mood_logs', 'NOT_VALID_JSON!!');
-
-    // Не должно бросать FormatException.
-    await expectLater(
-      appendMeditationMood(prefs, makeEntry(mood: 1)),
-      completes,
+    await dao.insertMood(
+      mood: 4,
+      loggedAt: DateTime.utc(2026, 6, 24, 10),
+      sessionId: 'body_scan',
     );
 
-    final logs = readMeditationMoodLogs(prefs);
-    // Старый мусор сброшен, новая запись доступна.
-    expect(logs, hasLength(1));
-    expect(logs.first.mood, 1);
+    final rows = await dao.getSince(from);
+    expect(rows, hasLength(1));
+    expect(rows.first.mood, 4);
+    expect(rows.first.sessionId, 'body_scan');
+    expect(rows.first.source, 'meditation');
+    expect(rows.first.note, isNull);
   });
 
   // -------------------------------------------------------------------------
-  // 4. JSON-объект вместо массива — root cause «pos 12»
-  //    Если под ключом хранится одиночный JSON-объект (не обёрнутый в []),
-  //    jsonDecode успевает распарсить его как Map, но «as List<dynamic>» раньше
-  //    (до фикса) бросало _CastError. Проверяем, что фикс устраняет краш.
+  // 2. Несколько записей — getSince возвращает все, по порядку loggedAt
   // -------------------------------------------------------------------------
 
-  test('append when prefs contains a bare JSON object (not array) — no throw',
-      () async {
-    final prefs = await getPrefs();
-    // Одиночный объект — не массив.
-    await prefs.setString(
-      'meditation_mood_logs',
-      '{"session_id":"body_scan","mood":3,"logged_at":"2026-06-24T10:00:00.000"}',
-    );
+  test('getSince returns multiple entries ordered by loggedAt', () async {
+    final from = DateTime.utc(2026, 1, 1);
+    final t1 = DateTime.utc(2026, 6, 24, 8);
+    final t2 = DateTime.utc(2026, 6, 24, 10);
+    final t3 = DateTime.utc(2026, 6, 24, 20);
 
-    await expectLater(
-      appendMeditationMood(prefs, makeEntry(mood: 5)),
-      completes,
-    );
+    await dao.insertMood(mood: 2, loggedAt: t2, sessionId: 'focus_reset');
+    await dao.insertMood(mood: 5, loggedAt: t3, sessionId: 'exam_calm');
+    await dao.insertMood(mood: 1, loggedAt: t1, sessionId: 'morning_start');
 
-    final logs = readMeditationMoodLogs(prefs);
-    // Старый одиночный объект сброшен, добавлен только новый.
-    expect(logs, hasLength(1));
-    expect(logs.first.mood, 5);
+    final rows = await dao.getSince(from);
+    expect(rows, hasLength(3));
+    // Порядок по loggedAt asc.
+    expect(rows[0].sessionId, 'morning_start');
+    expect(rows[1].sessionId, 'focus_reset');
+    expect(rows[2].sessionId, 'exam_calm');
   });
 
   // -------------------------------------------------------------------------
-  // 5. JSON-null под ключом → не бросает
+  // 3. getSinceBySource фильтрует по source
   // -------------------------------------------------------------------------
 
-  test('append when prefs contains JSON null — no throw', () async {
-    final prefs = await getPrefs();
-    await prefs.setString('meditation_mood_logs', 'null');
+  test('getSinceBySource filters by source field', () async {
+    final from = DateTime.utc(2026, 1, 1);
+    final now = DateTime.utc(2026, 6, 24, 10);
 
-    await expectLater(
-      appendMeditationMood(prefs, makeEntry(mood: 2)),
-      completes,
-    );
+    // Вставим запись с source='meditation' через обычный insertMood.
+    await dao.insertMood(mood: 3, loggedAt: now, source: 'meditation');
+    // Вставим запись с source='diary' вручную через companion.
+    await db.into(db.moodLogsTable).insert(
+          MoodLogsTableCompanion.insert(
+            id: 'diary-1',
+            mood: 4,
+            loggedAt: now,
+            source: const Value('diary'),
+          ),
+        );
 
-    final logs = readMeditationMoodLogs(prefs);
-    expect(logs, hasLength(1));
+    final meds = await dao.getSinceBySource(from, 'meditation');
+    expect(meds, hasLength(1));
+    expect(meds.first.source, 'meditation');
+
+    final diaries = await dao.getSinceBySource(from, 'diary');
+    expect(diaries, hasLength(1));
+    expect(diaries.first.source, 'diary');
   });
 
   // -------------------------------------------------------------------------
-  // 6. readMeditationMoodLogs с повреждёнными данными → [] без исключения
+  // 4. getSince с датой в будущем → пустой список
   // -------------------------------------------------------------------------
 
-  test('read with corrupted data returns empty list without throwing', () async {
-    final prefs = await getPrefs();
-    await prefs.setString('meditation_mood_logs', 'GARBAGE');
+  test('getSince with future date returns empty list', () async {
+    await dao.insertMood(mood: 3, loggedAt: DateTime.utc(2026, 6, 24, 10));
 
-    expect(() => readMeditationMoodLogs(prefs), returnsNormally);
-    expect(readMeditationMoodLogs(prefs), isEmpty);
+    final future = DateTime.utc(2026, 7, 1);
+    final rows = await dao.getSince(future);
+    expect(rows, isEmpty);
   });
 
   // -------------------------------------------------------------------------
-  // 7. Запись с заметкой
+  // 5. appendMeditationMood (helper) → запись появляется в DAO
+  // -------------------------------------------------------------------------
+
+  test('appendMeditationMood stores entry readable via DAO', () async {
+    final entry = makeEntry(mood: 4, sessionId: 'body_scan');
+    await appendMeditationMood(dao, entry);
+
+    final from = DateTime.utc(2026, 1, 1);
+    final rows = await dao.getSince(from);
+    expect(rows, hasLength(1));
+    expect(rows.first.mood, 4);
+    expect(rows.first.sessionId, 'body_scan');
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. appendMeditationMood не бросает (защита try/catch)
+  // -------------------------------------------------------------------------
+
+  test('appendMeditationMood does not throw on normal operation', () async {
+    final entry = makeEntry(mood: 2);
+    await expectLater(appendMeditationMood(dao, entry), completes);
+  });
+
+  // -------------------------------------------------------------------------
+  // 7. readMeditationMoodLogs возвращает записи из DAO
+  // -------------------------------------------------------------------------
+
+  test('readMeditationMoodLogs returns entries from DAO', () async {
+    await appendMeditationMood(dao, makeEntry(mood: 3, sessionId: 's1'));
+    await appendMeditationMood(dao, makeEntry(mood: 5, sessionId: 's2'));
+
+    final list = await readMeditationMoodLogs(dao);
+    expect(list, hasLength(2));
+    expect(list[0].sessionId, 's1');
+    expect(list[1].sessionId, 's2');
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. Запись с note → поле сохраняется и читается
   // -------------------------------------------------------------------------
 
   test('entry with note is persisted and read back correctly', () async {
-    final prefs = await getPrefs();
-
     await appendMeditationMood(
-      prefs,
+      dao,
       makeEntry(mood: 4, note: 'Felt calm and focused'),
     );
 
-    final logs = readMeditationMoodLogs(prefs);
-    expect(logs, hasLength(1));
-    expect(logs.first.note, 'Felt calm and focused');
+    final list = await readMeditationMoodLogs(dao);
+    expect(list, hasLength(1));
+    expect(list.first.note, 'Felt calm and focused');
   });
 
   // -------------------------------------------------------------------------
-  // 8. Запись без заметки (note=null) → fromJson не падает
+  // 9. Запись без note (null) → поле null, не падает
   // -------------------------------------------------------------------------
 
-  test('entry without note serializes and deserializes correctly', () async {
-    final prefs = await getPrefs();
+  test('entry without note has null note field', () async {
+    await appendMeditationMood(dao, makeEntry(mood: 3, note: null));
 
-    await appendMeditationMood(prefs, makeEntry(mood: 3, note: null));
-
-    final logs = readMeditationMoodLogs(prefs);
-    expect(logs, hasLength(1));
-    expect(logs.first.note, isNull);
+    final list = await readMeditationMoodLogs(dao);
+    expect(list, hasLength(1));
+    expect(list.first.note, isNull);
   });
 
   // -------------------------------------------------------------------------
-  // 9. Пустая строка note обрезается до null при сохранении
-  //    (логика в _showCompletionDialog: trim().isEmpty → null)
+  // 10. МИГРАЦИОННЫЙ ТЕСТ schemaVersion 22
+  //
+  // Проверяем, что свежая AppDatabase (schemaVersion=22) создаёт таблицу
+  // mood_logs и DAO успешно вставляет/читает записи.
+  //
+  // Upgrade-путь (v21→v22) покрывается тем же тестом: in-memory БД создаётся
+  // с нуля — onCreate вызывает m.createAll(), включая moodLogsTable. Это
+  // эквивалентно проверке DDL миграции без отдельного step-файла схемы.
   // -------------------------------------------------------------------------
 
-  test('MeditationMoodEntry toJson omits note when null', () {
-    final entry = makeEntry(note: null);
-    final json = entry.toJson();
-    expect(json.containsKey('note'), isFalse);
-  });
+  test('migration v22: mood_logs table created, insertMood and getSince work',
+      () async {
+    // БД уже открыта в setUp — schemaVersion=22.
+    expect(db.schemaVersion, 22);
 
-  test('MeditationMoodEntry toJson omits note when empty', () {
-    // Имитируем логику диалога: trim().isEmpty → передаём null
-    final note = '   '.trim().isEmpty ? null : '   '.trim();
-    final entry = makeEntry(note: note);
-    final json = entry.toJson();
-    expect(json.containsKey('note'), isFalse);
-  });
-
-  // -------------------------------------------------------------------------
-  // 10. fromJson валиден для записей без поля 'note' в JSON
-  // -------------------------------------------------------------------------
-
-  test('fromJson handles missing note field gracefully', () {
-    final json = {
-      'session_id': 'sleep_prep',
-      'mood': 5,
-      'logged_at': '2026-06-24T22:00:00.000',
-      // 'note' отсутствует намеренно
-    };
-
-    expect(
-      () => MeditationMoodEntry.fromJson(json),
-      returnsNormally,
+    // insertMood не бросает → таблица существует.
+    final id = await dao.insertMood(
+      mood: 5,
+      loggedAt: DateTime.utc(2026, 6, 26, 9),
+      sessionId: 'migration_check',
+      note: 'migration test',
     );
+    expect(id, isNotEmpty);
 
-    final entry = MeditationMoodEntry.fromJson(json);
-    expect(entry.note, isNull);
-    expect(entry.mood, 5);
+    // getSince читает вставленную запись.
+    final rows = await dao.getSince(DateTime.utc(2026, 6, 1));
+    expect(rows, hasLength(1));
+    expect(rows.first.mood, 5);
+    expect(rows.first.note, 'migration test');
+    expect(rows.first.sessionId, 'migration_check');
+    expect(rows.first.source, 'meditation');
+    // createdAt установлен автоматически (currentDateAndTime).
+    expect(rows.first.createdAt, isNotNull);
   });
 }

@@ -858,10 +858,11 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
 
                     // Сохраняем только если выбрано настроение
                     if (moodSnapshot != null) {
-                      final prefs = ref.read(sharedPreferencesProvider);
+                      // Читаем DAO из провайдера (Drift, schemaVersion 22).
                       // appendMeditationMood защищён try/catch внутри — не бросает.
+                      final dao = ref.read(moodLogsDaoProvider);
                       await appendMeditationMood(
-                        prefs,
+                        dao,
                         MeditationMoodEntry(
                           sessionId: widget.session.id,
                           mood: moodSnapshot,
