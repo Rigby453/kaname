@@ -2217,6 +2217,35 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ko': '엄격한 어조, 게으름에 완전히 반응',
   },
 
+  // Производный пресет «Своё» — индикатор нестандартной комбинации осей (§2.5 ТЗ).
+  // Тап по нему — no-op; пользователь меняет оси тонкими контролами ниже.
+  'mood.preset_custom': {
+    'en': 'Custom',
+    'ru': 'Своё',
+    'de': 'Eigenes',
+    'fr': 'Perso',
+    'it': 'Mio',
+    'pt': 'Meu',
+    'es': 'Mío',
+    'id': 'Kustom',
+    'hi': 'अपना',
+    'ja': 'カスタム',
+    'ko': '내 설정',
+  },
+  'mood.preset_custom_subtitle': {
+    'en': 'Your mix',
+    'ru': 'Свой набор',
+    'de': 'Dein Mix',
+    'fr': 'Ton mix',
+    'it': 'Il tuo mix',
+    'pt': 'Seu mix',
+    'es': 'Tu mezcla',
+    'id': 'Mixmu',
+    'hi': 'तुम्हारा मिश्रण',
+    'ja': 'あなたのミックス',
+    'ko': '나만의 조합',
+  },
+
   // Тонкая настройка
   'mood.fine_tuning': {
     'en': 'Fine Tuning',
@@ -2232,19 +2261,20 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ko': '세밀 조정',
   },
 
-  // Реакция на лень (заголовок секции интенсивности)
+  // Подпись оси напора (§2.3 ТЗ): убрали слово «лень» — заменили на нейтральное
+  // «Как часто Каи подсказывает», чтобы не клеймить пользователя.
   'mood.reaction_to_laziness': {
-    'en': 'Reaction to laziness',
-    'ru': 'Реакция на лень',
-    'de': 'Reaktion auf Faulheit',
-    'fr': 'Réaction à la paresse',
-    'it': 'Reazione alla pigrizia',
-    'pt': 'Reação à preguiça',
-    'es': 'Reacción a la pereza',
-    'id': 'Reaksi terhadap kemalasan',
-    'hi': 'आलस पर प्रतिक्रिया',
-    'ja': '怠惰への反応',
-    'ko': '게으름에 대한 반응',
+    'en': 'How often Kai nudges',
+    'ru': 'Как часто Каи подсказывает',
+    'de': 'Wie oft Kai erinnert',
+    'fr': 'Fréquence des rappels Kai',
+    'it': 'Quanto spesso Kai ricorda',
+    'pt': 'Com que frequência Kai lembra',
+    'es': 'Con qué frecuencia Kai recuerda',
+    'id': 'Seberapa sering Kai mengingatkan',
+    'hi': 'Kai कितनी बार सुझाव देता है',
+    'ja': 'Kaiがどのくらい促すか',
+    'ko': 'Kai가 얼마나 자주 알려주는지',
   },
 
   // Метки интенсивности

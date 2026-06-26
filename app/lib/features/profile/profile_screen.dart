@@ -1359,34 +1359,62 @@ class _MoodKaiSectionState extends ConsumerState<_MoodKaiSection> {
         Text(context.s('profile.section_mood_kai'), style: textTheme.titleMedium),
         const SizedBox(height: 12),
 
-        // 3 кнопки-пресета
-        Row(
-          children: [
-            _PresetChip(
-              emoji: '🌿',
-              label: context.s('mood.preset_calm'),
-              subtitle: context.s('mood.preset_calm_subtitle'),
-              isActive: tone == AppTone.gentle && intensity == ReactiveIntensity.off,
-              onTap: () => applyMoodPreset(ref, MoodPreset.calm),
-            ),
-            const SizedBox(width: 8),
-            _PresetChip(
-              emoji: '⚖️',
-              label: context.s('mood.preset_normal'),
-              subtitle: context.s('mood.preset_normal_subtitle'),
-              isActive: tone == AppTone.gentle && intensity == ReactiveIntensity.slight,
-              onTap: () => applyMoodPreset(ref, MoodPreset.normal),
-            ),
-            const SizedBox(width: 8),
-            _PresetChip(
-              emoji: '🔥',
-              label: context.s('mood.preset_coach'),
-              subtitle: context.s('mood.preset_coach_subtitle'),
-              isActive: tone == AppTone.harsh && intensity == ReactiveIntensity.full,
-              onTap: () => applyMoodPreset(ref, MoodPreset.coach),
-            ),
-          ],
-        ),
+        // Флаги активности пресетов — вычисляются единожды, чтобы
+        // гарантировать РОВНО ОДИН активный чип в любой комбинации (§2.5 ТЗ).
+        Builder(builder: (context) {
+          final isCalm =
+              tone == AppTone.gentle && intensity == ReactiveIntensity.off;
+          final isNormal =
+              tone == AppTone.gentle && intensity == ReactiveIntensity.slight;
+          final isCoach =
+              tone == AppTone.harsh && intensity == ReactiveIntensity.full;
+          // «Своё» = ни один из трёх стандартных пресетов не совпал.
+          final isCustom = !isCalm && !isNormal && !isCoach;
+
+          // 4 кнопки-пресета в одном Row с Expanded — каждая занимает ровно
+          // 1/4 доступной ширины. horizontal padding уменьшен до 6 вместо 8,
+          // чтобы при 320px и textScaleFactor 1.5 не было RenderFlex overflow.
+          return Row(
+            children: [
+              _PresetChip(
+                emoji: '🌿',
+                label: context.s('mood.preset_calm'),
+                subtitle: context.s('mood.preset_calm_subtitle'),
+                isActive: isCalm,
+                chipHPad: 6,
+                onTap: () => applyMoodPreset(ref, MoodPreset.calm),
+              ),
+              const SizedBox(width: 6),
+              _PresetChip(
+                emoji: '⚖️',
+                label: context.s('mood.preset_normal'),
+                subtitle: context.s('mood.preset_normal_subtitle'),
+                isActive: isNormal,
+                chipHPad: 6,
+                onTap: () => applyMoodPreset(ref, MoodPreset.normal),
+              ),
+              const SizedBox(width: 6),
+              _PresetChip(
+                emoji: '🔥',
+                label: context.s('mood.preset_coach'),
+                subtitle: context.s('mood.preset_coach_subtitle'),
+                isActive: isCoach,
+                chipHPad: 6,
+                onTap: () => applyMoodPreset(ref, MoodPreset.coach),
+              ),
+              const SizedBox(width: 6),
+              // «Своё» — только индикатор, тап не меняет оси (§2.5 ТЗ).
+              _PresetChip(
+                emoji: '🎛',
+                label: context.s('mood.preset_custom'),
+                subtitle: context.s('mood.preset_custom_subtitle'),
+                isActive: isCustom,
+                chipHPad: 6,
+                onTap: () {},
+              ),
+            ],
+          );
+        }),
 
         const SizedBox(height: 12),
 
@@ -1495,6 +1523,8 @@ class _MoodKaiSectionState extends ConsumerState<_MoodKaiSection> {
 }
 
 /// Одна кнопка-пресет настроя.
+/// [chipHPad] — горизонтальный padding внутри чипа (по умолчанию 8);
+/// при 4 чипах в Row передаётся 6, чтобы избежать overflow на 320px/1.5x.
 class _PresetChip extends StatelessWidget {
   const _PresetChip({
     required this.emoji,
@@ -1502,6 +1532,7 @@ class _PresetChip extends StatelessWidget {
     required this.subtitle,
     required this.isActive,
     required this.onTap,
+    this.chipHPad = 8,
   });
 
   final String emoji;
@@ -1509,6 +1540,7 @@ class _PresetChip extends StatelessWidget {
   final String subtitle;
   final bool isActive;
   final VoidCallback onTap;
+  final double chipHPad;
 
   @override
   Widget build(BuildContext context) {
@@ -1521,7 +1553,7 @@ class _PresetChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: EdgeInsets.symmetric(horizontal: chipHPad, vertical: 10),
           decoration: BoxDecoration(
             color: isActive
                 ? colorScheme.primary.withValues(alpha: 0.12)
