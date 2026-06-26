@@ -14,6 +14,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/tag_parser.dart';
 import '../../../core/widgets/kai_loader.dart';
 import '../../today/task_colors.dart';
+import '../../import/import_sheet.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import 'plan_providers.dart';
 import 'recurrence_providers.dart';
@@ -385,6 +386,15 @@ class _EmptyState extends StatelessWidget {
               // bodySmall для подсказки (02-type-space §1)
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
+            ),
+            // Кнопка-призыв: главная студенческая фича — импорт расписания.
+            // Показывается в пустом состоянии, чтобы пользователь сразу знал
+            // о возможности импорта (иначе она скрыта в меню AppBar).
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () => showImportSheet(context, day: day),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: Text(context.s('plan.import_tooltip')),
             ),
           ],
         ),

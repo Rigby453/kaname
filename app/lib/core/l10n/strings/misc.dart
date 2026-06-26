@@ -1792,4 +1792,21 @@ const Map<String, Map<String, String>> miscStrings = {
     'ja': 'アップグレード',
     'ko': '업그레이드',
   },
+
+  // ---------------------------------------------------------------------------
+  // Plan — подписи пунктов меню AppBar (PopupMenuButton)
+  // ---------------------------------------------------------------------------
+  'plan.goals_label': {
+    'en': 'Goals',
+    'ru': 'Цели',
+    'de': 'Ziele',
+    'fr': 'Objectifs',
+    'it': 'Obiettivi',
+    'pt': 'Metas',
+    'es': 'Metas',
+    'id': 'Tujuan',
+    'hi': 'लक्ष्य',
+    'ja': '目標',
+    'ko': '목표',
+  },
 };

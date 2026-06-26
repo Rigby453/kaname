@@ -24,6 +24,9 @@ import '../utils/breakpoints.dart';
 // Индекс таба Plan в StatefulShellRoute (Today=0, Plan=1, Health=2, Diary=3).
 const _kPlanTabIndex = 1;
 
+/// Пункты меню «⋮» (PopupMenuButton) в AppBar вкладки Plan.
+enum _PlanMenuAction { goals, importSchedule }
+
 class ScaffoldWithNavBar extends ConsumerWidget {
   const ScaffoldWithNavBar({
     required this.navigationShell,
@@ -46,19 +49,44 @@ class ScaffoldWithNavBar extends ConsumerWidget {
 
   /// Контекстные действия таба Plan — отображаются только на табе Plan.
   /// Читает selectedDayProvider через ref (уже StateProvider, не локальный state).
+  /// Единое меню «⋮» вместо двух голых иконок — пункты подписаны (UX-polish).
   List<Widget> _planActions(BuildContext context, WidgetRef ref) {
     if (navigationShell.currentIndex != _kPlanTabIndex) return const [];
     final selectedDay = ref.watch(selectedDayProvider);
     return [
-      IconButton(
-        icon: const Icon(Icons.flag_outlined),
-        tooltip: context.s('plan.goals_tooltip'),
-        onPressed: () => context.push('/goals'),
-      ),
-      IconButton(
-        icon: const Icon(Icons.upload_file_outlined),
-        tooltip: context.s('plan.import_tooltip'),
-        onPressed: () => showImportSheet(context, day: selectedDay),
+      PopupMenuButton<_PlanMenuAction>(
+        tooltip: context.s('plan.more_tooltip'),
+        icon: const Icon(Icons.more_vert),
+        onSelected: (action) {
+          switch (action) {
+            case _PlanMenuAction.goals:
+              context.push('/goals');
+            case _PlanMenuAction.importSchedule:
+              showImportSheet(context, day: selectedDay);
+          }
+        },
+        itemBuilder: (ctx) => [
+          PopupMenuItem<_PlanMenuAction>(
+            value: _PlanMenuAction.goals,
+            child: Row(
+              children: [
+                const Icon(Icons.flag_outlined),
+                const SizedBox(width: 12),
+                Text(ctx.s('plan.goals_label')),
+              ],
+            ),
+          ),
+          PopupMenuItem<_PlanMenuAction>(
+            value: _PlanMenuAction.importSchedule,
+            child: Row(
+              children: [
+                const Icon(Icons.upload_file_outlined),
+                const SizedBox(width: 12),
+                Text(ctx.s('plan.import_tooltip')),
+              ],
+            ),
+          ),
+        ],
       ),
     ];
   }
