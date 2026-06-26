@@ -129,291 +129,76 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final userAsync = ref.watch(currentUserProvider);
-    final streak = ref.watch(_streakProvider).valueOrNull;
-    final isAuthenticated =
-        ref.read(authControllerProvider.notifier).isAuthenticated;
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('profile.title'))),
-      body: Padding(
-        // Отступы экрана: 24dp по бокам (02-type-space.md §4.1 lg = 24dp)
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(top: 16, bottom: 24),
-                children: [
-                  _buildHeader(context, ref, userAsync, textTheme, streak, ext),
-                ],
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        children: [
+          // Мини-шапка: имя / email пользователя
+          userAsync.when(
+            loading: () => Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: KaiLoader(label: context.s('loading.generic')),
               ),
             ),
-            const SizedBox(height: 12),
-            // Выход / вход — деструктивный/акцентный: ember для Sign Out, filled для Sign In
-            isAuthenticated
-                ? OutlinedButton(
-                    onPressed: () async {
-                      await ref.read(authControllerProvider.notifier).logout();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: ext.ember,
-                      side: BorderSide(color: ext.ember),
-                    ),
-                    child: Text(context.s('btn.sign_out')),
-                  )
-                : FilledButton(
-                    onPressed: () async {
-                      await ref.read(authControllerProvider.notifier).logout();
-                    },
-                    child: Text(context.s('btn.sign_in')),
-                  ),
-            const SizedBox(height: 12),
-            const _AppVersionLabel(),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<Map<String, dynamic>?> userAsync,
-    TextTheme textTheme,
-    StreakTableData? streak,
-    FocusThemeExtension ext,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Заголовок аккаунта
-        userAsync.when(
-          loading: () => Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: KaiLoader(label: context.s('loading.generic')),
-            ),
-          ),
-          error: (_, _) => const SizedBox.shrink(),
-          data: (user) {
-            if (user == null) {
+            error: (_, _) => const SizedBox.shrink(),
+            data: (user) {
+              final name = user == null
+                  ? context.s('profile.offline_mode')
+                  : ((user['name'] as String?) ?? context.s('profile.you'));
+              final email =
+                  user != null ? ((user['email'] as String?) ?? '') : '';
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(context.s('profile.offline_mode'), style: textTheme.headlineSmall),
-                  const SizedBox(height: 4),
-                  Text(
-                    context.s('profile.offline_subtitle'),
-                    style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
-                  ),
-                ],
-              );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  (user['name'] as String?) ?? context.s('profile.you'),
-                  style: textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  (user['email'] as String?) ?? '',
-                  style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
-                ),
-              ],
-            );
-          },
-        ),
-
-        const SizedBox(height: 24),
-
-        // Карточка streak + заморозки с прогрессом к награде
-        _FreezeCard(streak: streak),
-
-        const SizedBox(height: 12),
-        const _PremiumCard(),
-        const SizedBox(height: 8),
-        const _ShareWeekCard(),
-        const SizedBox(height: 8),
-        const _SharedWithMeCard(),
-
-        // Кнопка «Мои данные» — единая точка для тела/макросов/питания/здоровья
-        const SizedBox(height: 16),
-        const _MyDataTile(),
-
-        // Секция «Задачи по умолчанию»
-        const SizedBox(height: 28),
-        const _TaskDefaultsSection(),
-
-        // Секция «Тренировки» (#23): глобальное время отдыха по умолчанию
-        const SizedBox(height: 28),
-        const _WorkoutDefaultsSection(),
-
-        // Секция «Расширенные функции» — локальные UX-флаги (не премиум)
-        const SizedBox(height: 28),
-        const _AdvancedFeaturesSection(),
-
-        // Секция «Внешний вид»
-        const SizedBox(height: 28),
-        Text(context.s('profile.section_appearance'), style: textTheme.titleMedium),
-        const SizedBox(height: 12),
-        const _ThemePicker(),
-
-        // Секция «Настройки»
-        const SizedBox(height: 28),
-        Text(context.s('profile.section_preferences'), style: textTheme.titleMedium),
-        const SizedBox(height: 8),
-
-        // Язык
-        Consumer(
-          builder: (context, ref, _) {
-            final locale = ref.watch(localeNotifierProvider);
-            // Канонический тег текущей локали: 'en', 'ru', 'pt-BR', 'es-ES' и т.д.
-            final currentTag = localeTag(locale);
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              // Иконки настроек нейтральные (textMuted) — не accent (03-components §19)
-              leading: Icon(Icons.language, color: ext.textMuted),
-              title: Text(context.s('profile.language')),
-              // Ограничиваем ширину дропдауна, иначе самый длинный пункт
-              // («Português (Brasil)») распирает ListTile и вызывает overflow
-              // на узких экранах (320px) и при крупном масштабе текста.
-              trailing: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 140),
-                child: DropdownButton<String>(
-                value: currentTag,
-                // В рамках ограниченной ширины выбранное имя обрезается «…»,
-                // а не распирает строку. Меню при открытии не ограничено —
-                // полные имена видны.
-                isExpanded: true,
-                underline: const SizedBox.shrink(),
-                // Непрозрачный фон меню (иначе контент страницы просвечивает).
-                // DropdownButton не читает popupMenuTheme — задаём явно.
-                dropdownColor: ext.surfaceElevated,
-                items: localeEntries
-                    .map((e) => DropdownMenuItem(
-                          value: localeTag(e.locale),
-                          child: Text(e.displayName),
-                        ))
-                    .toList(),
-                onChanged: (tag) {
-                  if (tag != null) {
-                    // Найти Locale в localeEntries по тегу
-                    final entry = localeEntries.firstWhere(
-                      (e) => localeTag(e.locale) == tag,
-                      orElse: () => const LocaleEntry(Locale('en'), 'English'),
-                    );
-                    ref
-                        .read(localeNotifierProvider.notifier)
-                        .setLocale(entry.locale);
-                  }
-                },
-                ),
-              ),
-            );
-          },
-        ),
-
-        const _MoodKaiSection(),
-        const SizedBox(height: 16),
-        const _TextSizeSetting(),
-        const SizedBox(height: 8),
-        const _FabPositionSetting(),
-        const SizedBox(height: 8),
-        const _NotificationsSetting(),
-        const _CompletionSoundSetting(),
-        const _PostureReminderSetting(),
-        const _ShowKaiSetting(),
-        const _SwipeActionsSetting(),
-        const _TimezoneSetting(),
-
-        // Секция «Поддержка»
-        const SizedBox(height: 28),
-        Text(context.s('profile.section_support'), style: textTheme.titleMedium),
-        const SizedBox(height: 8),
-
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.star_border, color: ext.textMuted),
-          title: Text(context.s('profile.rate_app')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(context.s('profile.rate_coming_soon'))),
-            );
-          },
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.feedback_outlined, color: ext.textMuted),
-          title: Text(context.s('profile.send_feedback')),
-          subtitle: Text(context.s('profile.feedback_subtitle')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(context.s('profile.feedback_email'))),
-            );
-          },
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.description_outlined, color: ext.textMuted),
-          title: Text(context.s('profile.terms_privacy')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () => context.push('/terms'),
-        ),
-
-        // Реферальная карточка
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Text('🎁', style: TextStyle(fontSize: 22)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            context.s('profile.invite_title'),
-                            style: textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            context.s('profile.invite_subtitle'),
-                            style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
-                          ),
-                        ],
-                      ),
+                  Text(name, style: textTheme.headlineSmall),
+                  if (email.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      email,
+                      style: textTheme.bodyMedium
+                          ?.copyWith(color: ext.textMuted),
                     ),
                   ],
-                ),
-                const SizedBox(height: 14),
-                // Вторичная кнопка поделиться (не единственная CTA) — Outlined
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.share, size: 16),
-                  label: Text(context.s('profile.share_kaizen')),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(context.s('profile.referral_coming_soon')),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+                ],
+              );
+            },
           ),
-        ),
-      ],
+
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 4),
+
+          // Внешний вид → /profile/appearance
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.palette_outlined, color: ext.textMuted),
+            title: Text(context.s('profile.section_appearance')),
+            trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+            onTap: () => context.push('/profile/appearance'),
+          ),
+
+          // Поведение → /profile/behavior
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.tune_rounded, color: ext.textMuted),
+            title: Text(context.s('profile.section_behavior')),
+            trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+            onTap: () => context.push('/profile/behavior'),
+          ),
+
+          // Аккаунт → /profile/account
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.manage_accounts_outlined, color: ext.textMuted),
+            title: Text(context.s('profile.section_account')),
+            trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+            onTap: () => context.push('/profile/account'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2368,6 +2153,366 @@ class _StreakStat extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
       ],
+    );
+  }
+}
+
+// ===========================================================================
+// Подстраницы профиля (3 штуки)
+// Все классы живут в этом файле, т.к. используют приватные виджеты (_Foo).
+// В /profile/appearance, /profile/behavior, /profile/account.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Подстраница «Внешний вид»
+// Секции: тема, язык, масштаб текста, позиция FAB, Kai-тумблер.
+// ---------------------------------------------------------------------------
+
+/// Подстраница «Внешний вид» — тема, язык, типографика, FAB, маскот.
+class ProfileAppearanceScreen extends ConsumerWidget {
+  const ProfileAppearanceScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Scaffold(
+      appBar:
+          AppBar(title: Text(context.s('profile.section_appearance'))),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        children: [
+          // Выбор темы
+          Text(
+            context.s('profile.section_appearance'),
+            style: textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          const _ThemePicker(),
+
+          // Язык и базовые настройки отображения
+          const SizedBox(height: 28),
+          Text(
+            context.s('profile.section_preferences'),
+            style: textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+
+          // Выбор языка (Consumer — обращается к localeNotifierProvider)
+          Consumer(
+            builder: (context, ref, _) {
+              final locale = ref.watch(localeNotifierProvider);
+              final currentTag = localeTag(locale);
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.language, color: ext.textMuted),
+                title: Text(context.s('profile.language')),
+                // Ограничиваем ширину, чтобы «Português (Brasil)» не вызывал overflow
+                trailing: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 140),
+                  child: DropdownButton<String>(
+                    value: currentTag,
+                    isExpanded: true,
+                    underline: const SizedBox.shrink(),
+                    dropdownColor: ext.surfaceElevated,
+                    items: localeEntries
+                        .map((e) => DropdownMenuItem(
+                              value: localeTag(e.locale),
+                              child: Text(e.displayName),
+                            ))
+                        .toList(),
+                    onChanged: (tag) {
+                      if (tag != null) {
+                        final entry = localeEntries.firstWhere(
+                          (e) => localeTag(e.locale) == tag,
+                          orElse: () =>
+                              const LocaleEntry(Locale('en'), 'English'),
+                        );
+                        ref
+                            .read(localeNotifierProvider.notifier)
+                            .setLocale(entry.locale);
+                      }
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 8),
+          const _TextSizeSetting(),
+          const SizedBox(height: 8),
+          const _FabPositionSetting(),
+          const SizedBox(height: 8),
+          const _ShowKaiSetting(),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Подстраница «Поведение»
+// Секции: дефолты задач/тренировок, флаги-режимы, настрой Kai, осанка,
+//         звук, уведомления, свайп-действия.
+// ---------------------------------------------------------------------------
+
+/// Подстраница «Поведение» — умолчания, флаги, настрой Kai, уведомления.
+class ProfileBehaviorScreen extends StatelessWidget {
+  const ProfileBehaviorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(context.s('profile.section_behavior'))),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        children: [
+          const _TaskDefaultsSection(),
+          const SizedBox(height: 28),
+          const _WorkoutDefaultsSection(),
+          const SizedBox(height: 28),
+          const _AdvancedFeaturesSection(),
+          const SizedBox(height: 28),
+          const _MoodKaiSection(),
+          const SizedBox(height: 16),
+          const _PostureReminderSetting(),
+          const _CompletionSoundSetting(),
+          const _NotificationsSetting(),
+          const _SwipeActionsSetting(),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Подстраница «Аккаунт»
+// Секции: аккаунт/email, стрик+заморозки, подписка, шеринг, мои данные,
+//         поддержка, реферал, условия, часовой пояс, выход.
+// ---------------------------------------------------------------------------
+
+/// Подстраница «Аккаунт» — статус, стрик, подписка, данные, поддержка, выход.
+class ProfileAccountScreen extends ConsumerWidget {
+  const ProfileAccountScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final userAsync = ref.watch(currentUserProvider);
+    final streak = ref.watch(_streakProvider).valueOrNull;
+    final isAuthenticated =
+        ref.read(authControllerProvider.notifier).isAuthenticated;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(context.s('profile.section_account'))),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(top: 16, bottom: 24),
+                children: [
+                  // Имя / email
+                  userAsync.when(
+                    loading: () => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: KaiLoader(label: context.s('loading.generic')),
+                      ),
+                    ),
+                    error: (_, _) => const SizedBox.shrink(),
+                    data: (user) {
+                      if (user == null) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.s('profile.offline_mode'),
+                              style: textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              context.s('profile.offline_subtitle'),
+                              style: textTheme.bodyMedium
+                                  ?.copyWith(color: ext.textMuted),
+                            ),
+                          ],
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            (user['name'] as String?) ??
+                                context.s('profile.you'),
+                            style: textTheme.headlineSmall,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            (user['email'] as String?) ?? '',
+                            style: textTheme.bodyMedium
+                                ?.copyWith(color: ext.textMuted),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Стрик + заморозки с прогрессом к награде
+                  _FreezeCard(streak: streak),
+
+                  const SizedBox(height: 12),
+                  const _PremiumCard(),
+                  const SizedBox(height: 8),
+                  const _ShareWeekCard(),
+                  const SizedBox(height: 8),
+                  const _SharedWithMeCard(),
+
+                  // Мои данные (тело / макросы / питание / здоровье)
+                  const SizedBox(height: 16),
+                  const _MyDataTile(),
+
+                  // Часовой пояс
+                  const SizedBox(height: 8),
+                  const _TimezoneSetting(),
+
+                  // Секция «Поддержка»
+                  const SizedBox(height: 28),
+                  Text(
+                    context.s('profile.section_support'),
+                    style: textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.star_border, color: ext.textMuted),
+                    title: Text(context.s('profile.rate_app')),
+                    trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content:
+                              Text(context.s('profile.rate_coming_soon')),
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading:
+                        Icon(Icons.feedback_outlined, color: ext.textMuted),
+                    title: Text(context.s('profile.send_feedback')),
+                    subtitle: Text(context.s('profile.feedback_subtitle')),
+                    trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(context.s('profile.feedback_email')),
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.description_outlined,
+                        color: ext.textMuted),
+                    title: Text(context.s('profile.terms_privacy')),
+                    trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+                    onTap: () => context.push('/terms'),
+                  ),
+
+                  // Реферальная карточка
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text('🎁',
+                                  style: TextStyle(fontSize: 22)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      context.s('profile.invite_title'),
+                                      style: textTheme.titleSmall,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      context.s('profile.invite_subtitle'),
+                                      style: textTheme.bodySmall
+                                          ?.copyWith(color: ext.textMuted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.share, size: 16),
+                            label:
+                                Text(context.s('profile.share_kaizen')),
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(context
+                                      .s('profile.referral_coming_soon')),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            // Выход / вход — деструктивный/акцентный: ember для Sign Out
+            isAuthenticated
+                ? OutlinedButton(
+                    onPressed: () async {
+                      await ref
+                          .read(authControllerProvider.notifier)
+                          .logout();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: ext.ember,
+                      side: BorderSide(color: ext.ember),
+                    ),
+                    child: Text(context.s('btn.sign_out')),
+                  )
+                : FilledButton(
+                    onPressed: () async {
+                      await ref
+                          .read(authControllerProvider.notifier)
+                          .logout();
+                    },
+                    child: Text(context.s('btn.sign_in')),
+                  ),
+            const SizedBox(height: 12),
+            const _AppVersionLabel(),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 }

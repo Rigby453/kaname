@@ -204,6 +204,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const MyDataScreen(),
       ),
 
+      // /profile/appearance — подстраница «Внешний вид» (тема, язык, типографика, FAB, Kai)
+      GoRoute(
+        path: '/profile/appearance',
+        builder: (context, state) => const ProfileAppearanceScreen(),
+      ),
+
+      // /profile/behavior — подстраница «Поведение» (дефолты, флаги, настрой, звук, свайп)
+      GoRoute(
+        path: '/profile/behavior',
+        builder: (context, state) => const ProfileBehaviorScreen(),
+      ),
+
+      // /profile/account — подстраница «Аккаунт» (стрик, подписка, данные, поддержка, выход)
+      GoRoute(
+        path: '/profile/account',
+        builder: (context, state) => const ProfileAccountScreen(),
+      ),
+
       // /focus — фокус-сессии (из Health), вне оболочки
       GoRoute(path: '/focus', builder: (context, state) => const FocusScreen()),
 

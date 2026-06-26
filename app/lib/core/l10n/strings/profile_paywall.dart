@@ -1,7 +1,33 @@
 // Строки экранов Profile, Terms и Paywall.
 // Наполнено агентом локализации. EN + RU обязательны, DE — опционально.
 const Map<String, Map<String, String>> profilePaywallStrings = {
-  // ---- Profile: заголовки секций ----
+  // ---- Profile: заголовки секций (корневое меню + подстраницы) ----
+  'profile.section_behavior': {
+    'en': 'Behavior',
+    'ru': 'Поведение',
+    'de': 'Verhalten',
+    'fr': 'Comportement',
+    'it': 'Comportamento',
+    'pt': 'Comportamento',
+    'es': 'Comportamiento',
+    'id': 'Perilaku',
+    'hi': 'व्यवहार',
+    'ja': '動作',
+    'ko': '동작',
+  },
+  'profile.section_account': {
+    'en': 'Account',
+    'ru': 'Аккаунт',
+    'de': 'Konto',
+    'fr': 'Compte',
+    'it': 'Account',
+    'pt': 'Conta',
+    'es': 'Cuenta',
+    'id': 'Akun',
+    'hi': 'खाता',
+    'ja': 'アカウント',
+    'ko': '계정',
+  },
   'profile.section_appearance': {
     'en': 'Appearance',
     'ru': 'Внешний вид',
