@@ -4,10 +4,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/date_navigator.dart';
 import '../../core/widgets/kai_loader.dart';
 
 /// Провайдер для выбранной даты (sleep report)
@@ -107,100 +109,89 @@ class SleepReportScreen extends ConsumerWidget {
         // Заголовок экрана — headlineSmall (display font, 22sp)
         title: Text(context.s('sleep.report_title')),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_today),
-            onPressed: () => _selectDate(context, ref),
-            tooltip: context.s('sleep.select_date'),
-          ),
-        ],
+        // Иконка-календарь в AppBar удалена — навигация по датам
+        // теперь в DateNavigator под AppBar (единый паттерн).
       ),
-      body: nights.when(
-        data: (nightList) => SingleChildScrollView(
-          // 24dp горизонтальные поля, 16dp сверху — §4.1
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Блок статистики: три карточки рядом
-                _buildStatsCards(context, stats, textTheme, ext),
-                const SizedBox(height: 24),
+      body: Column(
+        children: [
+          // Единый DateNavigator — chevron ‹ дата › (locale-aware, без en-US)
+          Card(
+            margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: DateNavigator(
+                date: selectedDate,
+                onChanged: (d) =>
+                    ref.read(sleepSelectedDateProvider.notifier).state = d,
+              ),
+            ),
+          ),
 
-                // Выбор даты — кнопка-нудж, не акцентный элемент
-                GestureDetector(
-                  onTap: () => _selectDate(context, ref),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
+          // Скроллируемое содержимое
+          Expanded(
+            child: nights.when(
+              data: (nightList) => SingleChildScrollView(
+                // 24dp горизонтальные поля, 16dp сверху — §4.1
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Блок статистики: три карточки рядом
+                      _buildStatsCards(context, stats, textTheme, ext),
+                      const SizedBox(height: 24),
+
+                      // Заголовок секции истории
                       Text(
-                        _formatSelectedDate(context, selectedDate),
-                        style: textTheme.titleMedium?.copyWith(
-                          // Дата — textMuted, не accent
-                          color: ext.textMuted,
+                        context.s('sleep.history'),
+                        style: textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Список ночей
+                      if (nightList.isEmpty)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              context.s('sleep.no_data'),
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: ext.textMuted,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        Column(
+                          children: nightList
+                              .map(
+                                (night) => _buildNightCard(
+                                  context,
+                                  night,
+                                  textTheme,
+                                  colorScheme,
+                                  ext,
+                                ),
+                              )
+                              .toList(),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.calendar_today,
-                        size: 14,
-                        // Иконка тоже нейтральная
-                        color: ext.textMuted,
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-
-                // Заголовок секции истории
-                Text(
-                  context.s('sleep.history'),
-                  style: textTheme.titleMedium,
+              ),
+              // KaiLoader заменяет CircularProgressIndicator (п. 6)
+              loading: () => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(48),
+                  child: KaiLoader(label: context.s('loading.sleep')),
                 ),
-                const SizedBox(height: 12),
-
-                // Список ночей
-                if (nightList.isEmpty)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        context.s('sleep.no_data'),
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: ext.textMuted,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  Column(
-                    children: nightList
-                        .map(
-                          (night) => _buildNightCard(
-                            context,
-                            night,
-                            textTheme,
-                            colorScheme,
-                            ext,
-                          ),
-                        )
-                        .toList(),
-                  ),
-              ],
+              ),
+              error: (err, st) => Center(
+                child: Text(context.s('error.generic').replaceFirst('{err}', '$err')),
+              ),
             ),
           ),
-        ),
-        // KaiLoader заменяет CircularProgressIndicator (п. 6)
-        loading: () => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(48),
-            child: KaiLoader(label: context.s('loading.sleep')),
-          ),
-        ),
-        error: (err, st) => Center(
-          child: Text(context.s('error.generic').replaceFirst('{err}', '$err')),
-        ),
+        ],
       ),
     );
   }
@@ -270,8 +261,9 @@ class SleepReportScreen extends ConsumerWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Locale-aware короткая дата (MMMd: «Jun 24» / «24 июн.»)
               Text(
-                _formatDate(night.startAt),
+                DateFormat.MMMd().format(night.startAt),
                 style: textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -300,80 +292,6 @@ class SleepReportScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime dt) {
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[dt.month - 1]} ${dt.day}';
-  }
-
-  String _formatSelectedDate(BuildContext context, DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final selected = DateTime(date.year, date.month, date.day);
-
-    if (selected == today) {
-      return context.s('sleep.today');
-    } else if (selected == today.subtract(const Duration(days: 1))) {
-      return context.s('sleep.yesterday');
-    } else {
-      final months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      return '${months[date.month - 1]} ${date.day}, ${date.year}';
-    }
-  }
-
-  Future<void> _selectDate(BuildContext context, WidgetRef ref) async {
-    final selectedDate = ref.read(sleepSelectedDateProvider);
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      helpText: 'SELECT DATE',
-      cancelText: 'CANCEL',
-      confirmText: 'OK',
-      locale: const Locale('en', 'US'),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            datePickerTheme: DatePickerThemeData(
-              headerBackgroundColor: Theme.of(context).colorScheme.primary,
-              headerForegroundColor: Theme.of(context).colorScheme.onPrimary,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      ref.read(sleepSelectedDateProvider.notifier).state = picked;
-    }
   }
 
   String _formatTime(DateTime dt) {

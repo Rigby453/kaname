@@ -8,6 +8,7 @@ import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/date_navigator.dart';
 import '../../core/widgets/kai_loader.dart';
 
 /// Запись дневника за конкретный день
@@ -80,74 +81,11 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
                   style: textTheme.titleSmall?.copyWith(color: ext.textMuted),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () {
-                        setState(() {
-                          _selectedDate = _selectedDate.subtract(
-                            const Duration(days: 1),
-                          );
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => _showDatePicker(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            // surface fill + border outline (02-type-space.md §4.3)
-                            color: colorScheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: ext.border,
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  _formatDateFull(_selectedDate),
-                                  textAlign: TextAlign.center,
-                                  // bodyMedium w600 — дата читается как важная, но не heading
-                                  style: textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Icon(
-                                Icons.calendar_today,
-                                size: 14,
-                                // textFaint — tertiary icon, не CTA
-                                color: ext.textFaint,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.arrow_forward),
-                      onPressed: _selectedDate.isBefore(DateTime.now())
-                          ? () {
-                              setState(() {
-                                _selectedDate = _selectedDate.add(
-                                  const Duration(days: 1),
-                                );
-                              });
-                            }
-                          : null,
-                    ),
-                  ],
+                // Единый DateNavigator — chevron ‹ дата › (locale-aware,
+                // без хардкод-массивов месяцев/дней недели)
+                DateNavigator(
+                  date: _selectedDate,
+                  onChanged: (d) => setState(() => _selectedDate = d),
                 ),
               ],
             ),
@@ -281,47 +219,5 @@ class _DiaryHistoryScreenState extends ConsumerState<DiaryHistoryScreen> {
         ],
       ),
     );
-  }
-
-  void _showDatePicker(BuildContext context) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-    }
-  }
-
-  String _formatDateFull(DateTime date) {
-    final months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    final weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    final weekday = weekdays[date.weekday - 1];
-    return '$weekday, ${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 }

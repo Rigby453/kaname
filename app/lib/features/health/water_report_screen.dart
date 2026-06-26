@@ -4,11 +4,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/settings/water_goal_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/date_navigator.dart';
 import '../../core/widgets/kai_loader.dart';
 
 /// Провайдер для выбранной даты (water report)
@@ -45,6 +47,7 @@ class WaterReportScreen extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     // ThemeExtension для textMuted / border / success (без хардкода)
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final selectedDate = ref.watch(waterSelectedDateProvider);
     final waterLogs = ref.watch(waterLogsForDateProvider);
     final waterTotal = ref.watch(waterTotalForDateProvider);
     final waterGoal = ref.watch(waterGoalProvider);
@@ -61,8 +64,18 @@ class WaterReportScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // Выбор даты — компактная панель навигации по дням
-          _buildDatePicker(context, ref, textTheme, ext),
+          // Единый DateNavigator — chevron ‹ дата › (locale-aware, без хардкод-массивов)
+          Card(
+            margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: DateNavigator(
+                date: selectedDate,
+                onChanged: (d) =>
+                    ref.read(waterSelectedDateProvider.notifier).state = d,
+              ),
+            ),
+          ),
 
           Expanded(
             child: waterLogs.when(
@@ -182,110 +195,6 @@ class WaterReportScreen extends ConsumerWidget {
     );
   }
 
-  /// Панель выбора даты: стрелки назад/вперёд + нажатие открывает DatePicker.
-  Widget _buildDatePicker(
-    BuildContext context,
-    WidgetRef ref,
-    TextTheme textTheme,
-    FocusThemeExtension ext,
-  ) {
-    final selectedDate = ref.watch(waterSelectedDateProvider);
-
-    return Card(
-      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          children: [
-            // Дата — bodyLarge, кликабельная; иконка нейтральная
-            Expanded(
-              child: GestureDetector(
-                onTap: () => _selectDate(context, ref),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Flexible + ellipsis: на узком экране дата сжимается,
-                    // а не выталкивает chevron-кнопки за границу строки.
-                    Flexible(
-                      child: Text(
-                        _formatFullDate(selectedDate),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.calendar_today,
-                      size: 14,
-                      color: ext.textMuted,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Навигация по дням — chevron IconButton
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              onPressed: () {
-                ref.read(waterSelectedDateProvider.notifier).state =
-                    selectedDate.subtract(const Duration(days: 1));
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              onPressed: selectedDate.isBefore(
-                    DateTime(
-                      DateTime.now().year,
-                      DateTime.now().month,
-                      DateTime.now().day,
-                    ),
-                  )
-                  ? () {
-                      ref.read(waterSelectedDateProvider.notifier).state =
-                          selectedDate.add(const Duration(days: 1));
-                    }
-                  : null,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _selectDate(BuildContext context, WidgetRef ref) async {
-    final selectedDate = ref.read(waterSelectedDateProvider);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      ref.read(waterSelectedDateProvider.notifier).state = picked;
-    }
-  }
-
-  String _formatFullDate(DateTime dt) {
-    final months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
-  }
-
   /// Карточка одной записи воды (время + объём).
   Widget _buildWaterLogCard(
     BuildContext context,
@@ -308,8 +217,9 @@ class WaterReportScreen extends ConsumerWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Locale-aware короткая дата (MMMd: «Jun 24» / «24 июн.»)
               Text(
-                _formatDate(log.loggedAt),
+                DateFormat.MMMd().format(log.loggedAt),
                 style: textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -330,24 +240,6 @@ class WaterReportScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime dt) {
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[dt.month - 1]} ${dt.day}';
   }
 
   String _formatTime(DateTime dt) {
