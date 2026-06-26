@@ -23,6 +23,7 @@ import '../../../services/api/api_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../mascot/kai_mascot.dart';
 import '../../paywall/paywall_screen.dart';
+import '../../health/screen_time_signal_widget.dart';
 import 'review_engine.dart';
 import 'review_variant_card.dart';
 
@@ -123,6 +124,10 @@ class EveningReviewCard extends ConsumerWidget {
               KaiCopy.eveningReview(context, tone, pending.length),
               style: textTheme.bodyMedium,
             ),
+            const SizedBox(height: 8),
+            // Сигнал экранного времени — нейтральный контекст для анализа дня.
+            // Показывается только на Android с разрешением; без данных — скрыт.
+            const ScreenTimeSignalWidget(),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,

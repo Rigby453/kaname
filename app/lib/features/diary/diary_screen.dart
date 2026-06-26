@@ -18,6 +18,8 @@ import '../../core/widgets/kai_loader.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
 import '../health/health_screen.dart';
+import '../health/screen_time_signal_widget.dart';
+import '../health/screen_time_usage_provider.dart';
 import '../paywall/paywall_screen.dart';
 import 'diary_insight.dart';
 
@@ -365,15 +367,100 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
     ];
   }
 
-  /// Карточки инсайтов (план vs факт, недельный инсайт, жизненные инсайты).
+  /// Карточки инсайтов (план vs факт, экранное время, недельный инсайт, жизненные инсайты).
   List<Widget> _buildInsightWidgets() {
     return const [
       _PlanVsFactCard(),
+      SizedBox(height: 16),
+      _ScreenTimeSignalCard(),
       SizedBox(height: 16),
       _QuickInsightCard(),
       SizedBox(height: 16),
       _LifeInsightsCard(),
     ];
+  }
+}
+
+/// Карточка-сигнал «Экранное время» в дневнике.
+/// Нейтральный контекст: суммарное время + самая затратная категория.
+/// Мягкая деградация: нет разрешения / нет Android / нет данных → SizedBox.shrink().
+class _ScreenTimeSignalCard extends ConsumerWidget {
+  const _ScreenTimeSignalCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(screenTimeUsageProvider);
+
+    // Мягкая деградация — не показываем пустую карточку
+    if (!state.isGranted) return const SizedBox.shrink();
+    if (state.hasError) return const SizedBox.shrink();
+
+    final total = screenTimeTotal(state.usedMinutes);
+    if (total == 0) return const SizedBox.shrink();
+
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final totalStr = screenTimeFmt(context, total);
+    final top = screenTimeTopCategory(state.usedMinutes);
+    final topPart = top != null
+        ? ' · ${context.s('screentime.cat_${top.key}')} ${screenTimeFmt(context, top.value)}'
+        : '';
+
+    return Card(
+      child: Padding(
+        // 16dp внутренний отступ карточки (02-type-space.md §4.1)
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Иконка: textMuted (информационная, не CTA)
+                Icon(Icons.phone_android_outlined,
+                    color: ext.textMuted, size: 18),
+                const SizedBox(width: 8),
+                // Expanded предотвращает overflow при крупном тексте (scale 1.5+)
+                Expanded(
+                  child: Text(
+                    context.s('screentime.signal_card_title'),
+                    style: textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$totalStr$topPart',
+                    style: textTheme.bodyMedium
+                        ?.copyWith(color: ext.textMuted),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Ссылка «Подробнее» → /screen-time
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () => context.push('/screen-time'),
+                  child: Text(
+                    context.s('screentime.signal_details'),
+                    style: textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
