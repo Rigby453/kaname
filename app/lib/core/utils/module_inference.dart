@@ -7,18 +7,30 @@
 //   'meal:lunch'     → /food?meal=lunch
 //   'meal:dinner'    → /food?meal=dinner
 //   'sleep'          → /sleep-report
+//   'focus'          → /focus
+//   'warmup'         → /warmup
+//   'breathing'      → /breathing
+//   'meditation'     → /meditation
 //   null             → нет привязки
 //
-// Ключевые слова намеренно дублируют _moduleKeywords из nl_datetime.dart —
-// обе функции остаются независимыми (nl_datetime — сложный парсер; эта функция
-// является единственной точкой истины для сохранения moduleLink при save).
-// Расширение: добавить кортеж в _kInferenceKeywords и соответствующий тест.
+// ИСТОЧНИК ИСТИНЫ: [kModuleInferenceKeywords] — публичная карта ключевых слов.
+// nl_datetime.dart::_moduleKeywords ДОЛЖНА реиспользовать ту же карту через импорт.
+// При добавлении новых ключевых слов правьте ТОЛЬКО kModuleInferenceKeywords здесь.
+//
+// Расширение: добавить кортеж в kModuleInferenceKeywords и соответствующий тест.
 
-// Описание одного ключевого слова.
-class _IKey {
-  const _IKey(this.text, {this.wholeWord = false});
+/// Описание одного ключевого слова модуля.
+///
+/// Используется как в [inferModuleLink] (запись в БД), так и в
+/// nl_datetime.dart::_detectModuleLink (подсказки парсера).
+class ModuleInferenceKey {
+  const ModuleInferenceKey(this.text, {this.wholeWord = false});
+
+  /// Корень-стем или целое слово (нижний регистр).
   final String text;
-  // Если true — ищем точное слово (окружённое границами), иначе — стем (prefix).
+
+  /// true → совпадает только как целое слово (границы с обеих сторон);
+  /// false → корень-префикс (левая граница + начало слова, правая не нужна).
   final bool wholeWord;
 }
 
@@ -58,73 +70,124 @@ bool _hasWord(String lower, String word) {
   }
 }
 
-bool _matchKey(String lower, _IKey k) =>
+bool _matchKey(String lower, ModuleInferenceKey k) =>
     k.wholeWord ? _hasWord(lower, k.text) : _hasStem(lower, k.text);
 
-// Карта ключевые-слова → moduleLink. Проверяются по порядку; возвращается первое совпадение.
-// Значения должны ТОЧНО совпадать с тем, что ожидает _openModule в картах задач.
-final List<(List<_IKey>, String)> _kInferenceKeywords = [
-  // workout
+/// ЕДИНАЯ карта ключевые-слова → moduleLink. ИСТОЧНИК ИСТИНЫ для обоих мест:
+///   • [inferModuleLink] (запись в БД, вызывается из add_task_sheet._save)
+///   • nl_datetime.dart::_detectModuleLink (подсказки UI парсера) — конвертирует
+///     эту же карту через ModuleInferenceKey → _Keyword, не держит свою копию.
+///
+/// Проверяются по порядку; возвращается первое совпадение.
+/// Значения должны ТОЧНО совпадать с тем, что ожидает _openModule в картах задач.
+///
+/// ПОРЯДОК приоритетов при коллизии ключевых слов:
+///   workout > meal:* > focus > warmup > breathing > meditation > sleep
+/// Пример: «дыхание перед сном» → breathing (breathing раньше sleep в списке).
+const List<(List<ModuleInferenceKey>, String)> kModuleInferenceKeywords = [
+  // --- workout ---
   (
     [
-      _IKey('тренировк'),       // тренировка / тренировки / тренировку
-      _IKey('трен', wholeWord: true), // «трен» как отдельное сокращение
-      _IKey('качал'),           // качалка
-      _IKey('спортзал'),        // спортзал
-      _IKey('отжим'),           // отжимания
-      _IKey('присед'),          // приседания
-      _IKey('пробежк'),         // пробежка
-      _IKey('бег', wholeWord: true), // бег (не «победа», не «берег»)
-      _IKey('йога'),            // йога / йогой
-      _IKey('workout'),         // EN
-      _IKey('gym', wholeWord: true), // EN
-      _IKey('run', wholeWord: true), // EN: run (не «runner» — wholewWord)
-      _IKey('exercise'),        // EN
-      _IKey('yoga'),            // EN
+      ModuleInferenceKey('тренировк'),           // тренировка / тренировки / тренировку
+      ModuleInferenceKey('трен', wholeWord: true), // «трен» как отдельное сокращение
+      ModuleInferenceKey('качал'),               // качалка
+      ModuleInferenceKey('спортзал'),            // спортзал
+      ModuleInferenceKey('отжим'),               // отжимания
+      ModuleInferenceKey('присед'),              // приседания
+      ModuleInferenceKey('пробежк'),             // пробежка
+      ModuleInferenceKey('бег', wholeWord: true), // бег (не «победа», не «берег»)
+      ModuleInferenceKey('йога'),                // йога / йогой
+      ModuleInferenceKey('workout'),             // EN
+      ModuleInferenceKey('gym', wholeWord: true), // EN
+      ModuleInferenceKey('run', wholeWord: true), // EN: run (не «runner» — wholeWord)
+      ModuleInferenceKey('exercise'),            // EN
+      ModuleInferenceKey('yoga'),                // EN
     ],
     'workout',
   ),
-  // завтрак / breakfast
+  // --- meal:breakfast ---
   (
     [
-      _IKey('завтрак'),
-      _IKey('breakfast'),
+      ModuleInferenceKey('завтрак'),
+      ModuleInferenceKey('breakfast'),
     ],
     'meal:breakfast',
   ),
-  // обед / lunch
+  // --- meal:lunch ---
   (
     [
-      _IKey('пообед'),          // пообедать / пообедаю
-      _IKey('обед'),            // обед / обедать
-      _IKey('lunch'),
+      ModuleInferenceKey('пообед'),              // пообедать / пообедаю
+      ModuleInferenceKey('обед'),                // обед / обедать
+      ModuleInferenceKey('lunch'),
     ],
     'meal:lunch',
   ),
-  // ужин / dinner
+  // --- meal:dinner ---
   (
     [
-      _IKey('ужин'),
-      _IKey('dinner'),
-      _IKey('supper'),
+      ModuleInferenceKey('ужин'),
+      ModuleInferenceKey('dinner'),
+      ModuleInferenceKey('supper'),
     ],
     'meal:dinner',
   ),
-  // перекус / meal / eat — общая еда без конкретного приёма → нет moduleLink
-  // (карточка не знает, в какой meal-слот маршрутизировать).
-  // Намеренно НЕ добавляем 'food', 'еда', 'поесть' без слота — они идут без модуля.
+  // Намеренно НЕ добавляем 'food', 'еда', 'поесть' без слота —
+  // карточка не знает, в какой meal-слот маршрутизировать.
 
-  // sleep
+  // --- focus ---
   (
     [
-      _IKey('поспат'),          // поспать
-      _IKey('выспат'),          // выспаться
-      _IKey('спать', wholeWord: true),
-      _IKey('сон', wholeWord: true),
-      _IKey('лечь', wholeWord: true), // лечь (спать)
-      _IKey('nap', wholeWord: true),  // EN
-      _IKey('sleep'),           // EN: sleep / sleeping
-      _IKey('bedtime'),         // EN
+      ModuleInferenceKey('фокус'),               // фокус-сессия, фокусировка
+      ModuleInferenceKey('сосредоточ'),           // сосредоточиться, сосредоточься
+      ModuleInferenceKey('помодоро'),             // помодоро-техника
+      ModuleInferenceKey('pomodoro'),             // EN
+      ModuleInferenceKey('focus', wholeWord: true), // EN: focus (целое слово)
+      ModuleInferenceKey('deep work'),            // EN: deep work (фраза)
+    ],
+    'focus',
+  ),
+  // --- warmup ---
+  (
+    [
+      ModuleInferenceKey('зарядк'),              // зарядка, зарядки
+      ModuleInferenceKey('разминк'),             // разминка
+      ModuleInferenceKey('растяжк'),             // растяжка
+      ModuleInferenceKey('warmup'),              // EN: warmup
+      ModuleInferenceKey('warm up'),             // EN: warm up (с пробелом)
+      ModuleInferenceKey('stretch'),             // EN: stretch, stretching
+    ],
+    'warmup',
+  ),
+  // --- breathing ---
+  // Стоит ПЕРЕД sleep: «подышать перед сном» → breathing, не sleep.
+  (
+    [
+      ModuleInferenceKey('дых'),                 // дыхание/дыхательная/дыхания — общий корень «дых»
+      ModuleInferenceKey('подыша'),              // подышать
+      ModuleInferenceKey('breath'),              // EN: breath, breathe, breathing
+    ],
+    'breathing',
+  ),
+  // --- meditation ---
+  (
+    [
+      ModuleInferenceKey('медитаци'),            // медитация, медитации
+      ModuleInferenceKey('медитир'),             // медитировать
+      ModuleInferenceKey('meditat'),             // EN: meditate, meditation, meditating
+    ],
+    'meditation',
+  ),
+  // --- sleep ---
+  (
+    [
+      ModuleInferenceKey('поспат'),              // поспать
+      ModuleInferenceKey('выспат'),              // выспаться
+      ModuleInferenceKey('спать', wholeWord: true),
+      ModuleInferenceKey('сон', wholeWord: true),
+      ModuleInferenceKey('лечь', wholeWord: true), // лечь (спать)
+      ModuleInferenceKey('nap', wholeWord: true),  // EN
+      ModuleInferenceKey('sleep'),               // EN: sleep / sleeping
+      ModuleInferenceKey('bedtime'),             // EN
     ],
     'sleep',
   ),
@@ -134,18 +197,23 @@ final List<(List<_IKey>, String)> _kInferenceKeywords = [
 /// типу [type]) путём поиска ключевых слов.
 ///
 /// Возвращает одно из:
-///   'workout' | 'meal:breakfast' | 'meal:lunch' | 'meal:dinner' | 'sleep' | null
+///   'workout' | 'meal:breakfast' | 'meal:lunch' | 'meal:dinner' |
+///   'sleep' | 'focus' | 'warmup' | 'breathing' | 'meditation' | null
 ///
 /// Возвращаемые значения точно совпадают с тем, что ожидает _openModule()
 /// в task_list.dart / day_timeline.dart / week_agenda.dart.
 ///
 /// Пример:
 ///   inferModuleLink('Утренняя тренировка') → 'workout'
-///   inferModuleLink('завтрак') → 'meal:breakfast'
-///   inferModuleLink('Купить молоко') → null
+///   inferModuleLink('завтрак')             → 'meal:breakfast'
+///   inferModuleLink('фокус-сессия 25 мин') → 'focus'
+///   inferModuleLink('разминка утром')      → 'warmup'
+///   inferModuleLink('подышать перед сном') → 'breathing'
+///   inferModuleLink('медитация 10 минут')  → 'meditation'
+///   inferModuleLink('Купить молоко')       → null
 String? inferModuleLink(String title, {String? type}) {
   final lower = title.toLowerCase();
-  for (final (keys, value) in _kInferenceKeywords) {
+  for (final (keys, value) in kModuleInferenceKeywords) {
     for (final k in keys) {
       if (_matchKey(lower, k)) return value;
     }

@@ -6,6 +6,7 @@
 // Все тесты используют фиксированный [now] — DateTime.now() не вызывается.
 //   now = Среда 2026-06-17 14:30 (weekday=3)
 
+import 'package:app/core/utils/module_inference.dart';
 import 'package:app/core/utils/nl_datetime.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -62,6 +63,58 @@ void main() {
       final r = parseNaturalDateTime('Купить молоко', now);
       expect(r.moduleLink, isNull);
     });
+
+    // Новые модули — парсер использует тот же словарь что и inferModuleLink.
+    test('"фокус-сессия 25 мин" → focus', () {
+      final r = parseNaturalDateTime('фокус-сессия 25 мин', now);
+      expect(r.moduleLink, 'focus');
+    });
+
+    test('"разминка утром" → warmup', () {
+      final r = parseNaturalDateTime('разминка утром', now);
+      expect(r.moduleLink, 'warmup');
+    });
+
+    test('"подышать перед сном" → breathing (не sleep)', () {
+      final r = parseNaturalDateTime('подышать перед сном', now);
+      expect(r.moduleLink, 'breathing');
+    });
+
+    test('"медитация 10 минут" → meditation', () {
+      final r = parseNaturalDateTime('медитация 10 минут', now);
+      expect(r.moduleLink, 'meditation');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Кросс-проверка: inferModuleLink и parseNaturalDateTime дают одинаковый
+  // moduleLink на одном наборе фраз. Защищает от расхождения словарей.
+  // ---------------------------------------------------------------------------
+  group('cross-check: inferModuleLink == parseNaturalDateTime.moduleLink', () {
+    final phrases = [
+      'тренировка ног',
+      'завтрак',
+      'пообедать с другом',
+      'ужин',
+      'фокус-сессия',
+      'зарядка',
+      'дыхание',
+      'медитация',
+      'лечь спать',
+      'Купить молоко',
+    ];
+
+    for (final phrase in phrases) {
+      test('"$phrase" — inferModuleLink == parseNaturalDateTime.moduleLink', () {
+        final expected = inferModuleLink(phrase);
+        final r = parseNaturalDateTime(phrase, now);
+        expect(
+          r.moduleLink,
+          expected,
+          reason: '"$phrase": inferModuleLink=$expected, парсер=${r.moduleLink}',
+        );
+      });
+    }
   });
 
   group('type — тип задачи по ключевым словам', () {

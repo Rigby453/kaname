@@ -228,6 +228,143 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // focus
+  // ---------------------------------------------------------------------------
+  group('focus', () {
+    test('фокус-сессия → focus', () {
+      expect(inferModuleLink('фокус-сессия 25 мин'), 'focus');
+    });
+
+    test('фокус (одно слово) → focus', () {
+      expect(inferModuleLink('фокус'), 'focus');
+    });
+
+    test('сосредоточиться → focus', () {
+      expect(inferModuleLink('сосредоточиться на задаче'), 'focus');
+    });
+
+    test('помодоро → focus', () {
+      expect(inferModuleLink('помодоро 25 мин'), 'focus');
+    });
+
+    test('pomodoro (EN) → focus', () {
+      expect(inferModuleLink('pomodoro session'), 'focus');
+    });
+
+    test('focus (EN, отдельное слово) → focus', () {
+      expect(inferModuleLink('focus session'), 'focus');
+    });
+
+    test('deep work (EN, фраза) → focus', () {
+      expect(inferModuleLink('deep work block'), 'focus');
+    });
+
+    test('дефокус (НЕ focus — «фокус» не является начальным стемом)', () {
+      // «дефокус» — «фокус» не на границе слова
+      expect(inferModuleLink('дефокус'), isNull);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // warmup
+  // ---------------------------------------------------------------------------
+  group('warmup', () {
+    test('зарядка → warmup', () {
+      expect(inferModuleLink('зарядка утром'), 'warmup');
+    });
+
+    test('разминка → warmup', () {
+      expect(inferModuleLink('разминка перед бегом'), 'warmup');
+    });
+
+    test('растяжка → warmup', () {
+      expect(inferModuleLink('растяжка на 10 мин'), 'warmup');
+    });
+
+    test('warmup (EN) → warmup', () {
+      expect(inferModuleLink('warmup routine'), 'warmup');
+    });
+
+    test('warm up (EN, с пробелом) → warmup', () {
+      // Используем нейтральную фразу без других ключевых слов модуля.
+      expect(inferModuleLink('warm up session'), 'warmup');
+    });
+
+    test('stretch (EN) → warmup', () {
+      expect(inferModuleLink('stretch session'), 'warmup');
+    });
+
+    test('stretching (EN стем) → warmup', () {
+      expect(inferModuleLink('morning stretching'), 'warmup');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // breathing
+  // ---------------------------------------------------------------------------
+  group('breathing', () {
+    test('дыхание → breathing', () {
+      expect(inferModuleLink('дыхание'), 'breathing');
+    });
+
+    test('дыхательная практика → breathing (корень «дых» покрывает прилагательные)', () {
+      expect(inferModuleLink('дыхательная практика'), 'breathing');
+    });
+
+    test('подышать → breathing', () {
+      expect(inferModuleLink('подышать свежим воздухом'), 'breathing');
+    });
+
+    test('подышать перед сном → breathing (breathing раньше sleep в списке)', () {
+      // Явное «дыхание» важнее контекстного «сна» → breathing
+      expect(inferModuleLink('подышать перед сном'), 'breathing');
+    });
+
+    test('breath (EN) → breathing', () {
+      expect(inferModuleLink('breath work'), 'breathing');
+    });
+
+    test('breathing (EN стем) → breathing', () {
+      // «breathing exercise» → workout (exercise ключевое слово workout, которое идёт раньше).
+      // Используем «breathing session» — нет конфликта с другими модулями.
+      expect(inferModuleLink('breathing session'), 'breathing');
+    });
+
+    test('breathe (EN стем) → breathing', () {
+      expect(inferModuleLink('breathe deeply'), 'breathing');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // meditation
+  // ---------------------------------------------------------------------------
+  group('meditation', () {
+    test('медитация 10 минут → meditation', () {
+      expect(inferModuleLink('медитация 10 минут'), 'meditation');
+    });
+
+    test('медитации (форма) → meditation', () {
+      expect(inferModuleLink('время медитации'), 'meditation');
+    });
+
+    test('медитировать → meditation', () {
+      expect(inferModuleLink('медитировать 15 мин'), 'meditation');
+    });
+
+    test('meditation (EN) → meditation', () {
+      expect(inferModuleLink('morning meditation'), 'meditation');
+    });
+
+    test('meditate (EN стем) → meditation', () {
+      expect(inferModuleLink('meditate for 10 min'), 'meditation');
+    });
+
+    test('meditating (EN стем) → meditation', () {
+      expect(inferModuleLink('start meditating'), 'meditation');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // null — нет совпадения
   // ---------------------------------------------------------------------------
   group('no match → null', () {
