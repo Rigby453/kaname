@@ -96,6 +96,20 @@ const Map<String, Map<String, String>> healthBStrings = {
     'ja': '種目もすべて削除されます。',
     'ko': '포함된 종목도 함께 삭제됩니다.',
   },
+  // Undo-snackbar после удаления тренировки через SwipeToDelete
+  'workout.removed': {
+    'en': 'removed',
+    'ru': 'удалена',
+    'de': 'entfernt',
+    'fr': 'supprimée',
+    'it': 'rimosso',
+    'pt': 'removido',
+    'es': 'eliminado',
+    'id': 'dihapus',
+    'hi': 'हटाया गया',
+    'ja': '削除しました',
+    'ko': '삭제됨',
+  },
   'workout.rename': {
     'en': 'Rename',
     'ru': 'Переименовать',
