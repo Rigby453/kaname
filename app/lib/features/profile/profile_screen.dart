@@ -35,6 +35,7 @@ import '../../core/theme/custom_theme_provider.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../services/api/api_client.dart';
 import '../../core/settings/fab_position_provider.dart';
+import '../../core/settings/feature_modes_provider.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../services/streak/freeze_accrual_service.dart';
 import '../auth/auth_controller.dart';
@@ -249,6 +250,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // Секция «Тренировки» (#23): глобальное время отдыха по умолчанию
         const SizedBox(height: 28),
         const _WorkoutDefaultsSection(),
+
+        // Секция «Расширенные функции» — локальные UX-флаги (не премиум)
+        const SizedBox(height: 28),
+        const _AdvancedFeaturesSection(),
 
         // Секция «Внешний вид»
         const SizedBox(height: 28),
@@ -1027,6 +1032,84 @@ class _WorkoutDefaultsSection extends ConsumerWidget {
             style: textTheme.titleMedium?.copyWith(color: colorScheme.primary),
           ),
           onTap: () => _editRest(context, ref),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Advanced features section — локальные UX-переключатели модулей (не премиум)
+// ---------------------------------------------------------------------------
+
+/// Секция «Расширенные функции»: 4 тумблера, включающих полные модули
+/// питания, тренировок, медитаций и дыхания. Это локальные UX-флаги —
+/// НЕ премиум-гейты. Хранятся в SharedPreferences, дефолт = false.
+class _AdvancedFeaturesSection extends ConsumerWidget {
+  const _AdvancedFeaturesSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final nutritionOn = ref.watch(nutritionModeProvider);
+    final workoutOn = ref.watch(workoutModeProvider);
+    final meditationOn = ref.watch(meditationLibraryModeProvider);
+    final breathingOn = ref.watch(breathingEditorModeProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.s('profile.section_advanced'),
+          style: textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          context.s('profile.advanced_section_note'),
+          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+        ),
+        const SizedBox(height: 8),
+
+        // Подсчёт калорий и БЖУ
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.s('profile.advanced_nutrition')),
+          subtitle: Text(context.s('profile.advanced_nutrition_subtitle')),
+          value: nutritionOn,
+          onChanged: (v) =>
+              ref.read(nutritionModeProvider.notifier).set(v),
+        ),
+
+        // Программы тренировок
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.s('profile.advanced_workouts')),
+          subtitle: Text(context.s('profile.advanced_workouts_subtitle')),
+          value: workoutOn,
+          onChanged: (v) =>
+              ref.read(workoutModeProvider.notifier).set(v),
+        ),
+
+        // Библиотека медитаций
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.s('profile.advanced_meditation')),
+          subtitle: Text(context.s('profile.advanced_meditation_subtitle')),
+          value: meditationOn,
+          onChanged: (v) =>
+              ref.read(meditationLibraryModeProvider.notifier).set(v),
+        ),
+
+        // Редактор техник дыхания
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.s('profile.advanced_breathing')),
+          subtitle: Text(context.s('profile.advanced_breathing_subtitle')),
+          value: breathingOn,
+          onChanged: (v) =>
+              ref.read(breathingEditorModeProvider.notifier).set(v),
         ),
       ],
     );
