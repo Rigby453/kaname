@@ -28,6 +28,7 @@ import '../../core/database/database_providers.dart';
 import '../../core/database/database.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/l10n/locale_provider.dart';
+import '../../core/settings/feature_modes_provider.dart'; // флаги модулей
 import '../../core/settings/health_profile_provider.dart'; // кonstants сна (ITEM B)
 import '../../core/settings/nutrition_targets.dart';
 import '../../core/settings/tone_provider.dart'; // тон gentle/harsh
@@ -41,6 +42,7 @@ import '../../services/notifications/notification_service.dart';
 import '../auth/auth_controller.dart'; // authControllerProvider (isAuthenticated)
 import '../mascot/kai_mascot.dart';
 import '../mascot/kai_speech_bubble.dart';
+import 'goal_flags_mapper.dart'; // маппинг целей → флаги модулей
 
 // ---------------------------------------------------------------------------
 // Константы, прокинутые наружу для роутера
@@ -227,6 +229,18 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
 
     // Цели
     await prefs.setStringList(_kGoalsKey, _selectedGoals.toList());
+
+    // Флаги модулей по целям: включаем только то, что пользователь выбрал.
+    // goalsToFeatureFlags — чистая функция из goal_flags_mapper.dart.
+    final flags = goalsToFeatureFlags(_selectedGoals);
+    await ref.read(nutritionModeProvider.notifier).set(flags.nutrition);
+    await ref.read(workoutModeProvider.notifier).set(flags.workout);
+    await ref
+        .read(meditationLibraryModeProvider.notifier)
+        .set(flags.meditationLibrary);
+    await ref
+        .read(breathingEditorModeProvider.notifier)
+        .set(flags.breathingEditor);
 
     // Время на планирование
     final planMinutes = _planMinutesMap[_planOption] ?? 0;
