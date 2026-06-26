@@ -17,6 +17,7 @@ import '../../core/l10n/plurals.dart';
 import '../../core/mood/meditation_mood_log.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
+import '../../core/widgets/swipe_to_delete.dart';
 import '../../core/widgets/undo_snack_bar.dart';
 import 'meditation_audio.dart';
 import 'meditation_custom_providers.dart';
@@ -261,12 +262,17 @@ class MeditationScreen extends ConsumerWidget {
             const SizedBox(height: 12),
           ],
           // Пользовательские сессии — рядом со встроенными, тот же плеер.
+          // SwipeToDelete: свайп влево = удаление без диалога + Undo-снэкбар.
           for (final m in custom) ...[
-            _CustomSessionCard(
-              session: m,
-              ext: ext,
-              textTheme: textTheme,
+            SwipeToDelete(
+              key: ValueKey('swipe_custom_med_${m.id}'),
               onDelete: () => _deleteCustom(context, ref, m),
+              child: _CustomSessionCard(
+                session: m,
+                ext: ext,
+                textTheme: textTheme,
+                onDelete: () => _deleteCustom(context, ref, m),
+              ),
             ),
             const SizedBox(height: 12),
           ],
@@ -540,6 +546,9 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
   // InheritedWidget до завершения initState бросает исключение (red-screen).
   bool _started = false;
 
+  // Флаг паузы: таймер/анимация заморожены, _remaining не убывает.
+  bool _paused = false;
+
   // AnimationController для дуги обратного отсчёта
   late AnimationController _arcController;
 
@@ -663,6 +672,8 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
 
   void _startStep(_RunStep step) {
     _timer?.cancel();
+    // Сбрасываем паузу при переходе к новому шагу.
+    _paused = false;
     _remaining = step.seconds;
 
     // Озвучка нового шага (если включена). Текст уже локализован (_RunStep.text);
@@ -685,6 +696,8 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
         t.cancel();
         return;
       }
+      // Пауза: пропускаем тик, таймер живёт, _remaining не убывает.
+      if (_paused) return;
       setState(() {
         _remaining--;
       });
@@ -693,6 +706,19 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
         _onStepDone();
       }
     });
+  }
+
+  /// Пауза / Продолжить: замораживает обратный отсчёт и анимацию дуги.
+  void _togglePause() {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    setState(() => _paused = !_paused);
+    if (_paused) {
+      // Остановить анимацию дуги (таймер продолжает жить, тик пропускается).
+      if (!reduce) _arcController.stop();
+    } else {
+      // Продолжить дугу с текущей позиции.
+      if (!reduce) _arcController.forward(from: _arcController.value);
+    }
   }
 
   void _onStepDone() {
@@ -977,6 +1003,24 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
                       ),
 
                       const SizedBox(height: 24),
+
+                      // Кнопка Пауза/Продолжить — OutlinedButton (вторичное),
+                      // замораживает _remaining и _arcController.
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: Icon(
+                            _paused ? Icons.play_arrow : Icons.pause,
+                          ),
+                          label: Text(
+                            _paused
+                                ? context.s('focus.btn_resume')
+                                : context.s('focus.btn_pause'),
+                          ),
+                          onPressed: _togglePause,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
 
                       // Единственное первичное действие — FilledButton
                       SizedBox(

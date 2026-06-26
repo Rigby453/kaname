@@ -68,6 +68,8 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
   // --- Состояние сессии ---
   bool _running = false;
   bool _done = false;
+  // Флаг паузы: таймер/_elapsed заморожены, анимации остановлены.
+  bool _paused = false;
 
   /// Прошедшее время внутри сессии (обновляется тикером).
   Duration _elapsed = Duration.zero;
@@ -275,6 +277,7 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
     _colorController.value = 1.0;
     _fadeController.value = 1.0;
     _lastPhaseLabel = '';
+    _paused = false;
     setState(() {
       _running = true;
       _done = false;
@@ -293,10 +296,41 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
     setState(() {
       _running = false;
       _done = false;
+      _paused = false;
       _elapsed = Duration.zero;
       _remaining = Duration.zero;
       _lastPhaseLabel = '';
     });
+  }
+
+  /// Пауза / Продолжить: замораживает _elapsed и анимации дыхательного круга.
+  void _togglePause() {
+    final reduce = reduceMotionOf(context);
+    setState(() => _paused = !_paused);
+    if (_paused) {
+      // Остановить анимации — круг замирает в текущей позиции.
+      if (!reduce) {
+        _circleController.stop();
+        _jitterController.stop();
+        _colorController.stop();
+      }
+    } else {
+      // Возобновить анимации с текущей позиции.
+      if (!reduce) {
+        if (_holdActive) {
+          // Задержка дыхания — перезапустить джиттер.
+          if (!_jitterController.isAnimating) _jitterController.repeat();
+        } else {
+          // Вдох/выдох — дожимаем к целевому масштабу.
+          if (!_circleController.isCompleted) {
+            _circleController.forward(from: _circleController.value);
+          }
+        }
+        if (!_colorController.isCompleted) {
+          _colorController.forward(from: _colorController.value);
+        }
+      }
+    }
   }
 
   void _arm() {
@@ -304,7 +338,8 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
     // Обновляем каждые 50 мс для плавной подписи; визуальную анимацию
     // ведёт AnimationController отдельно.
     _ticker = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (!_running) return;
+      // Пауза: пропускаем тик, _elapsed не растёт.
+      if (!_running || _paused) return;
       setState(() {
         _elapsed += const Duration(milliseconds: 50);
         final newRemaining = _totalDuration - _elapsed;
@@ -643,11 +678,31 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
         ),
         const SizedBox(height: 56),
 
-        // Вторичное действие — OutlinedButton (не перетягивает акцент у круга)
-        OutlinedButton.icon(
-          icon: const Icon(Icons.stop),
-          label: Text(context.s('breathing.stop')),
-          onPressed: _stop,
+        // Управление: Пауза/Продолжить + Стоп (оба OutlinedButton — вторичные,
+        // не перетягивают акцент у дыхательного круга).
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
+                label: Text(
+                  _paused
+                      ? context.s('focus.btn_resume')
+                      : context.s('focus.btn_pause'),
+                ),
+                onPressed: _togglePause,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.stop),
+                label: Text(context.s('breathing.stop')),
+                onPressed: _stop,
+              ),
+            ),
+          ],
         ),
       ],
     );
