@@ -62,9 +62,17 @@ final wrappedStatsProvider =
   bool done(String s) => s == 'done';
   final main = items.where((i) => i.priority == 'main').toList();
 
-  final moods = logs.map((l) => l.mood).whereType<int>().toList();
+  // Настроение: day_logs (дневник, основной источник UI) + mood_logs(source='meditation').
+  // source='diary' из mood_logs не читаем — это дублирует day_logs и даст двойной счёт.
+  final diaryMoods = logs.map((l) => l.mood).whereType<int>().toList();
+  final moodLogs = await ref.read(moodLogsDaoProvider).getSince(from);
+  final meditationMoods = moodLogs
+      .where((m) => m.source == 'meditation')
+      .map((m) => m.mood)
+      .toList();
+  final allMoods = [...diaryMoods, ...meditationMoods];
   final avgMood =
-      moods.isEmpty ? null : moods.reduce((a, b) => a + b) / moods.length;
+      allMoods.isEmpty ? null : allMoods.reduce((a, b) => a + b) / allMoods.length;
 
   // Топ-причина срывов из закодированных в note тегов "Issues: ..."
   final counts = <String, int>{};

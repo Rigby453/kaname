@@ -89,17 +89,39 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
   }
 
   Future<void> _save() async {
+    final now = DateTime.now();
     final dao = ref.read(dayLogsDaoProvider);
     final freeText = _noteController.text.trim();
     final issuesSuffix =
         _issues.isEmpty ? '' : '$_issuesPrefix${_issues.join(', ')}';
     final combined = '$freeText$issuesSuffix';
 
+    // Основная запись дневника (UI опирается на day_logs.mood).
     await dao.saveForDate(
-      date: DateTime.now(),
+      date: now,
       mood: _mood,
       note: combined.isEmpty ? null : combined,
     );
+
+    // Дополнительно пишем настроение в mood_logs — единый агрегат аналитики.
+    // Дубли предотвращаем через «первая запись за день» (first-save-wins):
+    // если mood_logs уже содержит diary-запись за сегодня, пропускаем.
+    // Это не мешает UI: дневник отображает mood из day_logs, mood_logs — только
+    // для инсайтов и Wrapped (где нужно объединить diary + meditation).
+    if (_mood != null) {
+      final moodDao = ref.read(moodLogsDaoProvider);
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final todayDiary =
+          await moodDao.getSinceBySource(todayStart, 'diary');
+      if (todayDiary.isEmpty) {
+        await moodDao.insertMood(
+          mood: _mood!,
+          loggedAt: now,
+          source: 'diary',
+          note: freeText.isEmpty ? null : freeText,
+        );
+      }
+    }
 
     // Пересчитать бесплатный инсайт с учётом только что сохранённого дня.
     ref.invalidate(weeklyDiaryInsightProvider);

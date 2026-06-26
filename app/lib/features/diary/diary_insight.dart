@@ -175,6 +175,18 @@ final todayPlanVsFactProvider =
   );
 });
 
+/// Объединяет настроения из дневника (day_logs) и медитаций (mood_logs)
+/// и вычисляет среднее. Возвращает null, если данных нет.
+/// [diaryMoods] — значения 1-5 из day_logs.mood (не null),
+/// [meditationMoods] — значения 1-5 из mood_logs WHERE source='meditation'.
+/// Дневниковые данные из mood_logs(source='diary') намеренно исключены —
+/// они дублируют day_logs.mood, что приведёт к двойному счёту.
+double? mergedMoodAvg(List<int> diaryMoods, List<int> meditationMoods) {
+  final all = [...diaryMoods, ...meditationMoods];
+  if (all.isEmpty) return null;
+  return all.reduce((a, b) => a + b) / all.length;
+}
+
 /// Провайдер: собирает локальные данные за последние 7 дней.
 /// Возвращает WeeklyInsightData (без строк). Строки резолвятся в _QuickInsightCard.
 final weeklyDiaryInsightProvider =
@@ -197,9 +209,17 @@ final weeklyDiaryInsightProvider =
   // Записи дневника за неделю: настроение + причины срывов
   final logs = await ref.read(dayLogsDaoProvider).since(weekStart);
 
-  final moods = [for (final l in logs) if (l.mood != null) l.mood!];
-  final double? moodAvg =
-      moods.isEmpty ? null : moods.reduce((a, b) => a + b) / moods.length;
+  // Настроение: day_logs (дневник) + mood_logs(source='meditation').
+  // Медитационные чек-ины учитываются вместе с дневниковым настроением,
+  // что даёт более точную недельную картину самочувствия.
+  final diaryMoods = [for (final l in logs) if (l.mood != null) l.mood!];
+  final moodLogs =
+      await ref.read(moodLogsDaoProvider).getSince(weekStart);
+  final meditationMoods = moodLogs
+      .where((m) => m.source == 'meditation')
+      .map((m) => m.mood)
+      .toList();
+  final double? moodAvg = mergedMoodAvg(diaryMoods, meditationMoods);
 
   // Самая частая причина срывов (возвращаем ключ, не строку)
   final counts = <String, int>{};

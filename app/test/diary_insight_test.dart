@@ -1,4 +1,5 @@
 // Юнит-тесты бесплатного инсайта дневника (чистая логика).
+// §3b: mergedMoodAvg — объединение diary (day_logs) + meditation (mood_logs).
 
 import 'package:app/features/diary/diary_insight.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +43,35 @@ void main() {
       );
       expect(insight.lines.length, 1);
       expect(insight.lines.single, contains('100%'));
+    });
+  });
+
+  group('mergedMoodAvg (§3b — mood_logs + day_logs aggregation)', () {
+    test('returns null when both lists are empty', () {
+      expect(mergedMoodAvg([], []), isNull);
+    });
+
+    test('meditation mood (source=meditation) is included in the average', () {
+      // Только медитационное настроение — попадает в агрегацию
+      expect(mergedMoodAvg([], [4, 5]), closeTo(4.5, 0.01));
+    });
+
+    test('diary mood from day_logs is included', () {
+      expect(mergedMoodAvg([3], []), closeTo(3.0, 0.01));
+    });
+
+    test('diary + meditation are averaged together correctly', () {
+      // 2 дневниковых + 2 медитационных: (2+4+4+2)/4 = 3.0
+      expect(mergedMoodAvg([2, 4], [4, 2]), closeTo(3.0, 0.01));
+    });
+
+    test('meditation check-in raises avg when diary mood is low', () {
+      // Плохое дневниковое настроение + хорошая медитация → точнее среднее
+      expect(mergedMoodAvg([1], [5]), closeTo(3.0, 0.01));
+    });
+
+    test('single meditation entry produces correct avg without diary data', () {
+      expect(mergedMoodAvg([], [3]), closeTo(3.0, 0.01));
     });
   });
 
