@@ -35,7 +35,13 @@ const double _kHeaderHeight = 32;
 const double _kWeekdayLabelHeight = 18;
 
 class ExpandableWeekCalendar extends ConsumerStatefulWidget {
-  const ExpandableWeekCalendar({super.key});
+  const ExpandableWeekCalendar({super.key, this.maxCalendarHeight});
+
+  /// Максимальная высота всего виджета (логические пиксели). Передаётся из
+  /// _bodyContent через LayoutBuilder, чтобы раскрытый 6-рядный месяц не вышел
+  /// за пределы родительской Column и не вызвал RenderFlex overflow (Bug #2).
+  /// null = поведение по умолчанию (без ограничений, достаточно места).
+  final double? maxCalendarHeight;
 
   @override
   ConsumerState<ExpandableWeekCalendar> createState() =>
@@ -222,6 +228,21 @@ class _ExpandableWeekCalendarState
         animation: _controller,
         builder: (context, _) {
           final t = _controller.value;
+          // Ограничиваем высоту сетки, если передан maxCalendarHeight (Bug #2).
+          // Естественная высота: 1 ряд (свёрнуто) → _rows рядов (раскрыто).
+          // При ограничении вычитаем фиксированные части (подписи + грабер +
+          // шапка пропорционально t), чтобы сумма всех детей не превышала
+          // maxCalendarHeight и родительская Column не переполнялась.
+          final naturalGridH = _kRowHeight + _expandExtent * t;
+          final effectiveGridH = widget.maxCalendarHeight != null
+              ? naturalGridH.clamp(
+                  _kRowHeight,
+                  (widget.maxCalendarHeight! -
+                          _kWeekdayLabelHeight -
+                          24.0 -
+                          _kHeaderHeight * t)
+                      .clamp(_kRowHeight, double.infinity))
+              : naturalGridH;
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -275,6 +296,12 @@ class _ExpandableWeekCalendarState
                         child: Center(
                           child: Text(
                             label,
+                            // Запрещаем перенос по буквам при крупном textScale:
+                            // аббревиатура дня (Пн/Mo/…) должна быть в одну
+                            // строку или обрезаться, но не рендериться вертикально.
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.clip,
                             style: textTheme.labelSmall?.copyWith(
                               color: textFaint,
                             ),
@@ -285,9 +312,11 @@ class _ExpandableWeekCalendarState
                 ),
               ),
               // --- Сетка: одна неделя (свёрнуто) → весь месяц (раскрыто) ---
+              // effectiveGridH = naturalGridH при отсутствии ограничения;
+              // иначе — зажато по maxCalendarHeight (Bug #2 fix).
               ClipRect(
                 child: SizedBox(
-                  height: _kRowHeight + _expandExtent * t,
+                  height: effectiveGridH,
                   child: OverflowBox(
                     minHeight: _rows * _kRowHeight,
                     maxHeight: _rows * _kRowHeight,

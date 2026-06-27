@@ -4,6 +4,114 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## 🌙 Итог ночной сессии 2026-06-27 (оркестратор, ветка `night`)
+
+Параллельный прогон агентов по фидбэку с теста 2026-06-27. Все правки — на ветке `night`,
+`flutter analyze` = 0, новые тест-файлы зелёные. Сделано:
+
+- **[x] Баги вёрстки Плана (2):** интервальный переключатель больше не ломает подписи вертикально
+  (`_segmentsFit` консервативнее → раньше уходит в компактный dropdown); overflow 6-недельного
+  месяца устранён (календарь ограничен по высоте через `LayoutBuilder`, ≤55% тела).
+- **[x] ИИ-hook (ядро продукта):** `/ai/redistribute` теперь отдаёт КОНКРЕТНЫЙ план переноса
+  по задачам (title+priority+время+разбор), а не общий nudge; инсайт дневника не обрезается
+  (`maxTokens` 450→650) и возвращает охваченный период (`covered_from/to`). ADR-057, api-spec
+  обновлён. **Клиент** рисует это как предложение «задача → 09:00 … Применить» (не обрезано).
+- **[x] Контент медитаций:** 5 новых сессий + позы (читаются ДО старта), 11 языков; аудио —
+  on-device TTS (без прав) + сгенерированный коричневый шум (без прав). Старая сессия дотянута до 11 языков.
+- **[x] Маркер версии сборки:** видимая строка версии в Профиле + git-хэш через `run-phone.ps1`
+  (`--dart-define=APP_BUILD_TAG`).
+- **[x] Даты на английском:** оказалось уже починено централизованно (`applyIntlLocale` в
+  `main.dart`/locale-провайдере); добавлен тест. Английские даты на тесте = старый веб-билд из `main`.
+- **[x] Ре-категоризатор экранного времени:** тап по приложению → смена категории (игры MIUI
+  из «другое» в «Игры»), сохраняется локально, применяется сразу.
+- **[x] Health перегруппирован:** 4 темы (Питание+Вода · Сон · Разум=Медитация+Дыхание · Движение);
+  модули включаются прямо на экране Health; экран не пустой по умолчанию.
+- **[x] Настройки Kai упрощены:** было 8+ контролов → стало 2 (Показывать Kai · Тон) + живое превью.
+- **[~] Шапка Today:** только ПРЕДЛОЖЕНИЕ (`docs/TODAY-HEADER-PROPOSAL.md`, 3 варианта, рекоменд. A) —
+  ждёт выбора пользователя, код не трогали.
+
+**Вопросы пользователю (на вечер):** (1) вариант шапки Today (A/B/C); (2) стрик в день без
+main-задачи — считать день успешным или нет (продуктовое решение, не угадывал).
+
+## Сводка для пользователя (обновлено 2026-06-27, Plan layout bugs)
+
+- **[x] Bug 1 — интервальный переключатель (SegmentedButton 5 видов) рендерил надписи вертикально (по букве).**
+  - Корневая причина: `_segmentsFit()` с `perSegmentPadding=40` переоценивала, что все 5 меток влезут на планшете — SegmentedButton получал стеснённое место и рендерил текст «по буквам».
+  - Фикс: поднят `perSegmentPadding` с `40.0` до `56.0` + добавлен запас `+24` на всю строку (`return available >= needed + 24`). При пограничной ширине виджет переходит в безопасный `_ViewDropdown`.
+  - Защитный фикс: weekday-метки в `ExpandableWeekCalendar` (Пн/Mo/…) теперь получают `maxLines: 1, softWrap: false, overflow: TextOverflow.clip` — не могут рендериться вертикально при любом `textScale`.
+  - **Файлы:** `app/lib/features/plan/plan_screen.dart` (±`_segmentsFit`), `app/lib/features/plan/widgets/expandable_week_calendar.dart` (weekday Text).
+
+- **[x] Bug 2 — RenderFlex "BOTTOM OVERFLOWED BY ~27px" на 6-рядном месяце + пустой день.**
+  - Корневая причина: `ExpandableWeekCalendar` при 6 строках-неделях имеет естественную высоту ~410px. В ограниченной Column (header + divider + PinnedExamCard + Expanded) это больше тела экрана → `Expanded` схлопывался, Column переполнялась.
+  - Фикс: 
+    1. В `ExpandableWeekCalendar` добавлен параметр `maxCalendarHeight`. При наличии — высота grid-секции зажата в `effectiveGridH = naturalGridH.clamp(_kRowHeight, maxCalendarHeight - fixedParts)`. `ClipRect` + `OverflowBox` уже обрабатывают визуальное отсечение внутри.
+    2. В `_bodyContent` для `PlanView.day` и `PlanView.week` — обёртка в `LayoutBuilder`, `maxCalH = (constraints.maxHeight * 0.55).clamp(220.0, ∞)` передаётся в виджет.
+  - Коллапс/раскрытие, drag-жест, грабер — не тронуты.
+  - **Файлы:** `app/lib/features/plan/widgets/expandable_week_calendar.dart`, `app/lib/features/plan/plan_screen.dart`.
+  - **Тест:** `app/test/plan_layout_fix_test.dart` (3 теста: switcher 600px textScale 1.5, calendar expanded 400px body, calendar collapsed 400px body).
+
+## Сводка для пользователя (обновлено 2026-06-27, meditation audio + 5 new sessions)
+
+- **[x] Медитация: 5 новых встроенных сессий + озвучка (TTS) + фоновый эмбиент.**
+  - **PART 2 — 5 новых сессий (все 11 языков):**
+    - `anxiety_reset` (5 мин, 5 шагов) — быстрый сброс тревоги, поза «Grounded seat»
+    - `morning_wake` (5 мин, 5 шагов) — утренний заряд, поза «Upright seat»
+    - `gratitude_reset` (8 мин, 5 шагов) — перезагрузка благодарностью, поза «Comfortable seat»
+    - `deep_work_entry` (4 мин, 4 шага) — вход в глубокую работу, поза «Desk-ready seat»
+    - `evening_unwind` (10 мин, 6 шагов) — вечернее расслабление, поза «Resting pose»
+  - **PART 1 + PART 3** (поза до старта + TTS + эмбиент): были реализованы в предыдущей сессии; текущая сессия завершила l10n всех 10 существующих сессий до 11 языков и добавила 5 новых с полным l10n.
+  - **L10n:** все 5 новых сессий × (name + desc + pose_name + pose_desc + step1..6) × 11 языков в `health_b.dart`; весь блок `stress_relief` также расширен с en+ru до 11 языков.
+  - **Тесты:** `test/meditation_new_sessions_test.dart` — 8 тестов: все 5 сессий в списке, превью позы для 4, нет overflow на 320px, нарратор через toggle, ambient toggle. Gate A (hardcoded strings) = 0. `flutter analyze` = 0.
+  - **Существующие тесты** (`meditation_pose_preview_test.dart`, `meditation_audio_test.dart`) — все зелёные.
+  - **Файлы:** `app/lib/features/health/meditation_screen.dart`, `app/lib/core/l10n/strings/health_b.dart`, `app/test/meditation_new_sessions_test.dart`.
+
+## Сводка для пользователя (обновлено 2026-06-27, Health taxonomy)
+
+- **[x] Health screen перегруппирован по 4 тематическим осям (Nutrition / Sleep / Mind / Movement).**
+  - **Было:** плоский список — Water + Sleep всегда, остальные L2-плитки в одну кучу после.
+  - **Стало:** 4 чётко названных секции (заголовки «Nutrition» / «Sleep» / «Mind» / «Movement»), строгая тематика:
+    - **Nutrition** → Water card (всегда) + Food module tile (включаемый)
+    - **Sleep** → Sleep card (всегда)
+    - **Mind** → Meditation + Breathing (включаемые)
+    - **Movement** → Workouts (включаемый)
+  - **Обнаруживаемость:** каждый выключенный модуль показывает инлайн-Switch прямо на экране Health (без перехода в Profile → Behavior). Тап на Switch = включить / выключить — те же `feature_modes_provider` флаги. Profile → Behavior по-прежнему работает. Кнопка «Manage Health modules» снизу ведёт в Profile/Behavior.
+  - **Water + Sleep остаются дефолтными** (без настройки, всегда видны); оба теперь логично встроены в таксономию (Water → Nutrition, Sleep → Sleep).
+  - **l10n:** 5 новых ключей × 11 языков в `health_a.dart`: `health.section_nutrition`, `health.section_sleep`, `health.section_mind`, `health.section_movement`, `health.manage_modules`.
+  - **Тест:** `test/health_taxonomy_test.dart` — 3 теста: 4 секции на 320px, 4 секции при textScale 1.5, ≥4 Switch в default-состоянии. Все зелёные. Существующие `overflow_audit_test` HealthScreen — всё ещё зелёные.
+  - **Файлы:** `app/lib/features/health/health_screen.dart`, `app/lib/core/l10n/strings/health_a.dart`, `app/test/health_taxonomy_test.dart`.
+  - `flutter analyze` → 0 ошибок. Gate A (hardcoded strings) → 0 в новых виджетах.
+
+## Сводка для пользователя (обновлено 2026-06-27, упрощение настроек Kai)
+
+- **[x] Настройки Kai упрощены: сложный «Mood & Kai» пульт → компактный блок «Kai».**
+  - **Было (Profile → Behaviour):** «Mood & Kai» с 4 чипами-пресетами (Calm / Normal / Strict Coach / Custom) + скрытый раздел «Fine Tuning» с двумя SegmentedButton (тон + интенсивность). Итого ≥6 контролов для одной функции — пользователь (и разработчик!) не мог разобраться, что что делает.
+  - **Стало:** один раздел **«Kai»** с двумя читаемыми контролами:
+    1. **«Show Kai»** (тумблер) — маскот присутствует / скрыт. Перенесён из Внешнего вида в Поведение — логично рядом с настройками тона.
+    2. **«Tone»** (SegmentedButton Gentle / Strict) — как Kai с тобой разговаривает. Описание под меткой одной строкой.
+  - **Живое превью** сохранено: пользователь сразу видит пример реплики Kai в выбранном тоне.
+  - **Что убрано из UI:** 4 чипа-пресета, раскрывающаяся «Fine Tuning», ось интенсивности (Off/Slight/Full). Провайдеры `reactiveIntensityProvider` и `MoodPreset`/`applyMoodPreset` остались в коде — не сломают другие части.
+  - **l10n:** 3 новых ключа × 11 языков: `profile.section_kai`, `profile.kai_tone`, `profile.kai_tone_subtitle`.
+  - **Файлы:** `app/lib/features/profile/profile_screen.dart`, `app/lib/core/l10n/strings/profile_paywall.dart`.
+  - `flutter analyze lib/features/profile/` → 0 ошибок. Hardcoded-strings gate → 0 хитов.
+
+## Сводка для пользователя (обновлено 2026-06-27, баг intl-дат)
+
+- **[x] Баг — DateFormat показывает даты по-английски в не-EN локалях.** Корневая причина: `DateFormat` без явной локали использует `Intl.defaultLocale`, и если он не установлен или данные не инициализированы, падает обратно на `en_US`.
+  - **Центральный фикс** — в `locale_provider.dart` функция `applyIntlLocale(localeTag)` делает оба шага: `await initializeDateFormatting(localeTag)` + `Intl.defaultLocale = localeTag`.
+  - **Старт приложения** — `main()` вызывает `await applyIntlLocale(savedLocale)` до `runApp`, так что первый кадр уже видит правильную локаль.
+  - **Смена локали** — `LocaleNotifier.setLocale()` вызывает `await applyIntlLocale(...)` до обновления состояния; все `DateFormat()` без аргумента локали (включая `DateFormat.yMMMMEEEEd()`, `DateFormat.MMMd()`, `DateFormat('d MMM')`, `DateFormat('MMMM yyyy')`, `DateFormat.E()`) автоматически используют новую локаль — call sites не тронуты.
+  - **Добавлен тест** `test/intl_date_locale_test.dart` (4 теста): `applyIntlLocale('ru')` → `DateFormat.MMMM()` = «июнь»; `applyIntlLocale('de')` → «juni»; `applyIntlLocale('en')` → «June»; переключение ru→de→ru. Все зелёные. `flutter analyze` → 0.
+
+## Сводка для пользователя (обновлено 2026-06-27, screen-time per-app category override)
+
+- **[x] Screen-time: ручное переназначение категорий приложений.** MIUI/Android не всегда корректно выставляет `ApplicationInfo.category` — игры могут падать в «Другое». Пользователь теперь может исправить это вручную прямо в приложении:
+  - **Хранилище:** `SharedPreferences`, ключ `screen_time_overrides`, JSON `{packageName: ourCategory}`. Новый `ScreenTimeOverridesNotifier` (файл `screen_time_overrides_provider.dart`).
+  - **Агрегация:** `categorizeUsageMinutes()` и новая `resolvePackageCategory()` в `screen_time_categories.dart` принимают `userOverrides` с наивысшим приоритетом (userOverride > whitelist > androidCategory > 'other').
+  - **State:** `ScreenTimeUsageState` расширен `perPackageMinutes` + `perPackageCategories` — raw-данные и resolved-категории для каждого пакета.
+  - **UI:** в карточке «Usage data» появился подраздел «Apps» — список всех приложений за день (сортировка по убыванию минут, первые 8 + кнопка «+ N»). Тап на строке открывает `_AppCategoryPickerSheet` (ListTile-радио из 6 категорий). Accent-точка на чипе = есть пользовательский оверрайд. Кнопка «Reset to default» удаляет оверрайд. После выбора: снэкбар «Category saved» + немедленный `refresh()` агрегации.
+  - **l10n:** 4 новых ключа × 11 языков в `health_b.dart`: `screentime.apps_section`, `screentime.reassign_title`, `screentime.category_changed`, `screentime.reset_to_default`.
+  - **Тест:** `test/screen_time_overrides_test.dart` — 8 чистых юнит-тестов на `categorizeUsageMinutes` + `resolvePackageCategory` с оверрайдами. Все 59 screen-time тестов зелёные. `flutter analyze` → 0.
+
 ## Сводка для пользователя (обновлено 2026-06-27, баги food_screen)
 
 - **[x] Bug 1 — ИИ-фото: выбор совпадения не работал.** В `_FoodSearchSheetState.build()` ветка «Недавнее» срабатывала при `_controller.text.isEmpty`, перекрывая результаты ИИ-фото (поле пустое, но `_results` непустые). Фикс: добавлено `&& _results.isEmpty` в условие. Теперь при наличии AI-результатов отрисовывается ListView совпадений, тап открывает диалог порции.

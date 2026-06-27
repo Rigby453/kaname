@@ -5,6 +5,8 @@
 // по нашим 6 категориям через categorizeUsageMinutes() и отдаёт UI:
 //   - состояние разрешения (granted / denied / unknown),
 //   - использованные минуты по категориям за сегодня (с локальной полуночи),
+//   - сырые минуты по пакетам (для per-app breakdown),
+//   - resolved-категории для каждого пакета (для отображения в per-app UI),
 //   - loading / error.
 //
 // Платформенная защита: плагин дёргается ТОЛЬКО на Android. На iOS / web / в
@@ -16,6 +18,9 @@
 // запрашиваем ApplicationInfo.category через MethodChannel "kaizen/app_category".
 // Это позволяет играм (CATEGORY_GAME=0) попасть в 'games', а не пропасть.
 // При любой ошибке канала — пакеты уходят в 'other' (минуты не теряются).
+//
+// Пользовательские переопределения читаются из screenTimeOverridesProvider
+// (SharedPreferences) и применяются с наивысшим приоритетом.
 
 import 'dart:io' show Platform;
 
@@ -25,6 +30,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:usage_stats/usage_stats.dart';
 
 import 'screen_time_categories.dart';
+import 'screen_time_overrides_provider.dart';
 
 /// Состояние разрешения на доступ к статистике использования.
 enum UsagePermissionStatus { unknown, granted, denied }
@@ -35,6 +41,8 @@ class ScreenTimeUsageState {
   const ScreenTimeUsageState({
     this.permission = UsagePermissionStatus.unknown,
     this.usedMinutes = const <String, int>{},
+    this.perPackageMinutes = const <String, int>{},
+    this.perPackageCategories = const <String, String>{},
     this.isLoading = false,
     this.hasError = false,
   });
@@ -45,6 +53,15 @@ class ScreenTimeUsageState {
   /// Использованные минуты по категориям (social/video/games/browsing/messaging/other).
   /// Пустая карта = нет данных (нет разрешения / не Android).
   final Map<String, int> usedMinutes;
+
+  /// Сырые минуты по пакетам: packageName → minutes (до агрегации).
+  /// Используется для per-app breakdown в UI. Пустая = нет данных.
+  final Map<String, int> perPackageMinutes;
+
+  /// Resolved-категория для каждого пакета: packageName → ourCategory.
+  /// Учитывает пользовательские оверрайды, whitelist и android-категории.
+  /// Используется в UI для отображения текущей категории конкретного приложения.
+  final Map<String, String> perPackageCategories;
 
   /// Идёт загрузка/обновление.
   final bool isLoading;
@@ -58,12 +75,16 @@ class ScreenTimeUsageState {
   ScreenTimeUsageState copyWith({
     UsagePermissionStatus? permission,
     Map<String, int>? usedMinutes,
+    Map<String, int>? perPackageMinutes,
+    Map<String, String>? perPackageCategories,
     bool? isLoading,
     bool? hasError,
   }) {
     return ScreenTimeUsageState(
       permission: permission ?? this.permission,
       usedMinutes: usedMinutes ?? this.usedMinutes,
+      perPackageMinutes: perPackageMinutes ?? this.perPackageMinutes,
+      perPackageCategories: perPackageCategories ?? this.perPackageCategories,
       isLoading: isLoading ?? this.isLoading,
       hasError: hasError ?? this.hasError,
     );
@@ -118,7 +139,11 @@ Future<Map<String, String>> _fetchAndroidCategoryOverrides(
 }
 
 class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
-  ScreenTimeUsageNotifier() : super(const ScreenTimeUsageState()) {
+  /// [ref] опционален — null допустим в тестах, где нотифайер создаётся напрямую.
+  /// В production передаётся через StateNotifierProvider, чтобы читать overrides.
+  ScreenTimeUsageNotifier([Ref? ref])
+      : _ref = ref,
+        super(const ScreenTimeUsageState()) {
     // Стартовая проверка разрешения + загрузка (без блокировки конструктора).
     if (_isAndroid) {
       refresh();
@@ -128,6 +153,8 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
     }
   }
 
+  final Ref? _ref;
+
   /// Перепроверяет разрешение и, если оно есть, заново читает использование.
   /// Безопасно вызывать на любой платформе — на не-Android ничего не делает.
   Future<void> refresh() async {
@@ -135,6 +162,8 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
       state = state.copyWith(
         permission: UsagePermissionStatus.denied,
         usedMinutes: const <String, int>{},
+        perPackageMinutes: const <String, int>{},
+        perPackageCategories: const <String, String>{},
         isLoading: false,
         hasError: false,
       );
@@ -148,15 +177,20 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
         state = state.copyWith(
           permission: UsagePermissionStatus.denied,
           usedMinutes: const <String, int>{},
+          perPackageMinutes: const <String, int>{},
+          perPackageCategories: const <String, String>{},
           isLoading: false,
         );
         return;
       }
 
-      final used = await _queryTodayUsage();
+      final (usedMinutes, perPackageMinutes, perPackageCategories) =
+          await _queryTodayUsage();
       state = state.copyWith(
         permission: UsagePermissionStatus.granted,
-        usedMinutes: used,
+        usedMinutes: usedMinutes,
+        perPackageMinutes: perPackageMinutes,
+        perPackageCategories: perPackageCategories,
         isLoading: false,
       );
     } catch (_) {
@@ -180,10 +214,16 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
   /// Запрашивает использование за сегодня (с локальной полуночи до «сейчас»),
   /// конвертирует мс → минуты и агрегирует по категориям.
   ///
-  /// Для пакетов, не найденных в whitelist kPackageToCategory, дополнительно
-  /// запрашивает ApplicationInfo.category через Android MethodChannel —
-  /// это позволяет играм и другим приложениям не быть потерянными.
-  Future<Map<String, int>> _queryTodayUsage() async {
+  /// Пользовательские оверрайды из [screenTimeOverridesProvider] применяются
+  /// с наивысшим приоритетом (выше whitelist и android-категорий).
+  ///
+  /// Возвращает кортеж (usedMinutes, perPackageMinutes, perPackageCategories).
+  Future<
+      (
+        Map<String, int>,
+        Map<String, int>,
+        Map<String, String>,
+      )> _queryTodayUsage() async {
     final now = DateTime.now();
     final midnight = DateTime(now.year, now.month, now.day);
 
@@ -202,9 +242,16 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
       perPackageMinutes[package] = minutes;
     });
 
-    // Находим пакеты, которых НЕТ в нашем whitelist — для них нужен Android-fallback.
+    // Читаем пользовательские оверрайды (наивысший приоритет).
+    // _ref может быть null в тестах — тогда оверрайдов нет.
+    final userOverrides = _ref?.read(screenTimeOverridesProvider) ?? const <String, String>{};
+
+    // Находим пакеты, которых НЕТ в нашем whitelist и НЕТ в user overrides —
+    // для них нужен Android-fallback через ApplicationInfo.category.
     final unknownPackages = perPackageMinutes.keys
-        .where((pkg) => !kPackageToCategory.containsKey(pkg))
+        .where((pkg) =>
+            !kPackageToCategory.containsKey(pkg) &&
+            !userOverrides.containsKey(pkg))
         .toList();
 
     // Запрашиваем Android-категории для неизвестных пакетов.
@@ -213,14 +260,29 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
         ? await _fetchAndroidCategoryOverrides(unknownPackages)
         : const <String, String>{};
 
-    return categorizeUsageMinutes(
+    // Агрегированные итоги по категориям.
+    final usedMinutes = categorizeUsageMinutes(
       perPackageMinutes,
       androidCategoryOverrides: androidOverrides,
+      userOverrides: userOverrides,
     );
+
+    // Resolved-категория для каждого пакета (для per-app UI).
+    final perPackageCategories = <String, String>{};
+    for (final pkg in perPackageMinutes.keys) {
+      perPackageCategories[pkg] = resolvePackageCategory(
+        pkg,
+        androidCategoryOverrides: androidOverrides,
+        userOverrides: userOverrides,
+      );
+    }
+
+    return (usedMinutes, perPackageMinutes, perPackageCategories);
   }
 }
 
 final screenTimeUsageProvider =
     StateNotifierProvider<ScreenTimeUsageNotifier, ScreenTimeUsageState>(
-  (ref) => ScreenTimeUsageNotifier(),
+  // ref передаётся, чтобы нотифайер мог читать screenTimeOverridesProvider.
+  (ref) => ScreenTimeUsageNotifier(ref),
 );

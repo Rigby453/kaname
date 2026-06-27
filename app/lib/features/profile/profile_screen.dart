@@ -24,6 +24,7 @@ import '../../core/settings/task_presets_provider.dart';
 import '../../core/settings/text_scale_provider.dart';
 import '../../core/settings/timezone_provider.dart';
 import '../../core/widgets/number_input_dialog.dart';
+import '../../core/utils/app_version.dart';
 import '../../core/utils/id.dart';
 import 'shared_plan.dart';
 import '../../core/l10n/app_strings.dart';
@@ -197,6 +198,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             trailing: Icon(Icons.chevron_right, color: ext.textMuted),
             onTap: () => context.push('/profile/account'),
           ),
+
+          // Подвал с версией сборки — позволяет убедиться, что на устройстве
+          // установлена актуальная версия приложения.
+          const SizedBox(height: 32),
+          const Center(child: _AppVersionLabel()),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -1199,260 +1206,103 @@ class _PremiumCard extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Пульт управления настроем «Настрой и Kai»
+// Секция Kai — упрощённая (тумблер показа + выбор тона + живое превью)
 // ---------------------------------------------------------------------------
 
-/// Секция «Настрой и Kai» в Профиле.
-/// 3 кнопки-пресета + раскрываемая тонкая настройка (тон + интенсивность + превью).
-class _MoodKaiSection extends ConsumerStatefulWidget {
-  const _MoodKaiSection();
+/// Упрощённая секция «Kai» в Поведении.
+/// Заменила громоздкий пульт «Mood & Kai» с 4 пресетами и раскрывающимся
+/// меню тонкой настройки. Сохраняет ровно два значимых контрола:
+///   1. «Показывать Kai» — присутствие маскота (перенесено из Внешнего вида).
+///   2. «Тон» — Мягкий / Строгий (gentle/harsh).
+/// Живое превью остаётся: пользователь сразу видит разницу тонов.
+/// Провайдеры reactiveIntensityProvider и applyMoodPreset сохранены в коде
+/// (используются при будущем возврате настройки), но из UI убраны.
+class _KaiSettingsSection extends ConsumerWidget {
+  const _KaiSettingsSection();
 
   @override
-  ConsumerState<_MoodKaiSection> createState() => _MoodKaiSectionState();
-}
-
-class _MoodKaiSectionState extends ConsumerState<_MoodKaiSection> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    final mood = ref.watch(effectiveMoodProvider);
-    final intensity = ref.watch(reactiveIntensityProvider);
     final tone = ref.watch(toneProvider);
+    final mood = ref.watch(effectiveMoodProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Заголовок секции
-        Text(context.s('profile.section_mood_kai'), style: textTheme.titleMedium),
-        const SizedBox(height: 12),
+        // Заголовок секции — лаконичный «Kai», а не «Mood & Kai»
+        Text(context.s('profile.section_kai'), style: textTheme.titleMedium),
+        const SizedBox(height: 8),
 
-        // Флаги активности пресетов — вычисляются единожды, чтобы
-        // гарантировать РОВНО ОДИН активный чип в любой комбинации (§2.5 ТЗ).
-        Builder(builder: (context) {
-          final isCalm =
-              tone == AppTone.gentle && intensity == ReactiveIntensity.off;
-          final isNormal =
-              tone == AppTone.gentle && intensity == ReactiveIntensity.slight;
-          final isCoach =
-              tone == AppTone.harsh && intensity == ReactiveIntensity.full;
-          // «Своё» = ни один из трёх стандартных пресетов не совпал.
-          final isCustom = !isCalm && !isNormal && !isCoach;
+        // 1. Тумблер присутствия (перенесён из Внешнего вида — логично рядом с тоном)
+        const _ShowKaiSetting(),
 
-          // 4 кнопки-пресета в одном Row с Expanded — каждая занимает ровно
-          // 1/4 доступной ширины. horizontal padding уменьшен до 6 вместо 8,
-          // чтобы при 320px и textScaleFactor 1.5 не было RenderFlex overflow.
-          return Row(
-            children: [
-              _PresetChip(
-                emoji: '🌿',
-                label: context.s('mood.preset_calm'),
-                subtitle: context.s('mood.preset_calm_subtitle'),
-                isActive: isCalm,
-                chipHPad: 6,
-                onTap: () => applyMoodPreset(ref, MoodPreset.calm),
-              ),
-              const SizedBox(width: 6),
-              _PresetChip(
-                emoji: '⚖️',
-                label: context.s('mood.preset_normal'),
-                subtitle: context.s('mood.preset_normal_subtitle'),
-                isActive: isNormal,
-                chipHPad: 6,
-                onTap: () => applyMoodPreset(ref, MoodPreset.normal),
-              ),
-              const SizedBox(width: 6),
-              _PresetChip(
-                emoji: '🔥',
-                label: context.s('mood.preset_coach'),
-                subtitle: context.s('mood.preset_coach_subtitle'),
-                isActive: isCoach,
-                chipHPad: 6,
-                onTap: () => applyMoodPreset(ref, MoodPreset.coach),
-              ),
-              const SizedBox(width: 6),
-              // «Своё» — только индикатор, тап не меняет оси (§2.5 ТЗ).
-              _PresetChip(
-                emoji: '🎛',
-                label: context.s('mood.preset_custom'),
-                subtitle: context.s('mood.preset_custom_subtitle'),
-                isActive: isCustom,
-                chipHPad: 6,
-                onTap: () {},
-              ),
-            ],
-          );
-        }),
+        const SizedBox(height: 4),
+
+        // 2. Тон: Мягкий / Строгий — только две опции, без «тонкой настройки»
+        _ToneRow(tone: tone),
 
         const SizedBox(height: 12),
 
-        // Раскрывающаяся тонкая настройка
-        InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Text(
-                  context.s('mood.fine_tuning'),
-                  style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  _expanded ? Icons.expand_less : Icons.expand_more,
-                  size: 18,
-                  color: ext.textMuted,
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        if (_expanded) ...[
-          const SizedBox(height: 12),
-
-          // Тумблер тона (переиспользуем логику _ToneSetting)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  context.s('profile.default_tone'),
-                  style: textTheme.bodyMedium,
-                ),
-              ),
-              const SizedBox(width: 12),
-              SegmentedButton<AppTone>(
-                segments: [
-                  ButtonSegment(
-                    value: AppTone.gentle,
-                    label: Text(context.s('settings.gentle')),
-                  ),
-                  ButtonSegment(
-                    value: AppTone.harsh,
-                    label: Text(context.s('settings.harsh')),
-                  ),
-                ],
-                selected: {tone},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) =>
-                    ref.read(toneProvider.notifier).set(s.first),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Интенсивность реакции
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  context.s('mood.reaction_to_laziness'),
-                  style: textTheme.bodyMedium,
-                ),
-              ),
-              const SizedBox(width: 12),
-              SegmentedButton<ReactiveIntensity>(
-                segments: [
-                  ButtonSegment(
-                    value: ReactiveIntensity.off,
-                    label: Text(context.s('mood.intensity_off')),
-                  ),
-                  ButtonSegment(
-                    value: ReactiveIntensity.slight,
-                    label: Text(context.s('mood.intensity_slight')),
-                  ),
-                  ButtonSegment(
-                    value: ReactiveIntensity.full,
-                    label: Text(context.s('mood.intensity_full')),
-                  ),
-                ],
-                selected: {intensity},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) =>
-                    ref.read(reactiveIntensityProvider.notifier).set(s.first),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-        ],
-
-        // Живое превью тона: всегда видно (и в свёрнутом виде), чтобы связь
-        // «тон → оформление» читалась сразу при переключении сегмента.
-        const SizedBox(height: 12),
+        // Живое превью: сразу видно, как Kai звучит в выбранном тоне
         _TonePreview(tone: tone, mood: mood),
       ],
     );
   }
 }
 
-/// Одна кнопка-пресет настроя.
-/// [chipHPad] — горизонтальный padding внутри чипа (по умолчанию 8);
-/// при 4 чипах в Row передаётся 6, чтобы избежать overflow на 320px/1.5x.
-class _PresetChip extends StatelessWidget {
-  const _PresetChip({
-    required this.emoji,
-    required this.label,
-    required this.subtitle,
-    required this.isActive,
-    required this.onTap,
-    this.chipHPad = 8,
-  });
+/// Строка выбора тона: подпись + описание + SegmentedButton (Gentle / Strict).
+/// Использует Expanded для подписи, чтобы не было overflow на 320 px.
+class _ToneRow extends ConsumerWidget {
+  const _ToneRow({required this.tone});
 
-  final String emoji;
-  final String label;
-  final String subtitle;
-  final bool isActive;
-  final VoidCallback onTap;
-  final double chipHPad;
+  final AppTone tone;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(horizontal: chipHPad, vertical: 10),
-          decoration: BoxDecoration(
-            color: isActive
-                ? colorScheme.primary.withValues(alpha: 0.12)
-                : colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isActive ? colorScheme.primary : ext.border,
-              width: isActive ? 1.5 : 0.5,
-            ),
-          ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(height: 4),
+              Text(context.s('profile.kai_tone'), style: textTheme.bodyLarge),
+              const SizedBox(height: 2),
               Text(
-                label,
-                style: textTheme.labelSmall?.copyWith(
-                  color: isActive ? colorScheme.primary : null,
-                  fontWeight: isActive ? FontWeight.w700 : null,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                context.s('profile.kai_tone_subtitle'),
+                style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
               ),
             ],
           ),
         ),
-      ),
+        const SizedBox(width: 12),
+        SegmentedButton<AppTone>(
+          segments: [
+            ButtonSegment(
+              value: AppTone.gentle,
+              label: Text(
+                context.s('settings.gentle'),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            ButtonSegment(
+              value: AppTone.harsh,
+              label: Text(
+                context.s('settings.harsh'),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+          selected: {tone},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) =>
+              ref.read(toneProvider.notifier).set(s.first),
+        ),
+      ],
     );
   }
 }
@@ -1656,6 +1506,10 @@ class _FabPositionSetting extends ConsumerWidget {
 }
 
 /// Версия приложения внизу профиля.
+/// Формат: «Version v1.0.0 (build 2 · abc1234)» — метка локализована,
+/// сам номер версии является данными и не переводится.
+/// Тег сборки (git-хэш или CI-идентификатор) передаётся компайл-тайм через
+/// --dart-define=APP_BUILD_TAG=<значение>; если не задан — опускается.
 class _AppVersionLabel extends StatelessWidget {
   const _AppVersionLabel();
 
@@ -1668,9 +1522,14 @@ class _AppVersionLabel extends StatelessWidget {
       builder: (context, snapshot) {
         final info = snapshot.data;
         if (info == null) return const SizedBox(height: 16);
-        final debugSuffix = kDebugMode ? ' · debug' : '';
+        // Тег сборки: · abc1234 если передан через --dart-define, иначе пусто.
+        final tagPart =
+            kAppBuildTag.isNotEmpty ? ' · $kAppBuildTag' : '';
+        final debugPart = kDebugMode ? ' · debug' : '';
+        final versionData =
+            'v${info.version} (build ${info.buildNumber}$tagPart)$debugPart';
         return Text(
-          'Version ${info.version} (${info.buildNumber})$debugSuffix',
+          '${context.s('profile.version_label')} $versionData',
           textAlign: TextAlign.center,
           style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
         );
@@ -2244,8 +2103,7 @@ class ProfileAppearanceScreen extends ConsumerWidget {
           const _TextSizeSetting(),
           const SizedBox(height: 8),
           const _FabPositionSetting(),
-          const SizedBox(height: 8),
-          const _ShowKaiSetting(),
+          // «Показывать Kai» перенесено в Поведение (рядом с тоном Kai)
         ],
       ),
     );
@@ -2258,7 +2116,7 @@ class ProfileAppearanceScreen extends ConsumerWidget {
 //         звук, уведомления, свайп-действия.
 // ---------------------------------------------------------------------------
 
-/// Подстраница «Поведение» — умолчания, флаги, настрой Kai, уведомления.
+/// Подстраница «Поведение» — умолчания, флаги, Kai, уведомления.
 class ProfileBehaviorScreen extends StatelessWidget {
   const ProfileBehaviorScreen({super.key});
 
@@ -2275,7 +2133,8 @@ class ProfileBehaviorScreen extends StatelessWidget {
           const SizedBox(height: 28),
           const _AdvancedFeaturesSection(),
           const SizedBox(height: 28),
-          const _MoodKaiSection(),
+          // Упрощённая секция Kai: тумблер + тон + превью
+          const _KaiSettingsSection(),
           const SizedBox(height: 16),
           const _PostureReminderSetting(),
           const _CompletionSoundSetting(),

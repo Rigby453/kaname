@@ -169,6 +169,87 @@ const _sessions = <_Session>[
       _Step(textKey: 'meditation.stress_relief.step6', seconds: 60),
     ],
   ),
+  // — 5 новых сессий —
+  _Session(
+    id: 'anxiety_reset',
+    nameKey: 'meditation.anxiety_reset.name',
+    duration: 5,
+    descKey: 'meditation.anxiety_reset.desc',
+    poseNameKey: 'meditation.anxiety_reset.pose_name',
+    poseDescKey: 'meditation.anxiety_reset.pose_desc',
+    poseIcon: Icons.chair, // устойчивая посадка
+    steps: [
+      _Step(textKey: 'meditation.anxiety_reset.step1', seconds: 30),
+      _Step(textKey: 'meditation.anxiety_reset.step2', seconds: 60),
+      _Step(textKey: 'meditation.anxiety_reset.step3', seconds: 60),
+      _Step(textKey: 'meditation.anxiety_reset.step4', seconds: 60),
+      _Step(textKey: 'meditation.anxiety_reset.step5', seconds: 60),
+    ],
+  ),
+  _Session(
+    id: 'morning_wake',
+    nameKey: 'meditation.morning_wake.name',
+    duration: 5,
+    descKey: 'meditation.morning_wake.desc',
+    poseNameKey: 'meditation.morning_wake.pose_name',
+    poseDescKey: 'meditation.morning_wake.pose_desc',
+    poseIcon: Icons.wb_sunny_outlined, // прямая посадка / стоя
+    steps: [
+      _Step(textKey: 'meditation.morning_wake.step1', seconds: 30),
+      _Step(textKey: 'meditation.morning_wake.step2', seconds: 60),
+      _Step(textKey: 'meditation.morning_wake.step3', seconds: 60),
+      _Step(textKey: 'meditation.morning_wake.step4', seconds: 60),
+      _Step(textKey: 'meditation.morning_wake.step5', seconds: 30),
+    ],
+  ),
+  _Session(
+    id: 'gratitude_reset',
+    nameKey: 'meditation.gratitude_reset.name',
+    duration: 8,
+    descKey: 'meditation.gratitude_reset.desc',
+    poseNameKey: 'meditation.gratitude_reset.pose_name',
+    poseDescKey: 'meditation.gratitude_reset.pose_desc',
+    poseIcon: Icons.favorite_border, // удобная сидя / лёжа
+    steps: [
+      _Step(textKey: 'meditation.gratitude_reset.step1', seconds: 60),
+      _Step(textKey: 'meditation.gratitude_reset.step2', seconds: 120),
+      _Step(textKey: 'meditation.gratitude_reset.step3', seconds: 90),
+      _Step(textKey: 'meditation.gratitude_reset.step4', seconds: 90),
+      _Step(textKey: 'meditation.gratitude_reset.step5', seconds: 60),
+    ],
+  ),
+  _Session(
+    id: 'deep_work_entry',
+    nameKey: 'meditation.deep_work_entry.name',
+    duration: 4,
+    descKey: 'meditation.deep_work_entry.desc',
+    poseNameKey: 'meditation.deep_work_entry.pose_name',
+    poseDescKey: 'meditation.deep_work_entry.pose_desc',
+    poseIcon: Icons.laptop_outlined, // рабочая посадка за столом
+    steps: [
+      _Step(textKey: 'meditation.deep_work_entry.step1', seconds: 30),
+      _Step(textKey: 'meditation.deep_work_entry.step2', seconds: 60),
+      _Step(textKey: 'meditation.deep_work_entry.step3', seconds: 90),
+      _Step(textKey: 'meditation.deep_work_entry.step4', seconds: 30),
+    ],
+  ),
+  _Session(
+    id: 'evening_unwind',
+    nameKey: 'meditation.evening_unwind.name',
+    duration: 10,
+    descKey: 'meditation.evening_unwind.desc',
+    poseNameKey: 'meditation.evening_unwind.pose_name',
+    poseDescKey: 'meditation.evening_unwind.pose_desc',
+    poseIcon: Icons.airline_seat_flat, // лёжа / откинувшись в кресле
+    steps: [
+      _Step(textKey: 'meditation.evening_unwind.step1', seconds: 60),
+      _Step(textKey: 'meditation.evening_unwind.step2', seconds: 90),
+      _Step(textKey: 'meditation.evening_unwind.step3', seconds: 90),
+      _Step(textKey: 'meditation.evening_unwind.step4', seconds: 60),
+      _Step(textKey: 'meditation.evening_unwind.step5', seconds: 90),
+      _Step(textKey: 'meditation.evening_unwind.step6', seconds: 120),
+    ],
+  ),
 ];
 
 // Резолвит встроенную сессию (l10n-ключи) в рантайм-модель плеера.

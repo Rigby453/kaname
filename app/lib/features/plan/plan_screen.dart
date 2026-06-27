@@ -463,33 +463,53 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
           ],
         );
       case PlanView.week:
-        return Column(
-          children: [
-            // Раскрывающийся календарь (полоса дней недели) — только для
-            // списочной раскладки. В сетке (WeekTimeGrid) свой заголовок-ряд
-            // дней, иначе дни недели дублировались бы (Task D). Прячем при
-            // открытом поиске: клавиатура занимает низ, высокий календарь над
-            // Expanded вызвал бы RenderFlex overflow (keyboard rule, CLAUDE.md §B).
-            if (!isGrid && !searchVisible) const ExpandableWeekCalendar(),
-            // Тонкий разделитель (02-type-space §4.3 hairline)
-            Divider(height: 0.5, thickness: 0.5, color: border),
-            // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
-            const PinnedExamCard(),
-            Expanded(child: isGrid ? const WeekTimeGrid() : const WeekAgenda()),
-          ],
+        // LayoutBuilder даёт реальную высоту тела — ограничиваем раскрытый
+        // календарь 55% этой высоты (Bug #2: 6-рядный месяц иначе выходит за
+        // пределы Column и кидает RenderFlex overflow). Минимум 220px (~3 ряда).
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final maxCalH = constraints.maxHeight.isFinite
+                ? (constraints.maxHeight * 0.55).clamp(220.0, double.infinity)
+                : null;
+            return Column(
+              children: [
+                // Раскрывающийся календарь — только для списочной раскладки.
+                // В сетке (WeekTimeGrid) свой заголовок-ряд дней, иначе дни
+                // недели дублировались бы (Task D). Прячем при открытом поиске:
+                // клавиатура занимает низ (keyboard rule, CLAUDE.md §B).
+                if (!isGrid && !searchVisible)
+                  ExpandableWeekCalendar(maxCalendarHeight: maxCalH),
+                // Тонкий разделитель (02-type-space §4.3 hairline)
+                Divider(height: 0.5, thickness: 0.5, color: border),
+                // Закреплённая ember-карточка ближайшего экзамена/дедлайна
+                const PinnedExamCard(),
+                Expanded(
+                    child: isGrid ? const WeekTimeGrid() : const WeekAgenda()),
+              ],
+            );
+          },
         );
       case PlanView.day:
-        return Column(
-          children: [
-            // Раскрывающийся календарь: потяни вниз — развернётся месяц.
-            // Скрываем когда открыт поиск — клавиатура уже занимает нижнюю
-            // часть экрана, высокий календарь вызывает RenderFlex overflow.
-            if (!searchVisible) const ExpandableWeekCalendar(),
-            Divider(height: 0.5, thickness: 0.5, color: border),
-            // Закреплённая ember-карточка ближайшего экзамена/дедлайна (UX-LAYOUT §5)
-            const PinnedExamCard(),
-            Expanded(child: isGrid ? const DayTimeGrid() : const DayTimeline()),
-          ],
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final maxCalH = constraints.maxHeight.isFinite
+                ? (constraints.maxHeight * 0.55).clamp(220.0, double.infinity)
+                : null;
+            return Column(
+              children: [
+                // Раскрывающийся календарь: потяни вниз — развернётся месяц.
+                // Скрываем когда открыт поиск — клавиатура уже занимает нижнюю
+                // часть экрана, высокий календарь вызывает RenderFlex overflow.
+                if (!searchVisible)
+                  ExpandableWeekCalendar(maxCalendarHeight: maxCalH),
+                Divider(height: 0.5, thickness: 0.5, color: border),
+                // Закреплённая ember-карточка ближайшего экзамена/дедлайна
+                const PinnedExamCard(),
+                Expanded(
+                    child: isGrid ? const DayTimeGrid() : const DayTimeline()),
+              ],
+            );
+          },
         );
     }
   }
@@ -574,18 +594,21 @@ class _PlanViewSwitcher extends ConsumerWidget {
 
   /// Помещаются ли 5 сегментов читаемым кеглем в [available] пикселей.
   /// M3 SegmentedButton: горизонтальный паддинг = 16dp с каждой стороны = 32dp;
-  /// плюс разделители и минимальные ограничения → консервативная оценка 40dp.
-  /// Занижение (было 24dp) давало ложное «влезает», и SegmentedButton рендерился
-  /// в стеснённое пространство с текстом по буквам в столбик.
+  /// плюс разделители, иконки и минимальные ограничения. Используем 56dp на
+  /// сегмент (было 40dp → давало ложное «влезает» → текст рендерился вертикально)
+  /// и дополнительный запас 24dp на всю строку, чтобы оценка была консервативной:
+  /// при сомнении лучше упасть в _ViewDropdown, чем сжать SegmentedButton.
   bool _segmentsFit(BuildContext context, double available) {
     final style = Theme.of(context).textTheme.labelLarge;
     final scaler = MediaQuery.textScalerOf(context);
-    const perSegmentPadding = 40.0;
+    const perSegmentPadding = 56.0;
     var needed = 0.0;
     for (final label in _labels(context)) {
       needed += _measure(label, style, scaler) + perSegmentPadding;
     }
-    return available >= needed;
+    // +24dp запас гарантирует: при пограничной ширине выбираем Dropdown, не
+    // SegmentedButton (иначе текст рендерится вертикально, Bug #1).
+    return available >= needed + 24;
   }
 
   @override

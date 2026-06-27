@@ -10,6 +10,7 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import 'screen_time_advice.dart';
+import 'screen_time_overrides_provider.dart';
 import 'screen_time_provider.dart';
 import 'screen_time_usage_provider.dart';
 
@@ -276,7 +277,7 @@ class _UsageSection extends ConsumerWidget {
       );
     }
 
-    // 4) Список категорий с прогрессом / over-limit + строка «Total today».
+    // 4) Список категорий с прогрессом / over-limit + строка «Total today» + per-app breakdown.
     return Card(
       child: Column(
         children: [
@@ -307,6 +308,11 @@ class _UsageSection extends ConsumerWidget {
               limitMinutes: 0, // без лимита (всегда)
               isOther: true,
             ),
+
+          // Per-app breakdown — позволяет переназначить категорию конкретного приложения.
+          // Показывается только когда есть данные об отдельных пакетах.
+          if (usage.perPackageMinutes.isNotEmpty)
+            _AppsBreakdownSection(usage: usage),
         ],
       ),
     );
@@ -728,6 +734,383 @@ class _TipRow extends StatelessWidget {
           child: Text(text, style: textTheme.bodyMedium),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-app breakdown + category override UI
+// ---------------------------------------------------------------------------
+
+/// Последние N сегментов имени пакета для читаемого отображения.
+/// «com.miHoYo.GenshinImpact» → «miHoYo.GenshinImpact»
+/// «com.roblox.client» → «roblox.client»
+String _pkgDisplayName(String packageName) {
+  final parts = packageName.split('.');
+  if (parts.length >= 2) {
+    return '${parts[parts.length - 2]}.${parts.last}';
+  }
+  return packageName;
+}
+
+/// Подраздел «Приложения» внутри карточки Usage data.
+/// Показывает все приложения с ненулевым временем, отсортированные по убыванию
+/// минут. Длинные списки (>8) скрываются за кнопкой «Показать все».
+/// Тап на строке → _AppCategoryPickerSheet для переназначения категории.
+class _AppsBreakdownSection extends ConsumerStatefulWidget {
+  const _AppsBreakdownSection({required this.usage});
+
+  final ScreenTimeUsageState usage;
+
+  @override
+  ConsumerState<_AppsBreakdownSection> createState() =>
+      _AppsBreakdownSectionState();
+}
+
+class _AppsBreakdownSectionState
+    extends ConsumerState<_AppsBreakdownSection> {
+  // Максимум строк до кнопки «показать все».
+  static const _kInitialMax = 8;
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final userOverrides = ref.watch(screenTimeOverridesProvider);
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Сортируем по убыванию минут, фильтруем нулевые.
+    final apps = widget.usage.perPackageMinutes.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    if (apps.isEmpty) return const SizedBox.shrink();
+
+    final showAll = _expanded || apps.length <= _kInitialMax;
+    final visible = showAll ? apps : apps.sublist(0, _kInitialMax);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        // Заголовок подраздела — labelMedium, textMuted (декоративный, не headline)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            context.s('screentime.apps_section'),
+            style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
+          ),
+        ),
+        ...visible.map((entry) {
+          final pkg = entry.key;
+          final minutes = entry.value;
+          // Эффективная категория: user override первым, затем из state.
+          final effectiveCat = userOverrides[pkg] ??
+              widget.usage.perPackageCategories[pkg] ??
+              'other';
+          final hasOverride = userOverrides.containsKey(pkg);
+          return _AppRow(
+            packageName: pkg,
+            minutes: minutes,
+            effectiveCategory: effectiveCat,
+            hasUserOverride: hasOverride,
+            onTap: () => _showCategoryPicker(context, pkg, effectiveCat, hasOverride),
+          );
+        }),
+        // Кнопка «ещё N» / «свернуть» (только если apps > _kInitialMax)
+        if (apps.length > _kInitialMax)
+          TextButton(
+            onPressed: () => setState(() => _expanded = !_expanded),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              foregroundColor: ext.textMuted,
+            ),
+            child: Text(
+              _expanded
+                  ? context.s('btn.close')
+                  : '+ ${apps.length - _kInitialMax}',
+              style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showCategoryPicker(
+    BuildContext context,
+    String packageName,
+    String currentCategory,
+    bool hasOverride,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _AppCategoryPickerSheet(
+        packageName: packageName,
+        currentCategory: currentCategory,
+        hasUserOverride: hasOverride,
+      ),
+    );
+  }
+}
+
+/// Строка одного приложения в per-app breakdown.
+/// Иконка — нейтральная textMuted. Метка категории — chip-like (bodySmall).
+/// Карандаш-иконка подсказывает, что строку можно нажать.
+class _AppRow extends StatelessWidget {
+  const _AppRow({
+    required this.packageName,
+    required this.minutes,
+    required this.effectiveCategory,
+    required this.hasUserOverride,
+    required this.onTap,
+  });
+
+  final String packageName;
+  final int minutes;
+  final String effectiveCategory;
+  final bool hasUserOverride;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    // Локализованное имя категории для отображения.
+    final catLabel = context.s('screentime.cat_$effectiveCategory');
+    // Время использования — компактно.
+    final timeLabel = minutes >= 60
+        ? '${minutes ~/ 60}h ${minutes % 60}m'
+        : '${minutes}m';
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+        child: Row(
+          children: [
+            // Нейтральная иконка приложения
+            Icon(Icons.android_outlined, size: 18, color: ext.textMuted),
+            const SizedBox(width: 12),
+            // Имя пакета + время использования
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _pkgDisplayName(packageName),
+                    style: textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  Text(
+                    timeLabel,
+                    style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Метка категории — visualised как chip
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: ext.border,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    catLabel,
+                    style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+                  ),
+                  // Маркер «есть оверрайд» — маленькая точка accent
+                  if (hasUserOverride) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.circle,
+                      size: 6,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.edit_outlined, size: 16, color: ext.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Нижний лист выбора категории для конкретного приложения.
+/// Показывает 6 категорий в виде радиокнопок. Сохраняет оверрайд и
+/// запускает refresh() агрегации, чтобы итоги по категориям обновились.
+class _AppCategoryPickerSheet extends ConsumerStatefulWidget {
+  const _AppCategoryPickerSheet({
+    required this.packageName,
+    required this.currentCategory,
+    required this.hasUserOverride,
+  });
+
+  final String packageName;
+  final String currentCategory;
+  final bool hasUserOverride;
+
+  @override
+  ConsumerState<_AppCategoryPickerSheet> createState() =>
+      _AppCategoryPickerSheetState();
+}
+
+class _AppCategoryPickerSheetState
+    extends ConsumerState<_AppCategoryPickerSheet> {
+  late String _selected;
+
+  // Порядок категорий в пикере (все 6, включая 'other').
+  static const _kCategories = [
+    'social',
+    'video',
+    'games',
+    'browsing',
+    'messaging',
+    'other',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.currentCategory;
+  }
+
+  Future<void> _save() async {
+    await ref
+        .read(screenTimeOverridesProvider.notifier)
+        .setOverride(widget.packageName, _selected);
+    // Обновляем агрегированные итоги с новым оверрайдом.
+    // Fire-and-forget: не ждём завершения (UI уже показывает правильную метку).
+    ref.read(screenTimeUsageProvider.notifier).refresh();
+    if (mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.s('screentime.category_changed')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _reset() async {
+    await ref
+        .read(screenTimeOverridesProvider.notifier)
+        .removeOverride(widget.packageName);
+    ref.read(screenTimeUsageProvider.notifier).refresh();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        24,
+        24,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: ext.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Заголовок + закрыть
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.s('screentime.reassign_title'),
+                      style: textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 2),
+                    // Имя пакета как подзаголовок — truncated
+                    Text(
+                      _pkgDisplayName(widget.packageName),
+                      style: textTheme.bodySmall
+                          ?.copyWith(color: ext.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: context.s('btn.close'),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Список категорий — ListTile с галочкой выбора (избегаем deprecated RadioListTile API)
+          ..._kCategories.map((cat) {
+            final icon = _categoryIcons[cat] ?? Icons.apps_outlined;
+            final isSelected = _selected == cat;
+            return ListTile(
+              leading: Icon(icon, size: 20, color: ext.textMuted),
+              title: Text(
+                context.s('screentime.cat_$cat'),
+                style: textTheme.bodyLarge,
+              ),
+              trailing: isSelected
+                  ? Icon(
+                      Icons.check_circle_rounded,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    )
+                  : Icon(Icons.circle_outlined, size: 20, color: ext.textMuted),
+              onTap: () => setState(() => _selected = cat),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            );
+          }),
+          const SizedBox(height: 8),
+          // Основная кнопка — сохранить
+          FilledButton(
+            onPressed: _save,
+            child: Text(context.s('btn.save')),
+          ),
+          // Кнопка сброса (только если есть пользовательский оверрайд)
+          if (widget.hasUserOverride) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _reset,
+              child: Text(context.s('screentime.reset_to_default')),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

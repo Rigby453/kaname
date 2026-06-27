@@ -16,7 +16,29 @@ export interface DiaryLogInput {
 }
 
 /**
- * Возвращает короткий инсайт по последним записям дневника.
+ * Результат инсайта: текст + охватываемый диапазон дат (для будущего отображения).
+ * Текущий api-spec.yaml возвращает только { insight: string }; поля coveredFrom/
+ * coveredTo пока не пробрасываются маршрутом. Предлагаемое расширение контракта:
+ *   covered_from { type: string, format: date }
+ *   covered_to   { type: string, format: date }
+ * Требует одобрения оркестратора.
+ */
+export interface DiaryInsightResult {
+  insight: string;
+  coveredFrom: string | null;
+  coveredTo: string | null;
+}
+
+/**
+ * Возвращает инсайт по последним записям дневника + охватываемый диапазон дат.
+ *
+ * Причина увеличения maxTokens с 450 до 650:
+ *   Gemini 2.5-flash оборачивает ответ в JSON {"insight":"..."} и добавляет
+ *   рассуждения перед самим текстом. При 450 токенах JSON не успевал закрыться
+ *   → unwrapMaybeJson падал на parse error → клиент видел сырую обрезанную строку
+ *   вида {"insight":"текст без конца...
+ *   650 токенов = безопасный запас для 2-3 полных предложений + JSON-обёртка.
+ *
  * @param logs - последние записи (дата, настроение, заметка)
  * @param tone - gentle / harsh
  * @param language - язык инсайта (напр. "Russian"), по умолчанию "English"
@@ -25,8 +47,13 @@ export async function generateDiaryInsight(params: {
   logs: DiaryLogInput[];
   tone: Tone;
   language?: string;
-}): Promise<{ insight: string }> {
+}): Promise<DiaryInsightResult> {
   const { logs, tone, language = "English" } = params;
+
+  // Вычисляем диапазон охватываемых дат (min/max по полю date) — кодом, не моделью.
+  const sortedDates = logs.map((l) => l.date).sort();
+  const coveredFrom = sortedDates.length > 0 ? sortedDates[0]! : null;
+  const coveredTo = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1]! : null;
 
   const toneHint =
     tone === "harsh"
@@ -47,21 +74,27 @@ export async function generateDiaryInsight(params: {
     toneHint +
     `\n\nIMPORTANT: Write all human-readable text in ${language}. Always finish every sentence completely.`;
 
+  // Передаём явный диапазон дат, чтобы модель могла на него ссылаться в инсайте.
+  const dateRange =
+    coveredFrom && coveredTo ? ` from ${coveredFrom} to ${coveredTo}` : "";
+
   const user =
     logs.length === 0
       ? "No diary entries yet. Encourage the user to start journaling in 1-2 sentences."
-      : `Student diary entries (${logs.length} day(s)): ${JSON.stringify(logs)}. ` +
+      : `Student diary entries${dateRange} (${logs.length} day(s)): ${JSON.stringify(logs)}. ` +
         "Identify a trend, correlation or non-obvious pattern, then give one specific suggestion. " +
         "Do NOT summarise the raw numbers — state only your conclusion and the actionable tip.";
 
+  // maxTokens повышен до 650 (был 450) — исправляет обрезание инсайта.
+  // Подробности в JSDoc выше.
   const raw = await generateText({
     system,
     user,
-    maxTokens: 450,
+    maxTokens: 650,
     tier: "smart",
   });
   // Защита: если модель всё же вернула JSON {"insight":"..."} — разворачиваем в текст.
   const insight = unwrapMaybeJson(raw, "insight");
   if (!insight) throw new Error("AI returned an empty diary insight.");
-  return { insight };
+  return { insight, coveredFrom, coveredTo };
 }

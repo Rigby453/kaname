@@ -5,6 +5,21 @@
 
 ---
 
+## ADR-057: Concrete AI redistribution proposal (title+priority per move) + diary-insight date scope
+**Date:** 2026-06-27
+**Проблема (redistribute):** `/api/v1/ai/redistribute` возвращал общую «мотивационную» фразу в поле `reason` («balanced approach that keeps you productive»). Клиент не мог отрендерить интерфейс «переместить X → 10:00, подтвердить?» без локального DB-лукапа по UUID задач. Это делало предложение нечитаемым и воспринималось пользователем как бесполезный nudge.
+**Проблема (diary-insight):** Инсайт обрезался на полуслове. Gemini 2.5-flash оборачивает ответ в JSON `{"insight":"..."}` и добавляет рассуждения перед текстом. При `maxTokens=450` JSON не успевал закрыться; `unwrapMaybeJson` падал на `JSON.parse` и возвращал сырую обрезанную строку клиенту. Диапазон анализируемых дат нигде не указывался.
+**Решение:**
+- **Redistribute промпт (smartRedistribute.ts):** системный промпт переписан: поле `reason` теперь явно обязано содержать разбивку по каждой задаче с реальным title, предложенным временем и 5-8-словным обоснованием («Math exam prep (2h) → 09:00 [main priority, peak focus]»). Добавлены примеры трёх стратегий (front-load / balanced / quick-wins).
+- **Items обогащение (smartRedistribute.ts):** `SmartPlan.items` расширен полями `title` и `priority`, которые Backend добавляет из входного `pendingItems` по id — не из модели (без дополнительного DB-запроса).
+- **Route serialize (routes/ai.ts):** `title` и `priority` теперь пробрасываются в ответ `plans[].items[]`.
+- **API-spec (api-spec.yaml):** добавлены `plans[].items[].title` (string) и `plans[].items[].priority` (enum: main/high/medium/low).
+- **Diary maxTokens (diaryInsight.ts):** поднят с 450 до 650 — устраняет обрезание JSON-обёртки.
+- **Diary scope (diaryInsight.ts):** функция возвращает `coveredFrom`/`coveredTo` (min/max дата из логов, код, не модель); явный диапазон передаётся в user-сообщение модели.
+- **Route serialize (routes/ai.ts):** `covered_from` и `covered_to` добавлены в ответ `/ai/diary-insight`.
+- **API-spec (api-spec.yaml):** добавлены `covered_from` и `covered_to` (string, format: date, nullable).
+**Последствия:** Клиент может отображать конкретное предложение «переместить X → 10:00, подтвердить?» напрямую из ответа API без локального DB-лукапа. Инсайт гарантированно приходит полным и с указанием охватываемого периода. Изменения аддитивны — обратная совместимость сохранена. 22 новых unit-теста (smart-redistribute × 10, diary-insight × 12) — зелёные.
+
 ## ADR-056: Tolerant name matching + transient-error retry for AI menu/workout build
 **Date:** 2026-06-27
 **Проблема:** `/api/v1/ai/menu-build` почти всегда падал с 502 «AI service unavailable» из-за двух независимых причин: (A) Gemini возвращает имена продуктов с другим регистром/пробелами — строгое `validNames.has(it.name)` в `callAndClean` выбрасывало все позиции → `"AI returned no usable menu"`. (B) Одиночные временные сбои Gemini (rate-limit 429, кратковременный 503, битый JSON) пробрасывались напрямую, без ретрая.

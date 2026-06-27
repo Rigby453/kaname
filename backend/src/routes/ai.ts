@@ -559,6 +559,8 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
             items: p.items.map((it) => ({
               id: it.id,
               scheduled_at: it.scheduledAt,
+              title: it.title,
+              priority: it.priority,
             })),
           })),
         });
@@ -589,7 +591,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       try {
-        const { insight } = await generateDiaryInsight({
+        const { insight, coveredFrom, coveredTo } = await generateDiaryInsight({
           tone: parsed.data.tone,
           logs: logs.map((l) => ({
             date: l.date.toISOString().slice(0, 10),
@@ -598,7 +600,11 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           })),
           language: langName(request.headers["accept-language"]),
         });
-        return reply.status(200).send({ insight });
+        return reply.status(200).send({
+          insight,
+          covered_from: coveredFrom,
+          covered_to: coveredTo,
+        });
       } catch (err) {
         return aiError(fastify, reply, err, "diary-insight");
       }

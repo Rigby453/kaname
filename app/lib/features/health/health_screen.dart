@@ -158,8 +158,6 @@ class WaterReminderNotifier extends StateNotifier<bool> {
 class HealthScreen extends ConsumerWidget {
   const HealthScreen({super.key});
 
-  // Все Phase-2 модули теперь реализованы — секция «скоро» убрана
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
@@ -173,6 +171,7 @@ class HealthScreen extends ConsumerWidget {
   }
 
   /// Mobile single-column layout (< 600px).
+  /// Структура: 4 тематические секции — Nutrition / Sleep / Mind / Movement.
   Widget _buildMobileLayout(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final total = ref.watch(todayWaterProvider).valueOrNull ?? 0;
@@ -180,68 +179,191 @@ class HealthScreen extends ConsumerWidget {
     final progress = (total / waterGoalMl).clamp(0.0, 1.0);
     final dao = ref.read(waterDaoProvider);
 
+    final nutritionOn = ref.watch(nutritionModeProvider);
+    final workoutOn = ref.watch(workoutModeProvider);
+    final meditationOn = ref.watch(meditationLibraryModeProvider);
+    final breathingOn = ref.watch(breathingEditorModeProvider);
+
     return ListView(
       // 24dp screen margin — spec §4.1
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
       children: [
         // headlineMedium — display font (серифный), 32sp, w700
         Text(context.s('health.title'), style: textTheme.headlineMedium),
-        const SizedBox(height: 24),
+
+        // ── NUTRITION ──────────────────────────────────────────────────────
+        _HealthSectionHeader(labelKey: 'health.section_nutrition'),
         _buildWaterCard(context, ref, textTheme, total, waterGoalMl, progress, dao),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
+        _HealthModuleTile(
+          enabled: nutritionOn,
+          titleKey: 'health.food',
+          subtitleKey: 'health.food_subtitle',
+          icon: Icons.restaurant_outlined,
+          route: '/food',
+          onToggle: (v) => ref.read(nutritionModeProvider.notifier).set(v),
+        ),
+
+        // ── SLEEP ──────────────────────────────────────────────────────────
+        _HealthSectionHeader(labelKey: 'health.section_sleep'),
         const _SleepCard(),
-        const SizedBox(height: 24),
-        // Компактные входы только для включённых L2-режимов
-        ..._buildL2ModeEntries(context, ref),
+
+        // ── MIND ───────────────────────────────────────────────────────────
+        _HealthSectionHeader(labelKey: 'health.section_mind'),
+        _HealthModuleTile(
+          enabled: meditationOn,
+          titleKey: 'health.meditation',
+          subtitleKey: 'health.meditation_subtitle',
+          icon: Icons.spa_outlined,
+          route: '/meditation',
+          onToggle: (v) => ref.read(meditationLibraryModeProvider.notifier).set(v),
+        ),
+        const SizedBox(height: 8),
+        _HealthModuleTile(
+          enabled: breathingOn,
+          titleKey: 'health.breathing',
+          subtitleKey: 'health.breathing_subtitle',
+          icon: Icons.air,
+          route: '/breathing',
+          onToggle: (v) => ref.read(breathingEditorModeProvider.notifier).set(v),
+        ),
+
+        // ── MOVEMENT ───────────────────────────────────────────────────────
+        _HealthSectionHeader(labelKey: 'health.section_movement'),
+        _HealthModuleTile(
+          enabled: workoutOn,
+          titleKey: 'health.workouts',
+          subtitleKey: 'health.workouts_subtitle',
+          icon: Icons.fitness_center_outlined,
+          route: '/workouts',
+          onToggle: (v) => ref.read(workoutModeProvider.notifier).set(v),
+        ),
+
+        // ── Manage ─────────────────────────────────────────────────────────
+        const SizedBox(height: 16),
+        _ManageModulesRow(),
       ],
     );
   }
 
   /// Tablet 2-column layout (≥ 600px).
-  /// Top row: Water card | Sleep card (each 50%).
-  /// Below: GridView crossAxisCount=2 for navigation tiles.
+  /// Nutrition и Sleep — рядом в верхней строке; Mind и Movement — ниже.
   Widget _buildTabletLayout(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final total = ref.watch(todayWaterProvider).valueOrNull ?? 0;
     final waterGoalMl = ref.watch(waterGoalProvider);
     final progress = (total / waterGoalMl).clamp(0.0, 1.0);
     final dao = ref.read(waterDaoProvider);
-    // Компактные входы для включённых L2-режимов (0–4 плитки)
-    final l2Tiles = _buildL2ModeEntries(context, ref);
+
+    final nutritionOn = ref.watch(nutritionModeProvider);
+    final workoutOn = ref.watch(workoutModeProvider);
+    final meditationOn = ref.watch(meditationLibraryModeProvider);
+    final breathingOn = ref.watch(breathingEditorModeProvider);
 
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
         Text(context.s('health.title'), style: textTheme.headlineMedium),
-        const SizedBox(height: 24),
-        // Water + Sleep side by side
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _buildWaterCard(
-                  context, ref, textTheme, total, waterGoalMl, progress, dao,
-                ),
+        const SizedBox(height: 8),
+
+        // ── NUTRITION + SLEEP side by side ─────────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Nutrition column
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HealthSectionHeader(labelKey: 'health.section_nutrition'),
+                  _buildWaterCard(
+                    context, ref, textTheme, total, waterGoalMl, progress, dao,
+                  ),
+                  const SizedBox(height: 8),
+                  _HealthModuleTile(
+                    enabled: nutritionOn,
+                    titleKey: 'health.food',
+                    subtitleKey: 'health.food_subtitle',
+                    icon: Icons.restaurant_outlined,
+                    route: '/food',
+                    onToggle: (v) =>
+                        ref.read(nutritionModeProvider.notifier).set(v),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              const Expanded(child: _SleepCard()),
-            ],
-          ),
+            ),
+            const SizedBox(width: 16),
+            // Sleep column
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HealthSectionHeader(labelKey: 'health.section_sleep'),
+                  const _SleepCard(),
+                ],
+              ),
+            ),
+          ],
         ),
-        if (l2Tiles.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          // L2-входы в сетке 2 колонки на планшете
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            childAspectRatio: 3.5,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            children: l2Tiles,
-          ),
-        ],
+        const SizedBox(height: 8),
+
+        // ── MIND + MOVEMENT side by side ───────────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Mind column
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HealthSectionHeader(labelKey: 'health.section_mind'),
+                  _HealthModuleTile(
+                    enabled: meditationOn,
+                    titleKey: 'health.meditation',
+                    subtitleKey: 'health.meditation_subtitle',
+                    icon: Icons.spa_outlined,
+                    route: '/meditation',
+                    onToggle: (v) =>
+                        ref.read(meditationLibraryModeProvider.notifier).set(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _HealthModuleTile(
+                    enabled: breathingOn,
+                    titleKey: 'health.breathing',
+                    subtitleKey: 'health.breathing_subtitle',
+                    icon: Icons.air,
+                    route: '/breathing',
+                    onToggle: (v) =>
+                        ref.read(breathingEditorModeProvider.notifier).set(v),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Movement column
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HealthSectionHeader(labelKey: 'health.section_movement'),
+                  _HealthModuleTile(
+                    enabled: workoutOn,
+                    titleKey: 'health.workouts',
+                    subtitleKey: 'health.workouts_subtitle',
+                    icon: Icons.fitness_center_outlined,
+                    route: '/workouts',
+                    onToggle: (v) =>
+                        ref.read(workoutModeProvider.notifier).set(v),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        // ── Manage ─────────────────────────────────────────────────────────
+        const SizedBox(height: 16),
+        _ManageModulesRow(),
       ],
     );
   }
@@ -404,71 +526,139 @@ class HealthScreen extends ConsumerWidget {
     );
   }
 
-  /// Компактные карточки-входы для включённых L2-режимов.
-  /// Показывает плитку только если соответствующий флаг-режим включён.
-  /// Если все флаги выключены — возвращает пустой список (норма: экран = Вода+Сон).
-  /// Растворяемые модули (Осанка, Привычки, Совместная учёба, Экранное время,
-  /// Зарядка, Фокус) сюда НЕ попадают — они выключены из навигации или
-  /// достигаются из блоков плана.
-  List<Widget> _buildL2ModeEntries(BuildContext context, WidgetRef ref) {
+}
+
+// ---------------------------------------------------------------------------
+// _HealthSectionHeader — мутированный заголовок тематической секции
+// Используется для 4 групп: Nutrition / Sleep / Mind / Movement.
+// ---------------------------------------------------------------------------
+
+class _HealthSectionHeader extends StatelessWidget {
+  const _HealthSectionHeader({required this.labelKey});
+
+  final String labelKey;
+
+  @override
+  Widget build(BuildContext context) {
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    // Нейтральный цвет иконок — accent зарезервирован для метрик/прогресса
-    final iconColor = ext.textMuted;
-    final tiles = <Widget>[];
-
-    // nutritionMode=on → вход в полный модуль питания
-    if (ref.watch(nutritionModeProvider)) {
-      tiles.add(Card(
-        child: ListTile(
-          leading: Icon(Icons.restaurant_outlined, color: iconColor),
-          title: Text(context.s('health.food')),
-          subtitle: Text(context.s('health.food_subtitle')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () => context.push('/food'),
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 10),
+      child: Text(
+        context.s(labelKey),
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: ext.textMuted,
+          letterSpacing: 0.4,
         ),
-      ));
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _HealthModuleTile — плитка модуля здоровья.
+// enabled=true → навигационная карточка (тап → route).
+// enabled=false → карточка с Switch(false) для прямого включения прямо с Health.
+// Прямой тоггл провайдера = те же SharedPreferences, что и Profile → Behavior.
+// ---------------------------------------------------------------------------
+
+class _HealthModuleTile extends StatelessWidget {
+  const _HealthModuleTile({
+    required this.enabled,
+    required this.titleKey,
+    required this.subtitleKey,
+    required this.icon,
+    required this.route,
+    required this.onToggle,
+  });
+
+  final bool enabled;
+  final String titleKey;
+  final String subtitleKey;
+  final IconData icon;
+  final String route;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final textTheme = Theme.of(context).textTheme;
+
+    if (enabled) {
+      // Включён → навигационная карточка с chevron
+      return Card(
+        child: ListTile(
+          leading: Icon(icon, color: ext.textMuted),
+          title: Text(context.s(titleKey)),
+          subtitle: Text(
+            context.s(subtitleKey),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
+          onTap: () => context.push(route),
+        ),
+      );
     }
 
-    // workoutMode=on → вход в редактор/трекер тренировок
-    if (ref.watch(workoutModeProvider)) {
-      tiles.add(Card(
-        child: ListTile(
-          leading: Icon(Icons.fitness_center_outlined, color: iconColor),
-          title: Text(context.s('health.workouts')),
-          subtitle: Text(context.s('health.workouts_subtitle')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () => context.push('/workouts'),
+    // Выключен → инлайн-переключатель; тоггл прямо на экране Health
+    return Card(
+      child: ListTile(
+        leading: Icon(icon, color: ext.textMuted.withValues(alpha: 0.45)),
+        title: Text(
+          context.s(titleKey),
+          style: textTheme.bodyMedium?.copyWith(
+            color: ext.textMuted,
+          ),
         ),
-      ));
-    }
-
-    // meditationLibraryMode=on → вход в библиотеку медитаций
-    if (ref.watch(meditationLibraryModeProvider)) {
-      tiles.add(Card(
-        child: ListTile(
-          leading: Icon(Icons.spa_outlined, color: iconColor),
-          title: Text(context.s('health.meditation')),
-          subtitle: Text(context.s('health.meditation_subtitle')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () => context.push('/meditation'),
+        subtitle: Text(
+          context.s(subtitleKey),
+          style: textTheme.bodySmall?.copyWith(
+            color: ext.textMuted.withValues(alpha: 0.7),
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
-      ));
-    }
-
-    // breathingEditorMode=on → вход в редактор техник дыхания
-    if (ref.watch(breathingEditorModeProvider)) {
-      tiles.add(Card(
-        child: ListTile(
-          leading: Icon(Icons.air, color: iconColor),
-          title: Text(context.s('health.breathing')),
-          subtitle: Text(context.s('health.breathing_subtitle')),
-          trailing: Icon(Icons.chevron_right, color: ext.textMuted),
-          onTap: () => context.push('/breathing'),
+        trailing: Switch.adaptive(
+          value: false,
+          onChanged: onToggle,
         ),
-      ));
-    }
+      ),
+    );
+  }
+}
 
-    return tiles;
+// ---------------------------------------------------------------------------
+// _ManageModulesRow — ссылка на Profile → Behavior для управления всеми модулями.
+// Нижний глобальный affordance: один тап → экран настроек.
+// ---------------------------------------------------------------------------
+
+class _ManageModulesRow extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => context.push('/profile/behavior'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(
+          children: [
+            Icon(Icons.tune_outlined, size: 18, color: ext.textMuted),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                context.s('health.manage_modules'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: ext.textMuted,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: ext.textMuted),
+          ],
+        ),
+      ),
+    );
   }
 }
 

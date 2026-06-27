@@ -62,13 +62,20 @@ try {
 }
 
 # --- 3. flutter run с нужным dart-define ---
+# Короткий git-хэш → показывается в Профиле как тег сборки (чтобы видеть, какая версия на телефоне).
+$buildTag = ''
+try { $buildTag = (git -C $repoRoot rev-parse --short HEAD).Trim() } catch { $buildTag = '' }
+if (-not [string]::IsNullOrEmpty($buildTag)) {
+    Write-Host "APP_BUILD_TAG:   $buildTag" -ForegroundColor Green
+}
+
 # Если устройство не указано — берём конкретный ID телефона.
 if (-not ($FlutterArgs -contains '-d')) {
     $FlutterArgs = @('-d', '69KFKRQOPJBITGC6') + $FlutterArgs
 }
 Push-Location $appDir
 try {
-    flutter run --dart-define=API_BASE_URL=$apiUrl @FlutterArgs
+    flutter run --dart-define=API_BASE_URL=$apiUrl --dart-define=APP_BUILD_TAG=$buildTag @FlutterArgs
 } finally {
     Pop-Location
 }

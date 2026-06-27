@@ -317,6 +317,75 @@ const Map<String, Map<String, String>> healthAStrings = {
   },
 
   // ---------------------------------------------------------------------------
+  // Health — Taxonomy section headers (Nutrition / Sleep / Mind / Movement)
+  // ---------------------------------------------------------------------------
+  'health.section_nutrition': {
+    'en': 'Nutrition',
+    'ru': 'Питание',
+    'de': 'Ernährung',
+    'fr': 'Nutrition',
+    'it': 'Nutrizione',
+    'pt': 'Nutrição',
+    'es': 'Nutrición',
+    'id': 'Nutrisi',
+    'hi': 'पोषण',
+    'ja': '栄養',
+    'ko': '영양',
+  },
+  'health.section_sleep': {
+    'en': 'Sleep',
+    'ru': 'Сон',
+    'de': 'Schlaf',
+    'fr': 'Sommeil',
+    'it': 'Sonno',
+    'pt': 'Sono',
+    'es': 'Sueño',
+    'id': 'Tidur',
+    'hi': 'नींद',
+    'ja': '睡眠',
+    'ko': '수면',
+  },
+  'health.section_mind': {
+    'en': 'Mind',
+    'ru': 'Разум',
+    'de': 'Geist',
+    'fr': 'Esprit',
+    'it': 'Mente',
+    'pt': 'Mente',
+    'es': 'Mente',
+    'id': 'Pikiran',
+    'hi': 'मन',
+    'ja': 'マインド',
+    'ko': '마음',
+  },
+  'health.section_movement': {
+    'en': 'Movement',
+    'ru': 'Движение',
+    'de': 'Bewegung',
+    'fr': 'Mouvement',
+    'it': 'Movimento',
+    'pt': 'Movimento',
+    'es': 'Movimiento',
+    'id': 'Gerakan',
+    'hi': 'गतिविधि',
+    'ja': '運動',
+    'ko': '움직임',
+  },
+  'health.manage_modules': {
+    'en': 'Manage Health modules',
+    'ru': 'Настройки модулей здоровья',
+    'de': 'Gesundheitsmodule verwalten',
+    'fr': 'Gérer les modules santé',
+    'it': 'Gestisci moduli salute',
+    'pt': 'Gerenciar módulos de saúde',
+    'es': 'Gestionar módulos de salud',
+    'id': 'Kelola modul kesehatan',
+    'hi': 'स्वास्थ्य मॉड्यूल प्रबंधित करें',
+    'ja': '健康モジュールを管理',
+    'ko': '건강 모듈 관리',
+  },
+
+  // ---------------------------------------------------------------------------
   // Co-study screen
   // ---------------------------------------------------------------------------
   'costudy.title': {

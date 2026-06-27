@@ -21,12 +21,23 @@ jest.mock('../../backend/src/ai/morningMessage', () => ({
 jest.mock('../../backend/src/ai/smartRedistribute', () => ({
   generateSmartPlans: jest.fn().mockResolvedValue({
     plans: [
-      { label: 'Balanced day', reason: 'spreads tasks out', items: [{ id: 'x', scheduledAt: '2026-06-10T10:00:00.000Z' }] },
+      {
+        label: 'Front-load priorities',
+        reason: 'Math exam prep (2h) → 09:00 [main priority, peak focus]; Essay draft (1h) → 12:00.',
+        items: [
+          { id: 'task-uuid-1', scheduledAt: '2026-06-10T09:00:00.000Z', title: 'Math exam prep', priority: 'main' },
+          { id: 'task-uuid-2', scheduledAt: '2026-06-10T12:00:00.000Z', title: 'Essay draft', priority: 'high' },
+        ],
+      },
     ],
   }),
 }));
 jest.mock('../../backend/src/ai/diaryInsight', () => ({
-  generateDiaryInsight: jest.fn().mockResolvedValue({ insight: 'You journal most on Sundays.' }),
+  generateDiaryInsight: jest.fn().mockResolvedValue({
+    insight: 'You journal most on Sundays.',
+    coveredFrom: '2026-06-04',
+    coveredTo: '2026-06-10',
+  }),
 }));
 jest.mock('../../backend/src/ai/wrappedSummary', () => ({
   generateWrappedSummary: jest
@@ -122,19 +133,36 @@ test('morning-message: 403 free / 200 premium with message', async () => {
   );
 });
 
-test('ai redistribute: 403 free / 200 premium with plans', async () => {
+test('ai redistribute: 403 free / 200 premium with plans; items carry title + priority', async () => {
   await expectGated(
     '/api/v1/ai/redistribute',
     { target_date: '2026-06-10' },
-    (b) => expect(Array.isArray(b['plans'])).toBe(true)
+    (b) => {
+      const plans = b['plans'] as Array<Record<string, unknown>>;
+      expect(Array.isArray(plans)).toBe(true);
+      const items = (plans[0]!['items'] as Array<Record<string, unknown>>);
+      // Новые поля — title и priority — пробрасываются из SmartPlan в ответ (ADR-057).
+      expect(items[0]!['title']).toBe('Math exam prep');
+      expect(items[0]!['priority']).toBe('main');
+      expect(items[1]!['title']).toBe('Essay draft');
+      expect(items[1]!['priority']).toBe('high');
+      // Оригинальные поля на месте.
+      expect(typeof items[0]!['id']).toBe('string');
+      expect(typeof items[0]!['scheduled_at']).toBe('string');
+    }
   );
 });
 
-test('diary-insight: 403 free / 200 premium with insight', async () => {
+test('diary-insight: 403 free / 200 premium with insight + covered date range', async () => {
   await expectGated(
     '/api/v1/ai/diary-insight',
     { tone: 'harsh' },
-    (b) => expect(typeof b['insight']).toBe('string')
+    (b) => {
+      expect(typeof b['insight']).toBe('string');
+      // Новые поля — covered_from/covered_to — диапазон анализируемых дат (ADR-057).
+      expect(b['covered_from']).toBe('2026-06-04');
+      expect(b['covered_to']).toBe('2026-06-10');
+    }
   );
 });
 

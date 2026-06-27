@@ -277,6 +277,11 @@ paths:
                             properties:
                               id: { type: string, format: uuid }
                               scheduled_at: { type: string, format: date-time }
+                              title: { type: string, description: Task title — backend-populated from DB, not from the model }
+                              priority:
+                                type: string
+                                enum: [main, high, medium, low]
+                                description: Task priority — backend-populated from DB, not from the model
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -680,13 +685,23 @@ paths:
                 tone: { $ref: '#/components/schemas/Tone' }
       responses:
         '200':
-          description: 2-3 sentence insight
+          description: 2-3 sentence insight with the analyzed date range
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   insight: { type: string }
+                  covered_from:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: Earliest diary date analyzed (YYYY-MM-DD); null when no logs exist
+                  covered_to:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: Latest diary date analyzed (YYYY-MM-DD); null when no logs exist
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 

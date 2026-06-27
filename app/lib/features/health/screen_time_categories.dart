@@ -126,15 +126,19 @@ String? androidCategoryToOurCategory(int androidCategory) {
 /// Суммирует минуты использования по пакетам в наши 6 категорий.
 ///
 /// [perPackageMinutes] — карта `packageName → minutes`.
-/// [androidCategoryOverrides] — опциональная карта `packageName → ourCategory`,
-///   которая применяется для пакетов, НЕ найденных в [kPackageToCategory].
-///   Наш явный whitelist [kPackageToCategory] всегда имеет приоритет.
-///   Если пакет не найден ни там, ни здесь — минуты идут в 'other'.
+/// [userOverrides] — наивысший приоритет: пользователь вручную переопределил
+///   категорию для конкретных пакетов. Хранится в SharedPreferences.
+/// [androidCategoryOverrides] — карта `packageName → ourCategory` от Android
+///   (CATEGORY_GAME → games и т.д.). Применяется для пакетов, НЕ найденных
+///   в [kPackageToCategory] и не имеющих [userOverrides].
+///
+/// Приоритет: userOverrides > whitelist > androidCategoryOverrides > 'other'.
 ///
 /// Возвращает карту со всеми 6 категориями (отсутствующие — 0). Чистая функция: без I/O.
 Map<String, int> categorizeUsageMinutes(
   Map<String, int> perPackageMinutes, {
   Map<String, String> androidCategoryOverrides = const <String, String>{},
+  Map<String, String> userOverrides = const <String, String>{},
 }) {
   final result = <String, int>{
     'social': 0,
@@ -147,22 +151,44 @@ Map<String, int> categorizeUsageMinutes(
   perPackageMinutes.forEach((package, minutes) {
     if (minutes <= 0) return;
 
-    // 1. Ищем в нашем явном whitelist (наиболее точная классификация).
+    // 1. Пользовательское переопределение (наивысший приоритет).
+    final userCat = userOverrides[package];
+    if (userCat != null) {
+      result[userCat] = (result[userCat] ?? 0) + minutes;
+      return;
+    }
+
+    // 2. Ищем в нашем явном whitelist (наиболее точная классификация).
     final whitelistCategory = kPackageToCategory[package];
     if (whitelistCategory != null) {
       result[whitelistCategory] = (result[whitelistCategory] ?? 0) + minutes;
       return;
     }
 
-    // 2. Ищем в переопределениях от Android (CATEGORY_GAME → games и т.д.)
+    // 3. Ищем в переопределениях от Android (CATEGORY_GAME → games и т.д.)
     final overrideCategory = androidCategoryOverrides[package];
     if (overrideCategory != null) {
       result[overrideCategory] = (result[overrideCategory] ?? 0) + minutes;
       return;
     }
 
-    // 3. Неизвестный пакет — в 'other' (минуты не теряются).
+    // 4. Неизвестный пакет — в 'other' (минуты не теряются).
     result['other'] = (result['other'] ?? 0) + minutes;
   });
   return result;
+}
+
+/// Определяет эффективную категорию одного пакета по той же цепочке приоритетов,
+/// что и [categorizeUsageMinutes]. Используется при построении per-app breakdown.
+///
+/// Приоритет: userOverrides > whitelist > androidCategoryOverrides > 'other'.
+String resolvePackageCategory(
+  String packageName, {
+  Map<String, String> androidCategoryOverrides = const <String, String>{},
+  Map<String, String> userOverrides = const <String, String>{},
+}) {
+  return userOverrides[packageName] ??
+      kPackageToCategory[packageName] ??
+      androidCategoryOverrides[packageName] ??
+      'other';
 }

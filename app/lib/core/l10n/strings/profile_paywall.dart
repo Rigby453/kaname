@@ -2144,7 +2144,49 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ko': 'Premium 전환 보너스 +2 동결!',
   },
 
-  // ---- Mood & Kai — секция пульта управления настроем ----
+  // ---- Kai — упрощённая секция (только показ и тон) ----
+  // Новые ключи для компактного _KaiSettingsSection (заменил громоздкий «Mood & Kai» пульт).
+  'profile.section_kai': {
+    'en': 'Kai',
+    'ru': 'Kai',
+    'de': 'Kai',
+    'fr': 'Kai',
+    'it': 'Kai',
+    'pt': 'Kai',
+    'es': 'Kai',
+    'id': 'Kai',
+    'hi': 'Kai',
+    'ja': 'Kai',
+    'ko': 'Kai',
+  },
+  'profile.kai_tone': {
+    'en': 'Tone',
+    'ru': 'Тон',
+    'de': 'Ton',
+    'fr': 'Ton',
+    'it': 'Tono',
+    'pt': 'Tom',
+    'es': 'Tono',
+    'id': 'Nada',
+    'hi': 'लहजा',
+    'ja': 'トーン',
+    'ko': '말투',
+  },
+  'profile.kai_tone_subtitle': {
+    'en': 'How Kai talks to you',
+    'ru': 'Как Kai с тобой общается',
+    'de': 'Wie Kai mit dir spricht',
+    'fr': 'Comment Kai te parle',
+    'it': 'Come Kai ti parla',
+    'pt': 'Como Kai fala com você',
+    'es': 'Cómo te habla Kai',
+    'id': 'Bagaimana Kai berbicara padamu',
+    'hi': 'Kai तुमसे कैसे बात करता है',
+    'ja': 'Kaiがあなたに話しかける方法',
+    'ko': 'Kai가 당신에게 말하는 방식',
+  },
+
+  // ---- Mood & Kai — устаревшая секция пульта (ключи сохранены для совместимости) ----
   'profile.section_mood_kai': {
     'en': 'Mood & Kai',
     'ru': 'Настрой и Kai',
@@ -3040,5 +3082,20 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'hi': '3 प्रीसेट के अलावा कस्टम श्वास पैटर्न बनाओ',
     'ja': '3つのプリセット以外のカスタム呼吸パターンを作成',
     'ko': '3개 프리셋 외에 맞춤 호흡 패턴 생성',
+  },
+
+  // ---- Profile: подвал с версией приложения ----
+  'profile.version_label': {
+    'en': 'Version',
+    'ru': 'Версия',
+    'de': 'Version',
+    'fr': 'Version',
+    'it': 'Versione',
+    'pt': 'Versão',
+    'es': 'Versión',
+    'id': 'Versi',
+    'hi': 'संस्करण',
+    'ja': 'バージョン',
+    'ko': '버전',
   },
 };

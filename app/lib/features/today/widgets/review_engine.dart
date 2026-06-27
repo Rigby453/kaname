@@ -9,12 +9,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
 
+/// Одна перестановка задачи в AI-плане — для отображения деталей в карточке.
+/// Поля [title] и [priority] могут быть пустыми (старый бэкенд без этих полей).
+class PlanMove {
+  const PlanMove({
+    required this.title,
+    required this.priority,
+    required this.at,
+  });
+
+  /// Название задачи из ответа AI. Пустая строка если старый бэкенд.
+  final String title;
+
+  /// Приоритет: 'main', 'high', 'medium', 'low' или '' (старый бэкенд).
+  final String priority;
+
+  /// Новое время задачи (локальное).
+  final DateTime at;
+}
+
 /// Вариант раскладки: подпись, обоснование и карта itemId → новое время.
+/// [moves] заполняется только у AI-вариантов (ADR-057); у rule-based — null.
 class PlanVariant {
-  const PlanVariant(this.label, this.reason, this.assign);
+  const PlanVariant(this.label, this.reason, this.assign, {this.moves});
   final String label;
   final String reason;
+
+  /// Карта itemId → новое scheduledAt. Используется в applyVariant (Drift).
   final Map<String, DateTime> assign;
+
+  /// Детали AI-перестановок для развёрнутого отображения. null у rule-based.
+  final List<PlanMove>? moves;
 }
 
 int priorityWeight(String p) => switch (p) {
@@ -274,13 +299,16 @@ Future<void> applyVariant(WidgetRef ref, PlanVariant variant) async {
   }
 }
 
-/// Ответ /ai/redistribute (plans:[{label, reason, items:[{id, scheduled_at}]}])
-/// → список PlanVariant. scheduled_at (ISO 8601) приводим к локальному времени.
+/// Ответ /ai/redistribute (plans:[{label, reason, items:[{id, scheduled_at,
+/// title?, priority?}]}]) → список PlanVariant.
+/// scheduled_at (ISO 8601) приводим к локальному времени.
+/// Поля title/priority (ADR-057) читаем null-safe: старый бэкенд их не шлёт.
 List<PlanVariant> mapAiPlans(List<dynamic> raw) {
   final result = <PlanVariant>[];
   for (final p in raw) {
     if (p is! Map) continue;
     final assign = <String, DateTime>{};
+    final moves = <PlanMove>[];
     final items = p['items'];
     if (items is List) {
       for (final it in items) {
@@ -289,7 +317,16 @@ List<PlanVariant> mapAiPlans(List<dynamic> raw) {
         final at = it['scheduled_at'] as String?;
         if (id == null || at == null) continue;
         final dt = DateTime.tryParse(at);
-        if (dt != null) assign[id] = dt.toLocal();
+        if (dt != null) {
+          final localDt = dt.toLocal();
+          assign[id] = localDt;
+          // title и priority — новые поля (ADR-057). Старый бэкенд → пустые строки.
+          moves.add(PlanMove(
+            title: (it['title'] as String?) ?? '',
+            priority: (it['priority'] as String?) ?? '',
+            at: localDt,
+          ));
+        }
       }
     }
     if (assign.isEmpty) continue;
@@ -297,6 +334,8 @@ List<PlanVariant> mapAiPlans(List<dynamic> raw) {
       (p['label'] as String?) ?? 'AI plan',
       (p['reason'] as String?) ?? '',
       assign,
+      // Передаём moves только если есть элементы; иначе null (нет нового бэкенда).
+      moves: moves.isEmpty ? null : moves,
     ));
   }
   return result;
