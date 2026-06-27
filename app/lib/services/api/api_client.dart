@@ -23,6 +23,10 @@ const _kBaseUrl = String.fromEnvironment(
 const _kTokenKey = 'auth_token';
 const _kLastSyncAtKey = 'last_sync_at';
 
+// ИИ-генерация на Render (холодный старт + Gemini) может занимать существенно дольше
+// обычных запросов. Передаём этот receiveTimeout пер-реквест в Options для /ai/* генераций.
+const _aiReceiveTimeout = Duration(seconds: 120);
+
 // ---------------------------------------------------------------------------
 // Исключение API
 // ---------------------------------------------------------------------------
@@ -49,8 +53,8 @@ class ApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: _kBaseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 45),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -483,6 +487,7 @@ class ApiClient {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/food-recognize',
         data: {'image_base64': imageBase64, 'media_type': mediaType},
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return response.data!;
     } on DioException catch (e) {
@@ -505,6 +510,7 @@ class ApiClient {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/wrapped-summary',
+        options: Options(receiveTimeout: _aiReceiveTimeout),
         data: {
           'period_days': periodDays,
           'tasks_done': tasksDone,
@@ -572,6 +578,7 @@ class ApiClient {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/menu-build',
         data: body,
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return response.data!;
     } on DioException catch (e) {
@@ -618,6 +625,7 @@ class ApiClient {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/workout-build',
         data: body,
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return response.data!;
     } on DioException catch (e) {
@@ -640,6 +648,7 @@ class ApiClient {
           'media_type': mediaType,
           'target_date': targetDate,
         },
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return (response.data?['items'] as List<dynamic>?) ?? <dynamic>[];
     } on DioException catch (e) {
@@ -661,6 +670,7 @@ class ApiClient {
           'tone': tone,
           'user_name': ?userName,
         },
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return (response.data?['message'] as String?) ?? '';
     } on DioException catch (e) {
@@ -674,6 +684,7 @@ class ApiClient {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/redistribute',
         data: {'target_date': targetDate},
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return (response.data?['plans'] as List<dynamic>?) ?? <dynamic>[];
     } on DioException catch (e) {
@@ -687,6 +698,7 @@ class ApiClient {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/diary-insight',
         data: {'tone': tone},
+        options: Options(receiveTimeout: _aiReceiveTimeout),
       );
       return (response.data?['insight'] as String?) ?? '';
     } on DioException catch (e) {
