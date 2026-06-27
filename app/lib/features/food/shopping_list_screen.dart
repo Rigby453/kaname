@@ -107,14 +107,15 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
   Widget build(BuildContext context) {
     final items = ref.watch(_shoppingListProvider).valueOrNull ?? const [];
     final hasChecked = items.any((i) => i.checked);
+    // Считаем количество отмеченных для подписи кнопки «Убрать купленные (N)»
+    final checkedCount = items.where((i) => i.checked).length;
     final ext = Theme.of(context).extension<FocusThemeExtension>();
 
     return Scaffold(
       appBar: AppBar(
         title: Text(context.s('food.shopping_list_title')),
         actions: [
-          // «Clear checked» — виден только если есть отмеченные позиции
-          // TextButton (лёгкое действие) — не нужен FilledButton
+          // Дублируем в AppBar для пользователей, которые привыкли искать действия там
           if (hasChecked)
             TextButton(
               onPressed: () async {
@@ -166,6 +167,18 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
           // --- Секция «Рекомендуется» (скрыта, если предложений нет) ---
           const _SuggestedSection(),
 
+          // --- БАГ-4: заметная кнопка «Убрать купленные (N)» ---
+          // Появляется ТОЛЬКО когда есть отмеченные позиции.
+          // Дублирует логику AppBar-кнопки, но визуально доминирует на экране.
+          if (hasChecked)
+            _ClearCheckedBanner(
+              key: const ValueKey('clear_checked_banner'),
+              count: checkedCount,
+              onClear: () async {
+                await ref.read(shoppingDaoProvider).clearChecked();
+              },
+            ),
+
           // --- Список / пустое состояние ---
           Expanded(
             child: items.isEmpty
@@ -185,6 +198,57 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Баннер «Убрать купленные (N)» — БАГ-4
+// ---------------------------------------------------------------------------
+
+/// Полноширинная кнопка-баннер над списком. Появляется только если есть
+/// отмеченные позиции. FilledButton.tonal — вторичное действие (не primary),
+/// но визуально доминирует над AppBar-TextButton.
+class _ClearCheckedBanner extends StatelessWidget {
+  const _ClearCheckedBanner({
+    super.key,
+    required this.count,
+    required this.onClear,
+  });
+
+  final int count;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      // 16dp горизонтальный отступ — визуально отделяем от краёв, но шире обычного
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.tonal(
+          key: const ValueKey('clear_checked_btn'),
+          onPressed: onClear,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_outline, size: 18),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  context
+                      .s('food.clear_checked_n')
+                      .replaceFirst('{n}', '$count'),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

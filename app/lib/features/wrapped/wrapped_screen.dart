@@ -204,7 +204,10 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
         context.s('wrapped.stat_avg_mood'),
         '$moodStr / 5'
       ),
-      (Icons.water_drop, context.s('wrapped.stat_water'), '${s.waterMl} ml'),
+      // БАГ-3: показываем среднее/день, а не суммарный объём за период.
+      // waterMl — сумма за _days дней; делим на _days как и в diary._LifeInsightsCard.
+      (Icons.water_drop, context.s('wrapped.stat_water_avg'),
+          '${_days > 0 ? (s.waterMl / _days).round() : 0} ml'),
       (
         Icons.error_outline,
         context.s('wrapped.stat_top_setback'),

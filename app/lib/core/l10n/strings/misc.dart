@@ -1701,6 +1701,20 @@ const Map<String, Map<String, String>> miscStrings = {
     'ja': '水分',
     'ko': '수분',
   },
+  // Подпись плитки воды в Wrapped — среднее в день, не сумма (БАГ-3)
+  'wrapped.stat_water_avg': {
+    'en': 'Water avg/day',
+    'ru': 'Вода ср/день',
+    'de': 'Wasser Ø/Tag',
+    'fr': 'Eau moy/jour',
+    'it': 'Acqua media/giorno',
+    'pt': 'Água méd/dia',
+    'es': 'Agua prom/día',
+    'id': 'Air rata-rata/hari',
+    'hi': 'पानी औसत/दिन',
+    'ja': '水分 平均/日',
+    'ko': '수분 평균/일',
+  },
   'wrapped.stat_top_setback': {
     'en': 'Top setback',
     'ru': 'Главный сбой',

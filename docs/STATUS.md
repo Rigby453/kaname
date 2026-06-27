@@ -4,6 +4,19 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Сводка для пользователя (обновлено 2026-06-27, баги food_screen)
+
+- **[x] Bug 1 — ИИ-фото: выбор совпадения не работал.** В `_FoodSearchSheetState.build()` ветка «Недавнее» срабатывала при `_controller.text.isEmpty`, перекрывая результаты ИИ-фото (поле пустое, но `_results` непустые). Фикс: добавлено `&& _results.isEmpty` в условие. Теперь при наличии AI-результатов отрисовывается ListView совпадений, тап открывает диалог порции.
+- **[x] Bug 2 — Хардкод английских строк в `food_screen.dart`.** Заменено на l10n:
+  - `'AI: $dish (…%) — pick a match'` → `food.ai_photo_match` {dish}/{pct}
+  - `'AI: $dish (…%)'` → `food.ai_photo_recognized` {dish}/{pct}
+  - `'$kcal kcal / 100g'` в subtitle поиска → `food.kcal_per_100g` {kcal}
+  - `'Sugar … / … g'` и `'Fiber … / … g'` в TotalsCard → `food.totals_sugar_line`/`food.totals_fiber_line` {val}/{max}
+  - `'Product not found for barcode …'` → ключ `food.barcode_not_found`
+  - Добавлено 6 новых ключей × 11 языков в `core/l10n/strings/food.dart`.
+  - Gate A (`rg`) → 0 хитов в `food_screen.dart` после правки.
+- **[x] Тест.** Новый `test/food_search_sheet_display_test.dart` (3 теста): проверяет отрисовку списка совпадений при `_results != []` + пустом поле, отсутствие «Недавнее» при результатах, открытие диалога порции по тапу. Все зелёные. `flutter analyze lib/` → 0.
+
 ## Сводка для пользователя (обновлено 2026-06-27, эпик «план как позвоночник» + синк доков)
 
 - **Эпик «план как позвоночник» — реализован в коде; продуктовые/UX-доки приведены в соответствие:**

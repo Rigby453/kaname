@@ -741,6 +741,20 @@ const Map<String, Map<String, String>> foodStrings = {
     'ja': 'チェック済みを削除',
     'ko': '체크된 항목 지우기',
   },
+  // Кнопка-баннер «Убрать купленные (N)» — появляется только при наличии отмеченных (БАГ-4)
+  'food.clear_checked_n': {
+    'en': 'Clear purchased ({n})',
+    'ru': 'Убрать купленные ({n})',
+    'de': 'Gekaufte löschen ({n})',
+    'fr': 'Effacer achetés ({n})',
+    'it': 'Rimuovi acquistati ({n})',
+    'pt': 'Limpar comprados ({n})',
+    'es': 'Limpiar comprados ({n})',
+    'id': 'Hapus yang dibeli ({n})',
+    'hi': 'खरीदे गए हटाएं ({n})',
+    'ja': '購入済みを削除 ({n})',
+    'ko': '구매 완료 삭제 ({n})',
+  },
   'food.shopping_add_hint': {
     'en': 'Add item…',
     'ru': 'Добавить позицию…',
@@ -1391,5 +1405,104 @@ const Map<String, Map<String, String>> foodStrings = {
     'hi': 'कैमरे को उत्पाद के बारकोड की ओर करें',
     'ja': 'カメラを商品のバーコードに向けてください',
     'ko': '카메라를 제품 바코드에 갖다 대세요',
+  },
+
+  // ---------------------------------------------------------------------------
+  // ИИ-фото: подпись распознавания (aiNote)
+  // {dish} — название блюда; {pct} — уверенность в процентах (целое число).
+  // ---------------------------------------------------------------------------
+
+  /// Блюдо распознано, бэкенд вернул продукты-совпадения → «выбери совпадение»
+  'food.ai_photo_match': {
+    'en': 'AI: {dish} ({pct}%) — pick a match',
+    'ru': 'ИИ: {dish} ({pct}%) — выбери совпадение',
+    'de': 'KI: {dish} ({pct}%) — Treffer auswählen',
+    'fr': 'IA : {dish} ({pct}%) — choisir une correspondance',
+    'it': 'IA: {dish} ({pct}%) — scegli una corrispondenza',
+    'pt': 'IA: {dish} ({pct}%) — escolha uma correspondência',
+    'es': 'IA: {dish} ({pct}%) — elige una coincidencia',
+    'id': 'AI: {dish} ({pct}%) — pilih kecocokan',
+    'hi': 'AI: {dish} ({pct}%) — कोई मिलान चुनें',
+    'ja': 'AI: {dish}（{pct}%）— 一致する商品を選んでください',
+    'ko': 'AI: {dish} ({pct}%) — 일치 항목 선택',
+  },
+
+  /// Блюдо распознано, продукты не найдены → имя подставляется в поиск
+  'food.ai_photo_recognized': {
+    'en': 'AI: {dish} ({pct}%)',
+    'ru': 'ИИ: {dish} ({pct}%)',
+    'de': 'KI: {dish} ({pct}%)',
+    'fr': 'IA : {dish} ({pct}%)',
+    'it': 'IA: {dish} ({pct}%)',
+    'pt': 'IA: {dish} ({pct}%)',
+    'es': 'IA: {dish} ({pct}%)',
+    'id': 'AI: {dish} ({pct}%)',
+    'hi': 'AI: {dish} ({pct}%)',
+    'ja': 'AI: {dish}（{pct}%）',
+    'ko': 'AI: {dish} ({pct}%)',
+  },
+
+  // ---------------------------------------------------------------------------
+  // Калории на 100 г — подпись в результатах поиска
+  // {kcal} — целое число ккал.
+  // ---------------------------------------------------------------------------
+  'food.kcal_per_100g': {
+    'en': '{kcal} kcal / 100 g',
+    'ru': '{kcal} ккал / 100 г',
+    'de': '{kcal} kcal / 100 g',
+    'fr': '{kcal} kcal / 100 g',
+    'it': '{kcal} kcal / 100 g',
+    'pt': '{kcal} kcal / 100 g',
+    'es': '{kcal} kcal / 100 g',
+    'id': '{kcal} kkal / 100 g',
+    'hi': '{kcal} कैल / 100 ग',
+    'ja': '{kcal} kcal / 100 g',
+    'ko': '{kcal} kcal / 100 g',
+  },
+
+  // ---------------------------------------------------------------------------
+  // Строки карточки «Итоги дня» (_TotalsCard):
+  // Сахар и Клетчатка — с форматом {val} / {max}.
+  // ---------------------------------------------------------------------------
+  'food.totals_sugar_line': {
+    'en': 'Sugar {val} / {max} g',
+    'ru': 'Сахар {val} / {max} г',
+    'de': 'Zucker {val} / {max} g',
+    'fr': 'Sucre {val} / {max} g',
+    'it': 'Zucchero {val} / {max} g',
+    'pt': 'Açúcar {val} / {max} g',
+    'es': 'Azúcar {val} / {max} g',
+    'id': 'Gula {val} / {max} g',
+    'hi': 'शुगर {val} / {max} ग',
+    'ja': '糖質 {val} / {max} g',
+    'ko': '당 {val} / {max} g',
+  },
+  'food.totals_fiber_line': {
+    'en': 'Fiber {val} / {max} g',
+    'ru': 'Клетчатка {val} / {max} г',
+    'de': 'Ballaststoffe {val} / {max} g',
+    'fr': 'Fibres {val} / {max} g',
+    'it': 'Fibre {val} / {max} g',
+    'pt': 'Fibras {val} / {max} g',
+    'es': 'Fibra {val} / {max} g',
+    'id': 'Serat {val} / {max} g',
+    'hi': 'फाइबर {val} / {max} ग',
+    'ja': '食物繊維 {val} / {max} g',
+    'ko': '식이섬유 {val} / {max} g',
+  },
+
+  // Ошибка штрихкода: продукт не найден в базе
+  'food.barcode_not_found': {
+    'en': 'Product not found for this barcode',
+    'ru': 'Продукт по штрихкоду не найден',
+    'de': 'Kein Produkt für diesen Barcode gefunden',
+    'fr': 'Produit introuvable pour ce code-barres',
+    'it': 'Prodotto non trovato per questo codice a barre',
+    'pt': 'Produto não encontrado para este código de barras',
+    'es': 'Producto no encontrado para este código de barras',
+    'id': 'Produk tidak ditemukan untuk kode batang ini',
+    'hi': 'इस बारकोड के लिए कोई उत्पाद नहीं मिला',
+    'ja': 'このバーコードに対応する商品が見つかりません',
+    'ko': '이 바코드에 해당하는 제품을 찾을 수 없어요',
   },
 };

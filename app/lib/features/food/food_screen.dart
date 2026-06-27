@@ -602,7 +602,11 @@ class _TotalsCard extends ConsumerWidget {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    'Sugar ${g(totals.sugar)} / ${targets.sugarMaxG} g',
+                    // Bug gate A: «Sugar» было хардкодом; теперь food.totals_sugar_line
+                    context
+                        .s('food.totals_sugar_line')
+                        .replaceFirst('{val}', g(totals.sugar))
+                        .replaceFirst('{max}', '${targets.sugarMaxG}'),
                     style: textTheme.bodySmall?.copyWith(color: emberColor),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -612,7 +616,11 @@ class _TotalsCard extends ConsumerWidget {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    'Fiber ${g(totals.fiber)} / ${targets.fiberG} g',
+                    // Bug gate A: «Fiber» было хардкодом; теперь food.totals_fiber_line
+                    context
+                        .s('food.totals_fiber_line')
+                        .replaceFirst('{val}', g(totals.fiber))
+                        .replaceFirst('{max}', '${targets.fiberG}'),
                     style: textTheme.bodySmall?.copyWith(color: mutedColor),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -728,8 +736,42 @@ Future<void> _showSearchSheet(BuildContext context) {
   );
 }
 
+/// [ТОЛЬКО ДЛЯ ТЕСТОВ] Открывает лист поиска с предустановленными результатами
+/// и подписью ИИ, симулируя состояние после успешного ИИ-фото-распознавания
+/// (пустое поле + непустые _results + _aiNote).
+/// Используется в food_search_sheet_display_test.dart.
+@visibleForTesting
+Future<void> showFoodSearchSheetWithPreset(
+  BuildContext context, {
+  required List<Map<String, dynamic>> presetResults,
+  String? presetAiNote,
+}) {
+  return showAppSheet<void>(
+    context,
+    isScrollControlled: true,
+    builder: (_) => _FoodSearchSheet(
+      testResults: presetResults,
+      testAiNote: presetAiNote,
+    ),
+  );
+}
+
 class _FoodSearchSheet extends ConsumerStatefulWidget {
-  const _FoodSearchSheet();
+  const _FoodSearchSheet({
+    // Параметры только для тестов — позволяют симулировать состояние
+    // «пустое поле + результаты ИИ-фото» без запуска камеры.
+    @visibleForTesting List<Map<String, dynamic>>? testResults,
+    @visibleForTesting this.testAiNote,
+  }) : testResults = testResults ?? const [];
+
+  /// Предустановленные результаты (симуляция ИИ-фото для тестов).
+  @visibleForTesting
+  final List<Map<String, dynamic>> testResults;
+
+  /// Предустановленная подпись ИИ (симуляция ИИ-фото для тестов).
+  @visibleForTesting
+  final String? testAiNote;
+
   @override
   ConsumerState<_FoodSearchSheet> createState() => _FoodSearchSheetState();
 }
@@ -781,6 +823,12 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
   @override
   void initState() {
     super.initState();
+    // Тест-инъекция: предустановленные результаты (симуляция ИИ-фото).
+    // В продакшне testResults всегда [] — ветка не выполняется.
+    if (widget.testResults.isNotEmpty) {
+      _results = List.from(widget.testResults);
+      _aiNote = widget.testAiNote;
+    }
     // Загружаем недавние продукты в фоне сразу при открытии листа
     _loadRecent();
   }
@@ -1056,8 +1104,10 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                   style: textTheme.bodyMedium?.copyWith(color: mutedColor),
                 ),
               )
-            // Когда запрос пустой — показываем «Недавнее» (Task 2)
-            else if (_controller.text.trim().isEmpty && _recentLoaded)
+            // Когда запрос пустой И нет результатов AI-фото — показываем «Недавнее» (Task 2).
+            // _results.isEmpty обязателен: без него AI-фото кладёт продукты в _results при
+            // пустом поле, но ветка «Недавнее» перекрывала список совпадений (Bug 1).
+            else if (_controller.text.trim().isEmpty && _recentLoaded && _results.isEmpty)
               _recentLogs.isEmpty
                   ? const SizedBox.shrink()
                   : Flexible(
@@ -1124,7 +1174,10 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
                       subtitle: Text(
                         [
                           if (p['brand'] != null) p['brand'] as String,
-                          if (kcal != null) '$kcal kcal / 100g',
+                          if (kcal != null)
+                            context
+                                .s('food.kcal_per_100g')
+                                .replaceFirst('{kcal}', '$kcal'),
                         ].join(' · '),
                         style: textTheme.bodySmall?.copyWith(color: mutedColor),
                       ),
@@ -1199,14 +1252,20 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
 
       if (products.isNotEmpty) {
         setState(() {
-          _aiNote = 'AI: $dish (${(confidence * 100).round()}%) — pick a match';
+          // Bug 2a/2b fix: заменяем хардкод на l10n (food.ai_photo_match)
+          _aiNote = context
+              .s('food.ai_photo_match')
+              .replaceFirst('{dish}', dish)
+              .replaceFirst('{pct}', '${(confidence * 100).round()}');
           _results = products;
         });
       } else if (dish.isNotEmpty) {
         // База не нашла соответствий — подставляем блюдо в поиск
         _controller.text = dish;
-        setState(() =>
-            _aiNote = 'AI: $dish (${(confidence * 100).round()}%)');
+        setState(() => _aiNote = context
+            .s('food.ai_photo_recognized')
+            .replaceFirst('{dish}', dish)
+            .replaceFirst('{pct}', '${(confidence * 100).round()}'));
         await _search();
       } else {
         // Ключ локализации; резолвится в build через context.s()
@@ -1234,7 +1293,8 @@ class _FoodSearchSheetState extends ConsumerState<_FoodSearchSheet> {
       final product = await ref.read(apiClientProvider).foodBarcode(code);
       if (!mounted) return;
       if (product == null) {
-        setState(() => _error = 'Product not found for barcode $code');
+        // l10n-ключ; context.s() резолвит его в build
+        setState(() => _error = 'food.barcode_not_found');
       } else {
         setState(() => _results = [product]);
         await _addProduct(product);
