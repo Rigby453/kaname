@@ -48,8 +48,8 @@
 | A1 | Иконка приложения = дефолтная флаттеровская «F» | 🔴 | ios/android/web mipmaps | дизайн логотипа → `flutter_launcher_icons` генерит все плотности | 🧑 логотип |
 | A2 | Android release подписан **debug-ключом** | 🔴 | `android/app/build.gradle.kts:35` | сгенерить upload-keystore + `key.properties` + release signingConfig | 🧑 пароль keystore |
 | A3 | Реальных платежей нет (`StubPurchaseService`) | 🔴 | `purchase_service.dart:54` | RevenueCat (iOS/Android) + ЮKassa/Stripe (web) | 🧑 аккаунты+ключи |
-| A4 | Бэкенд не задеплоен на Render | 🔴 | `render.yaml` готов | создать сервис + 9 секретов | 🧑 аккаунт Render |
-| A5 | Web/Pages не включён + деплоит устаревший `main` | 🔴 | `.github/workflows/deploy-web.yml` | влить `test/integration`→`main`, включить Pages, задать `API_BASE_URL` | 🧑 клики |
+| A4 | Бэкенд на Render | ✅ (2026-06-27, проверено) | `https://kaizen-backend-d5fr.onrender.com` | `/health` → `{"status":"ok"}`; free-tier спит → 1-й запрос холодный ~30с. Проверить `ALLOWED_ORIGINS` + `API_BASE_URL` | — |
+| A5 | Web/Pages | ✅ (2026-06-27, проверено) | `.github/workflows/deploy-web.yml` | лендинг живой на https://rigby453.github.io/glavnoe/ , ссылка на `app/` на месте | — |
 | A6 | Сброс пароля по почте без SMTP в проде | 🟡→🔴 | `auth-reset.ts:62` | подключить SMTP/SES | — |
 | A7 | `ALLOWED_EMAIL_DOMAINS` не задан → фильтр 406-ФЗ не определён | 🟡 | секрет Render | задать значение | 🧑 |
 | A8 | iOS сборка | 📱 | KaizenWidget вне Xcode | Mac + Xcode target + Apple Dev acct | 📱🧑 |
