@@ -353,10 +353,17 @@ class _TaskListState extends ConsumerState<TaskList>
     final dao = ref.read(itemsDaoProvider);
     final isVirtual = isVirtualOccurrenceId(item.id);
     String? targetId = item.id;
+    // Для виртуального повтора запоминаем anchorId и дату, чтобы Undo мог
+    // удалить конкретную строку и снять EXDATE (чистый откат материализации).
+    String? virtualAnchorId;
+    DateTime? virtualDate;
+
     if (isVirtual) {
+      virtualAnchorId = anchorIdFromVirtual(item.id);
+      virtualDate = dateFromVirtual(item.id) ?? item.scheduledAt;
       targetId = await dao.materializeOccurrence(
-        anchorIdFromVirtual(item.id),
-        dateFromVirtual(item.id) ?? item.scheduledAt,
+        virtualAnchorId,
+        virtualDate,
         status: 'done',
       );
     } else {
@@ -364,18 +371,38 @@ class _TaskListState extends ConsumerState<TaskList>
       // Выполненной задаче напоминание больше не нужно — снимаем.
       await ref.read(notificationServiceProvider).cancelTaskReminder(item.id);
     }
+
     // §3.1: тост «задача выполнена» с кнопкой Undo (отмена завершения).
     if (context.mounted && targetId != null) {
       final undoId = targetId;
+      final capturedAnchorId = virtualAnchorId;
+      final capturedDate = virtualDate;
+
       showAppToast(
         context,
         variant: AppToastVariant.done,
         message: '"${item.title}" ${context.s('today.marked_done')}',
         onUndo: () async {
-          await ref.read(itemsDaoProvider).updateItem(
-                undoId,
-                const ItemsTableCompanion(status: Value('pending')),
-              );
+          final d = ref.read(itemsDaoProvider);
+          if (capturedAnchorId != null && capturedDate != null) {
+            // Виртуальный повтор: удаляем материализованную строку и снимаем
+            // дату из EXDATE — виртуальное вхождение снова появится в списке.
+            await d.undoMaterializeOccurrence(
+              anchorId: capturedAnchorId,
+              date: capturedDate,
+              concreteId: undoId,
+            );
+          } else {
+            // Обычная задача: возвращаем в pending с обновлением updatedAt
+            // (важно для LWW-синхронизации — prevents server overwriting local undo).
+            await d.updateItem(
+              undoId,
+              ItemsTableCompanion(
+                status: const Value('pending'),
+                updatedAt: Value(DateTime.now()),
+              ),
+            );
+          }
         },
       );
     }

@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import 'constants.dart';
+import '../l10n/app_strings.dart';
 
 // ---------------------------------------------------------------------------
 // Публичный enum вариантов
@@ -271,7 +272,7 @@ class _AppToastOverlayState extends State<_AppToastOverlay>
                       widget.onUndo!();
                       widget.onDismiss();
                     },
-                    child: const Text('Undo'),
+                    child: Text(context.s('common.undo')),
                   ),
                 ],
               ],

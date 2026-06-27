@@ -418,6 +418,18 @@ String? setUntilOnRule(String? raw, DateTime until) {
   return rule.copyWith(until: until).toRuleString();
 }
 
+/// Убирает [day] из EXDATE правила [raw] (симметрично addExDateToRule).
+/// Если [raw] не является серией или [day] отсутствует в EXDATE — возвращает [raw].
+/// Используется при «undo» материализации: восстанавливает виртуальный повтор.
+String? removeExDateFromRule(String? raw, DateTime day) {
+  final rule = RecurrenceRule.parse(raw);
+  if (rule == null) return raw;
+  final normalized = _dateOnly(day);
+  if (!rule.exDates.contains(normalized)) return raw;
+  final next = rule.exDates.where((d) => d != normalized).toSet();
+  return rule.copyWith(exDates: next).toRuleString();
+}
+
 // ---------------------------------------------------------------------------
 // Удобные конструкторы правил (для UI и будущего NL-парсера).
 // Парсер фразы вроде «каждый понедельник» может собрать правило этими функциями.

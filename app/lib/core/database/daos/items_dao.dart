@@ -9,7 +9,12 @@ import 'package:drift/drift.dart';
 import '../database.dart';
 import '../../utils/day_window.dart';
 import '../../utils/id.dart';
-import '../../../features/plan/recurrence.dart';
+import '../../../features/plan/recurrence.dart'
+    show
+        RecurrenceRule,
+        addExDateToRule,
+        removeExDateFromRule,
+        setUntilOnRule;
 import '../../../services/sound/completion_sound_service.dart';
 
 part 'items_dao.g.dart';
@@ -539,6 +544,36 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
       if (r.title == anchor.title) return r;
     }
     return rows.first;
+  }
+
+  /// Полное «undo» материализации виртуального повтора:
+  ///   1. Удаляет concrete-строку [concreteId] (созданную materializeOccurrence).
+  ///   2. Убирает [date] из EXDATE якоря [anchorId] — виртуальный повтор снова
+  ///      появится в expandedDayItemsProvider для этого дня.
+  ///
+  /// Если якорь не найден или [date] уже не в EXDATE — всё равно удаляет
+  /// concrete-строку (best-effort, без броска исключений).
+  Future<void> undoMaterializeOccurrence({
+    required String anchorId,
+    required DateTime date,
+    required String concreteId,
+  }) async {
+    // Удаляем конкретную строку (добавляет tombstone в sync_queue — безопасно,
+    // сервер вернёт 404, что sync-сервис корректно игнорирует).
+    await deleteItem(concreteId);
+
+    // Снимаем дату из EXDATE якоря — виртуальный повтор снова появится.
+    final anchor = await getItemById(anchorId);
+    if (anchor == null) return;
+    final updatedRule = removeExDateFromRule(anchor.recurrenceRule, date);
+    if (updatedRule == anchor.recurrenceRule) return; // даты не было — ничего не делаем
+    await updateItem(
+      anchorId,
+      ItemsTableCompanion(
+        recurrenceRule: Value(updatedRule),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   /// Останавливает серию [anchorId]: ставит UNTIL = день ПЕРЕД [day]
