@@ -86,32 +86,34 @@ describe('POST /api/v1/auth/register — email', () => {
     expect(body.error).toBe('Email or phone already exists');
   });
 
-  test('foreign email domain (gmail.com) → 400', async () => {
+  // Любая почта разрешена по умолчанию (406-ФЗ про OAuth-сервисы, не про адрес-строку).
+  // Ограничить можно через env ALLOWED_EMAIL_DOMAINS.
+  test('foreign email domain (gmail.com) → allowed (201)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
       payload: {
-        email: 'someone@gmail.com',
+        email: `gmail_${Date.now()}@gmail.com`,
         password: 'TestPass1!',
         name: 'Foreign User',
       },
     });
-    expect(res.statusCode).toBe(400);
-    const body = res.json<{ error: string }>();
-    expect(typeof body.error).toBe('string');
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{ access_token?: string }>();
+    expect(typeof body.access_token).toBe('string');
   });
 
-  test('another foreign domain (example.com) → 400', async () => {
+  test('another foreign domain (example.com) → allowed (201)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
       payload: {
-        email: 'user@example.com',
+        email: `ex_${Date.now()}@example.com`,
         password: 'TestPass1!',
         name: 'Example User',
       },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(201);
   });
 });
 

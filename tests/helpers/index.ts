@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import prisma from '../../backend/src/models/prisma';
 
-// Генерирует случайный email с российским доменом (mail.ru) для изоляции тестов
-// (иностранные домены типа example.com/gmail.com отклоняются бэкендом — 406-ФЗ)
+// Генерирует случайный email для изоляции тестов. Домен mail.ru — исторически;
+// по умолчанию бэкенд пускает ЛЮБОЙ домен (ограничение только через env
+// ALLOWED_EMAIL_DOMAINS). 406-ФЗ касается OAuth-сервисов, не адреса-строки.
 export function randomEmail(): string {
   return `test_${Date.now()}_${Math.random().toString(36).slice(2)}@mail.ru`;
 }
