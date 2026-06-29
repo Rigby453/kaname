@@ -39,8 +39,12 @@ dependencies:
   # Fonts
   google_fonts: ^6.2.0
 
-  # Иконки Phosphor (Kaname redesign, Phase 1; используется начиная с Phase 2)
-  phosphor_flutter: ^2.1.0
+  # Иконки Phosphor (Kaname redesign, Phase 1; используется начиная с Phase 2).
+  # Вендорнуто локально (third_party/) и пропатчено: upstream 2.1.0 расширял
+  # `IconData`, который во Flutter 3.44+ (Dart 3.9) стал final-классом → CFE-ошибка.
+  # Патч делает иконки обычными IconData. См. third_party/phosphor_flutter/lib/src/phosphor_icon_data.dart
+  phosphor_flutter:
+    path: third_party/phosphor_flutter
 
   # Internationalisation
   intl: ^0.20.2

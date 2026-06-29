@@ -397,9 +397,7 @@ class _KaiReviewRowState extends ConsumerState<_KaiReviewRow> {
               const SizedBox(width: 4),
               AnimatedRotation(
                 turns: _expanded ? 0.25 : 0.0,
-                duration: Duration(
-                  milliseconds: _expanded ? kAnimNormal : kAnimFast,
-                ),
+                duration: _expanded ? kDurationNormal : kDurationFast,
                 child: PhosphorIcon(
                   PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
                   size: 14,
