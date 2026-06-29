@@ -4,6 +4,16 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Backend — YooKassa billing prep (2026-06-30, ADR-058)
+
+- **[x] `backend/src/billing/yookassaWebhook.ts`** — HMAC-SHA256 stub для входящих вебхуков ЮKassa. `verifyYookassaWebhook(rawBody, headers)` + `computeYookassaSignature(rawBody, secret)`. Dev-режим без `YOOKASSA_WEBHOOK_SECRET`. 14 unit-тестов.
+- **[x] `backend/src/billing/yookassaPayment.ts`** — Zod-валидация платёжного объекта ЮKassa (type / event / status / amount / metadata.user_id) + in-memory идемпотентность по payment_id. 24 unit-тестов.
+- **[x] `backend/src/lib/rateLimiter.ts`** — `InMemoryRateLimiter` (fixed window). Синглтоны `webhookRateLimiter` (60/мин) и `publicRateLimiter` (20/мин). 14 unit-тестов.
+- **[x] `backend/src/lib/deviceLimit.ts`** — лимит активных устройств на аккаунт (default 5, env `DEVICE_LIMIT`), in-memory Map-стаб. 24 unit-тестов.
+- **[ ] Интеграция `verifyYookassaWebhook` в `billing.ts`** — подключить при получении реальных ключей ЮKassa (env `YOOKASSA_WEBHOOK_SECRET`).
+- **[ ] `Device` model в schema.prisma** — добавить при переходе от стаба к production device management.
+- **[ ] `@fastify/rate-limit` + Redis** — заменить `InMemoryRateLimiter` при горизонтальном масштабировании.
+
 ## 🎨 Kaname Redesign — Phase 3 Today screen + add-task sheet (2026-06-28)
 
 - **[x] Today restyle (Phase 3 §6 — today portion):** `today_screen.dart`, `widgets/add_task_sheet.dart`, `widgets/morning_review_card.dart`, `core/l10n/strings/today.dart`

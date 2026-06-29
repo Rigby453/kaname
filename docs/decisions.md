@@ -5,6 +5,18 @@
 
 ---
 
+## ADR-058: YooKassa billing prep — webhook signature, payment validation, rate limiter, device limit
+**Date:** 2026-06-30
+**Проблема:** Гибридный биллинг (ADR-040/041) требовал серверной подготовительной работы до подключения реальных ключей ЮKassa: (a) проверка подлинности входящих вебхуков (anti-spoofing), (b) валидация структуры платёжного объекта + идемпотентность по payment_id, (c) rate-limit для публичных/вебхук-эндпоинтов, (d) лимит активных устройств на аккаунт.
+**Решение:**
+- **(a) `backend/src/billing/yookassaWebhook.ts`** — `verifyYookassaWebhook(rawBody, headers)` + `computeYookassaSignature(rawBody, secret)`. Stab: HMAC-SHA256 с секретом из `YOOKASSA_WEBHOOK_SECRET`. Если секрет не задан — dev-режим (всегда true). При живых ключах заменить на: IP-allowlist ЮKassa + повторный GET `/v3/payments/{id}` с Basic Auth (shopId:secretKey).
+- **(b) `backend/src/billing/yookassaPayment.ts`** — `validateYookassaPayment(body): PaymentValidationResult` с Zod-схемой (type/event/object.status/amount.value/metadata.user_id). Идемпотентность: `isPaymentProcessed` / `markPaymentProcessed` / `resetProcessedPayments` (in-memory Set; в production → таблица `processed_payments` или Redis).
+- **(c) `backend/src/lib/rateLimiter.ts`** — `InMemoryRateLimiter` (fixed window, Map). Экземпляры `webhookRateLimiter` (60/мин) и `publicRateLimiter` (20/мин), конфигурируемые через `RATE_LIMIT_WEBHOOK_MAX_PER_MINUTE` / `RATE_LIMIT_PUBLIC_MAX_PER_MINUTE`. В production → `@fastify/rate-limit` + Redis.
+- **(d) `backend/src/lib/deviceLimit.ts`** — `registerDevice(userId, deviceId)` / `removeDevice` / `removeAllDevices` / `getDeviceCount` / `getDeviceIds`. Лимит из `DEVICE_LIMIT` env (default 5). In-memory Map-стаб; в production → модель `Device` в schema.prisma + Prisma-запросы + TTL-cron.
+**Тесты:** 4 файла, 76 unit-тестов, 100% pass без БД/сети/реальных ключей.
+**Env-переменные при подключении живых ключей:** `YOOKASSA_WEBHOOK_SECRET`, `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`, `DEVICE_LIMIT`, `RATE_LIMIT_WEBHOOK_MAX_PER_MINUTE`, `RATE_LIMIT_PUBLIC_MAX_PER_MINUTE`.
+**Последствия:** Все четыре модуля — standalone (без изменения существующих маршрутов); существующие тесты `entitlement.test.ts` не затронуты. Интеграция `verifyYookassaWebhook` в `billing.ts` (эндпоинт `/billing/webhook/yookassa`) — следующий шаг при появлении реальных ключей.
+
 ## ADR-057: Concrete AI redistribution proposal (title+priority per move) + diary-insight date scope
 **Date:** 2026-06-27
 **Проблема (redistribute):** `/api/v1/ai/redistribute` возвращал общую «мотивационную» фразу в поле `reason` («balanced approach that keeps you productive»). Клиент не мог отрендерить интерфейс «переместить X → 10:00, подтвердить?» без локального DB-лукапа по UUID задач. Это делало предложение нечитаемым и воспринималось пользователем как бесполезный nudge.
