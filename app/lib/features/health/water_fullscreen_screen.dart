@@ -161,7 +161,12 @@ class WaterFullscreenScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: ext.border, width: 0.5),
                 ),
-                child: SwitchListTile.adaptive(
+                clipBehavior: Clip.antiAlias,
+                // Material нужен SwitchListTile как ближайший предок-материал;
+                // transparent — фон берётся из Container (colorScheme.surface).
+                child: Material(
+                  color: Colors.transparent,
+                  child: SwitchListTile.adaptive(
                   // Phosphor bell — нейтральный (не accent)
                   secondary: Icon(PhosphorIcons.bell(), color: ext.textMuted),
                   title: Text(
@@ -175,7 +180,8 @@ class WaterFullscreenScreen extends ConsumerWidget {
                   value: ref.watch(waterReminderProvider),
                   onChanged: (v) =>
                       ref.read(waterReminderProvider.notifier).toggle(v),
-                ),
+                ),    // closes SwitchListTile.adaptive
+                ),    // closes Material
               ),
               // Нижний отступ для Scaffold FAB / NavBar
               const SizedBox(height: 16),

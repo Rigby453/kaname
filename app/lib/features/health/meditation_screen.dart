@@ -995,16 +995,21 @@ class _SessionPlayerScreenState extends ConsumerState<_SessionPlayerScreen>
                       ],
 
                       // Прогресс шагов — labelSmall + textMuted.
+                      // Flexible на левом тексте: при textScale 2.0 на 320px
+                      // строка «Step 1 / 10» не выходит за правый край Row.
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            '${context.s('meditation.step')} ${_stepIndex + 1} / $stepCount',
-                            style: textTheme.labelSmall?.copyWith(
-                              color: ext.textMuted,
+                          Flexible(
+                            child: Text(
+                              '${context.s('meditation.step')} ${_stepIndex + 1} / $stepCount',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: ext.textMuted,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          // Процент завершения (дополнительный контекст).
+                          const SizedBox(width: 8),
+                          // Процент завершения (дополнительный контекст) — вправо.
                           Text(
                             '${((_stepIndex + 1) / stepCount * 100).round()}%',
                             style: textTheme.labelSmall?.copyWith(

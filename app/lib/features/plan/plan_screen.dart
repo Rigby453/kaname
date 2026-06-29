@@ -597,14 +597,14 @@ class _PlanViewSwitcher extends ConsumerWidget {
 
   /// Помещаются ли 5 сегментов читаемым кеглем в [available] пикселей.
   /// M3 SegmentedButton: горизонтальный паддинг = 16dp с каждой стороны = 32dp;
-  /// плюс разделители, иконки и минимальные ограничения. Используем 56dp на
-  /// сегмент (было 40dp → давало ложное «влезает» → текст рендерился вертикально)
-  /// и дополнительный запас 24dp на всю строку, чтобы оценка была консервативной:
-  /// при сомнении лучше упасть в _ViewDropdown, чем сжать SegmentedButton.
+  /// плюс разделители и минимальные ограничения. Используем 40dp на сегмент
+  /// (достаточно консервативно: реальные кнопки занимают 32dp padding + запас)
+  /// и дополнительный запас 24dp на всю строку. При сомнении переходим в
+  /// _ViewDropdown, но на планшете 800px+ 5 сегментов уверенно помещаются.
   bool _segmentsFit(BuildContext context, double available) {
     final style = Theme.of(context).textTheme.labelLarge;
     final scaler = MediaQuery.textScalerOf(context);
-    const perSegmentPadding = 56.0;
+    const perSegmentPadding = 40.0;
     var needed = 0.0;
     for (final label in _labels(context)) {
       needed += _measure(label, style, scaler) + perSegmentPadding;

@@ -47,7 +47,11 @@ class PostureScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(14),
             ),
             clipBehavior: Clip.antiAlias,
-            child: SwitchListTile(
+            // Material нужен SwitchListTile как ближайший предок-материал для
+            // отрисовки ink-splashes; transparent — фон берётся из Container.
+            child: Material(
+              color: Colors.transparent,
+              child: SwitchListTile(
               secondary: Icon(
                 PhosphorIcons.bell(),
                 // Иконка нейтральная — не accent
@@ -75,6 +79,7 @@ class PostureScreen extends ConsumerWidget {
                 }
               },
             ),
+            ), // closes Material
           ),
 
           const SizedBox(height: 32),
@@ -117,7 +122,11 @@ class _ExerciseTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
+      // Material нужен ExpansionTile (содержит ListTile) для ink-splashes;
+      // transparent — фон берётся из Container.
+      child: Material(
+        color: Colors.transparent,
+        child: ExpansionTile(
         leading: Icon(
           // personSimpleWalk — Phosphor эквивалент accessibility_new (posture)
           PhosphorIcons.personSimpleWalk(),
@@ -139,7 +148,8 @@ class _ExerciseTile extends StatelessWidget {
           // Инструкция: bodyMedium
           Text(context.s(exercise.stepsKey), style: textTheme.bodyMedium),
         ],
-      ),
+      ),    // closes ExpansionTile
+      ),    // closes Material
     );
   }
 }

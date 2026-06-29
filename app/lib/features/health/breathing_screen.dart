@@ -456,7 +456,14 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
           children: [
             Icon(PhosphorIcons.wind(), size: 20),
             const SizedBox(width: 8),
-            Text(context.s('breathing.title')),
+            // Flexible: при малой ширине (320px) и крупном textScale (1.5+)
+            // текст не выходит за ширину Row в AppBar.
+            Flexible(
+              child: Text(
+                context.s('breathing.title'),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),
@@ -769,10 +776,24 @@ class _TechChip extends StatelessWidget {
                 onDelete != null ? 4 : 12,
                 8,
               ),
-              child: Text(
-                label,
-                style: textTheme.labelLarge?.copyWith(
-                  color: selected ? ext.accentInk : colorScheme.onSurface,
+              // ConstrainedBox: чип не шире экрана (320px) даже при длинном
+              // пользовательском имени и textScale 1.5. Вычитаем: паддинг
+              // экрана (48dp) + паддинги чипа (24dp) + иконка удаления (24dp).
+              // На 320px: max = 320-48-24 = 248dp (без delete) или 224dp (с delete).
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width -
+                      48 -
+                      24 -
+                      (onDelete != null ? 24 : 0),
+                ),
+                child: Text(
+                  label,
+                  style: textTheme.labelLarge?.copyWith(
+                    color: selected ? ext.accentInk : colorScheme.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
             ),

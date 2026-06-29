@@ -338,11 +338,14 @@ class _WeightDynamics extends StatelessWidget {
           children: [
             Icon(PhosphorIcons.chartLineUp(), size: 14, color: ext.textFaint),
             const SizedBox(width: 6),
-            Text(
-              context.s('workout.weight_dynamics'),
-              style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            // Flexible: при крупном textScale текст не выходит за пределы Row.
+            Flexible(
+              child: Text(
+                context.s('workout.weight_dynamics'),
+                style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
