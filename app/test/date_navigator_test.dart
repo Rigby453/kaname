@@ -11,6 +11,11 @@ import 'package:app/core/theme/app_theme.dart';
 import 'package:app/core/widgets/date_navigator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
+// Phosphor caret-иконки, которыми DateNavigator заменил Material chevrons.
+final _caretRight = PhosphorIcons.caretRight(PhosphorIconsStyle.regular);
+final _caretLeft = PhosphorIcons.caretLeft(PhosphorIconsStyle.regular);
 
 /// Оборачивает DateNavigator в минимальное MaterialApp с темой Focus.
 Widget _wrap(Widget child) => MaterialApp(
@@ -35,12 +40,12 @@ void main() {
           ),
         );
 
-        // chevron_right присутствует в дереве
-        expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+        // caretRight присутствует в дереве
+        expect(find.byIcon(_caretRight), findsOneWidget);
 
         // onPressed должен быть null (кнопка disabled при date == сегодня)
         final btn = tester.widget<IconButton>(
-          find.widgetWithIcon(IconButton, Icons.chevron_right),
+          find.widgetWithIcon(IconButton, _caretRight),
         );
         expect(btn.onPressed, isNull,
             reason: 'кнопка › не должна быть активна для сегодняшней даты');
@@ -66,12 +71,12 @@ void main() {
         );
 
         final btn = tester.widget<IconButton>(
-          find.widgetWithIcon(IconButton, Icons.chevron_right),
+          find.widgetWithIcon(IconButton, _caretRight),
         );
         expect(btn.onPressed, isNotNull,
             reason: 'кнопка › должна быть активна для вчерашней даты');
 
-        await tester.tap(find.widgetWithIcon(IconButton, Icons.chevron_right));
+        await tester.tap(find.widgetWithIcon(IconButton, _caretRight));
         await tester.pump();
 
         // onChanged вызван с today
@@ -100,7 +105,7 @@ void main() {
         );
 
         // chevron_left всегда активна (нет нижней блокировки в UI)
-        await tester.tap(find.widgetWithIcon(IconButton, Icons.chevron_left));
+        await tester.tap(find.widgetWithIcon(IconButton, _caretLeft));
         await tester.pump();
 
         expect(received, isNotNull);

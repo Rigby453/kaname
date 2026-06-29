@@ -21,12 +21,15 @@ import 'package:app/core/database/database_providers.dart';
 import 'package:app/core/database/daos/recipes_dao.dart';
 import 'package:app/core/database/daos/workouts_dao.dart';
 import 'package:app/core/theme/app_theme.dart';
+import 'package:app/core/branding.dart' show kAppWordmark;
 import 'package:app/core/theme/theme_provider.dart'
     show sharedPreferencesProvider;
 import 'package:app/services/api/api_client.dart'
     show ApiClient, apiClientProvider;
 import 'package:app/services/notifications/notification_service.dart'
     show NotificationService, notificationServiceProvider;
+import 'package:app/features/mascot/kai_mascot.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 // Экраны
 import 'package:app/features/auth/auth_screen.dart';
@@ -287,8 +290,8 @@ void main() {
       await settle(tester);
 
       expect(find.byType(AuthScreen), findsOneWidget);
-      // Бренд-заголовок виден сразу.
-      expect(find.text('Kaizen'), findsOneWidget);
+      // Бренд-заголовок виден сразу (вордмарк kAppWordmark, был 'Kaizen').
+      expect(find.text(kAppWordmark), findsOneWidget);
 
       await unmountAndFlush(tester);
     });
@@ -347,7 +350,8 @@ void main() {
       await settle(tester);
 
       expect(find.byType(GoalsScreen), findsOneWidget);
-      expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
+      // Empty-state теперь Kai (§4.2), а не Material-иконка флага.
+      expect(find.byType(KaiMascot), findsOneWidget);
 
       await unmountAndFlush(tester);
     });
@@ -364,8 +368,9 @@ void main() {
 
       expect(find.byType(HealthScreen), findsOneWidget);
       // HealthScreen — body-виджет (без своего AppBar, живёт в ScaffoldWithNavBar).
+      // Иконка воды теперь Phosphor drop(), а не Material water_drop_outlined.
       // Карточка воды содержит водяную каплю — стабильный признак рендера.
-      expect(find.byIcon(Icons.water_drop_outlined), findsWidgets);
+      expect(find.byIcon(PhosphorIcons.drop()), findsWidgets);
 
       await unmountAndFlush(tester);
     });
@@ -495,7 +500,8 @@ void main() {
       await settle(tester);
 
       expect(find.byType(WorkoutsScreen), findsOneWidget);
-      expect(find.byIcon(Icons.fitness_center_outlined), findsWidgets);
+      // Empty-state теперь Kai (§4.2), а не Material fitness-иконка.
+      expect(find.byType(KaiMascot), findsWidgets);
 
       await unmountAndFlush(tester);
     });
@@ -585,7 +591,8 @@ void main() {
       await settle(tester);
 
       expect(find.byType(ExerciseHistoryScreen), findsOneWidget);
-      expect(find.byIcon(Icons.show_chart), findsOneWidget);
+      // Empty-state теперь Kai (§4.2), а не Material chart-иконка.
+      expect(find.byType(KaiMascot), findsOneWidget);
 
       await unmountAndFlush(tester);
     });
@@ -632,7 +639,8 @@ void main() {
       await settle(tester);
 
       expect(find.byType(RecipesScreen), findsOneWidget);
-      expect(find.byIcon(Icons.restaurant_menu_outlined), findsOneWidget);
+      // Empty-state теперь Kai (§4.2), а не Material utensils-иконка.
+      expect(find.byType(KaiMascot), findsOneWidget);
 
       await unmountAndFlush(tester);
     });
