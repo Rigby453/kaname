@@ -6,35 +6,43 @@
   <title>Kaizen — The important stuff won't slip.</title>
   <meta name="description" content="Kaizen is a student planner that re-assembles your day around what matters and helps you understand why plans fail." />
 
-  <!-- Google Fonts: Fraunces (display) + Hanken Grotesk (body) -->
+  <!-- Google Fonts: Geist (one family, all weights) + Hanken Grotesk fallback -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Tailwind config: Focus theme tokens -->
+  <!-- Tailwind config: Kaname Day-theme tokens (v4) -->
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            bg:      '#141009',
-            surface: '#241D11',
-            text:    '#F6EFE1',
-            muted:   '#9E9070',
-            accent:  '#D9F24B',
-            ember:   '#FF6A3D',
-            border:  '#3A3020',
+            bg:           '#F6F5F2',
+            surface:      '#FFFFFF',
+            surface2:     '#FCFBF9',
+            text:         '#1B1A18',
+            secondary:    '#6E6B66',
+            muted:        '#8E8A85',
+            accent:       '#4B57C9',
+            accentTint:   '#ECEDFA',
+            accentInk:    '#3A45A8',
+            ember:        '#C2510C',
+            success:      '#1A7A3E',
+            border:       '#E6E4DE',
+            borderStrong: '#D8D5CE',
           },
           fontFamily: {
-            display: ['Fraunces', 'Georgia', 'serif'],
-            body:    ['Hanken Grotesk', 'system-ui', 'sans-serif'],
+            display: ['Geist', 'Hanken Grotesk', 'system-ui', 'sans-serif'],
+            body:    ['Geist', 'Hanken Grotesk', 'system-ui', 'sans-serif'],
           },
           borderRadius: {
+            'control': '12px',
+            'card': '14px',
             '2xl': '16px',
-            '3xl': '24px',
+            '3xl': '20px',
             'pill': '999px',
           },
         },
@@ -48,9 +56,9 @@
   <style>
     /* Base reset using Focus theme */
     body {
-      background-color: #141009;
-      color: #F6EFE1;
-      font-family: 'Hanken Grotesk', system-ui, sans-serif;
+      background-color: #F6F5F2;
+      color: #1B1A18;
+      font-family: 'Geist', 'Hanken Grotesk', system-ui, sans-serif;
     }
 
     /* Smooth scroll */
@@ -58,37 +66,37 @@
 
     /* Custom scrollbar (dark theme) */
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #141009; }
-    ::-webkit-scrollbar-thumb { background: #3A3020; border-radius: 999px; }
+    ::-webkit-scrollbar-track { background: #F6F5F2; }
+    ::-webkit-scrollbar-thumb { background: #D8D5CE; border-radius: 999px; }
 
-    /* Accent glow for Premium card */
+    /* Accent ring for Premium card */
     .accent-glow {
-      box-shadow: 0 0 0 1px #D9F24B, 0 8px 40px rgba(217, 242, 75, 0.12);
+      box-shadow: 0 0 0 1px #4B57C9, 0 8px 24px rgba(75, 87, 201, 0.12);
     }
 
-    /* Hero gradient shimmer behind headline */
+    /* Hero soft wash behind headline */
     .hero-glow {
-      background: radial-gradient(ellipse 70% 40% at 50% 30%, rgba(217, 242, 75, 0.08) 0%, transparent 70%);
+      background: radial-gradient(ellipse 70% 40% at 50% 30%, rgba(75, 87, 201, 0.06) 0%, transparent 70%);
     }
 
     /* Phone mockup */
     .mockup-screen {
-      background: #241D11;
-      border: 1px solid #3A3020;
+      background: #FFFFFF;
+      border: 1px solid #E6E4DE;
       border-radius: 28px;
       overflow: hidden;
       position: relative;
     }
     .mockup-notch {
       width: 90px; height: 22px;
-      background: #141009;
+      background: #F6F5F2;
       border-radius: 0 0 14px 14px;
       margin: 0 auto;
     }
 
     /* Progress ring */
-    .ring-track { fill: none; stroke: #3A3020; stroke-width: 6; }
-    .ring-fill  { fill: none; stroke: #D9F24B; stroke-width: 6;
+    .ring-track { fill: none; stroke: #E6E4DE; stroke-width: 6; }
+    .ring-fill  { fill: none; stroke: #4B57C9; stroke-width: 6;
                   stroke-linecap: round; stroke-dasharray: 163; stroke-dashoffset: 55;
                   transform: rotate(-90deg); transform-origin: 50% 50%; }
 
@@ -100,23 +108,30 @@
     .ring-fill { animation: ring-draw 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s both; }
 
     /* Task row checked state */
-    .task-done { text-decoration: line-through; color: #9E9070; }
+    .task-done { text-decoration: line-through; color: #8E8A85; }
 
     /* Feature card hover */
     .feature-card:hover {
-      border-color: #3A3020;
-      background: #2a2213;
+      border-color: #D8D5CE;
+      background: #FCFBF9;
       transform: translateY(-2px);
       transition: all 0.2s ease-out;
     }
 
     /* Nav link hover */
-    .nav-link:hover { color: #F6EFE1; }
+    .nav-link:hover { color: #1B1A18; }
 
-    /* Download button pulse on hover */
+    /* Download button hover */
     .btn-download:hover {
-      background: #e6ff5e;
-      box-shadow: 0 0 24px rgba(217, 242, 75, 0.3);
+      background: #3A45A8;
+      box-shadow: 0 4px 16px rgba(75, 87, 201, 0.25);
+    }
+
+    /* Respect reduce-motion */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .ring-fill { animation: none; }
+      .feature-card:hover { transform: none; }
     }
   </style>
 </head>
@@ -188,7 +203,7 @@
 
       <!-- Copy -->
       <div class="text-center lg:text-left">
-        <p class="text-muted text-sm font-medium uppercase tracking-widest mb-4">Student planner</p>
+        <p class="text-muted text-sm font-medium tracking-wide mb-4">Student planner</p>
         <h1
           id="hero-heading"
           class="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold leading-tight text-text mb-6"
@@ -257,7 +272,7 @@
               <div class="flex items-center gap-3 bg-bg rounded-2xl px-3 py-2.5">
                 <span class="w-5 h-5 rounded-full border-2 border-accent bg-accent flex-shrink-0 flex items-center justify-center">
                   <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden="true">
-                    <path d="M1 4l3 3 5-6" stroke="#141009" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M1 4l3 3 5-6" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </span>
                 <span class="task-done text-xs flex-1">Read chapter 4</span>
@@ -268,7 +283,7 @@
                 <span class="w-5 h-5 rounded-full border-2 border-accent flex-shrink-0"></span>
                 <div class="flex-1 min-w-0">
                   <p class="text-text text-xs font-medium truncate">Submit essay draft</p>
-                  <p class="text-accent text-[10px] font-semibold">MAIN</p>
+                  <p class="text-accent text-[10px] font-semibold">Main</p>
                 </div>
               </div>
 
@@ -305,7 +320,7 @@
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
     <div class="text-center mb-14">
-      <p class="text-muted text-sm font-medium uppercase tracking-widest mb-3">Sound familiar?</p>
+      <p class="text-muted text-sm font-medium tracking-wide mb-3">Sound familiar?</p>
       <h2 id="problem-heading" class="font-display text-3xl sm:text-4xl font-semibold text-text">
         Plans break. Kaizen picks up the pieces.
       </h2>
@@ -365,7 +380,7 @@
   <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
     <div class="text-center mb-14">
-      <p class="text-muted text-sm font-medium uppercase tracking-widest mb-3">Built different</p>
+      <p class="text-muted text-sm font-medium tracking-wide mb-3">Built different</p>
       <h2 id="features-heading" class="font-display text-3xl sm:text-4xl font-semibold text-text">
         Everything you need.<br />
         <span class="text-muted">Nothing you don't.</span>
@@ -379,8 +394,8 @@
         <div class="w-11 h-11 rounded-2xl bg-accent/15 flex items-center justify-center mb-5" aria-hidden="true">
           <!-- Sun icon (SVG) -->
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="4.5" stroke="#D9F24B" stroke-width="1.8"/>
-            <path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.22 4.22l1.41 1.41M16.37 16.37l1.41 1.41M4.22 17.78l1.41-1.41M16.37 5.63l1.41-1.41" stroke="#D9F24B" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="11" cy="11" r="4.5" stroke="#4B57C9" stroke-width="1.8"/>
+            <path d="M11 2v2M11 18v2M2 11h2M18 11h2M4.22 4.22l1.41 1.41M16.37 16.37l1.41 1.41M4.22 17.78l1.41-1.41M16.37 5.63l1.41-1.41" stroke="#4B57C9" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
         </div>
         <h3 class="text-text font-semibold text-lg mb-2">Morning review</h3>
@@ -392,7 +407,7 @@
         <div class="w-11 h-11 rounded-2xl bg-accent/15 flex items-center justify-center mb-5" aria-hidden="true">
           <!-- Star icon -->
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <path d="M11 2l2.47 5.01 5.53.8-4 3.9.94 5.49L11 14.77l-4.94 2.43.94-5.49-4-3.9 5.53-.8L11 2z" stroke="#D9F24B" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M11 2l2.47 5.01 5.53.8-4 3.9.94 5.49L11 14.77l-4.94 2.43.94-5.49-4-3.9 5.53-.8L11 2z" stroke="#4B57C9" stroke-width="1.8" stroke-linejoin="round"/>
           </svg>
         </div>
         <h3 class="text-text font-semibold text-lg mb-2">Priority tasks + streaks</h3>
@@ -404,11 +419,11 @@
         <div class="w-11 h-11 rounded-2xl bg-accent/15 flex items-center justify-center mb-5" aria-hidden="true">
           <!-- Calendar icon -->
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <rect x="2" y="4" width="18" height="16" rx="3" stroke="#D9F24B" stroke-width="1.8"/>
-            <path d="M7 2v3M15 2v3M2 9h18" stroke="#D9F24B" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="7" cy="14" r="1" fill="#D9F24B"/>
-            <circle cx="11" cy="14" r="1" fill="#D9F24B"/>
-            <circle cx="15" cy="14" r="1" fill="#D9F24B"/>
+            <rect x="2" y="4" width="18" height="16" rx="3" stroke="#4B57C9" stroke-width="1.8"/>
+            <path d="M7 2v3M15 2v3M2 9h18" stroke="#4B57C9" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="7" cy="14" r="1" fill="#4B57C9"/>
+            <circle cx="11" cy="14" r="1" fill="#4B57C9"/>
+            <circle cx="15" cy="14" r="1" fill="#4B57C9"/>
           </svg>
         </div>
         <h3 class="text-text font-semibold text-lg mb-2">Week plan timeline</h3>
@@ -420,9 +435,9 @@
         <div class="w-11 h-11 rounded-2xl bg-ember/15 flex items-center justify-center mb-5" aria-hidden="true">
           <!-- Journal icon -->
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <rect x="4" y="2" width="14" height="18" rx="2" stroke="#FF6A3D" stroke-width="1.8"/>
-            <path d="M8 7h6M8 11h6M8 15h4" stroke="#FF6A3D" stroke-width="1.8" stroke-linecap="round"/>
-            <rect x="2" y="5" width="2" height="12" rx="1" fill="#FF6A3D"/>
+            <rect x="4" y="2" width="14" height="18" rx="2" stroke="#C2510C" stroke-width="1.8"/>
+            <path d="M8 7h6M8 11h6M8 15h4" stroke="#C2510C" stroke-width="1.8" stroke-linecap="round"/>
+            <rect x="2" y="5" width="2" height="12" rx="1" fill="#C2510C"/>
           </svg>
         </div>
         <h3 class="text-text font-semibold text-lg mb-2">Diary + mood tracking</h3>
@@ -434,7 +449,7 @@
         <div class="w-11 h-11 rounded-2xl bg-accent/15 flex items-center justify-center mb-5" aria-hidden="true">
           <!-- Lightning bolt (offline/speed) -->
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <path d="M13 2L4 13h7l-2 7 9-11h-7l2-7z" stroke="#D9F24B" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M13 2L4 13h7l-2 7 9-11h-7l2-7z" stroke="#4B57C9" stroke-width="1.8" stroke-linejoin="round"/>
           </svg>
         </div>
         <h3 class="text-text font-semibold text-lg mb-2">Offline-first</h3>
@@ -444,12 +459,12 @@
       <!-- Feature 6: AI redistribution (Premium) -->
       <div class="feature-card rounded-3xl bg-surface border border-border p-7 transition-all duration-200 relative overflow-hidden">
         <!-- Premium badge -->
-        <span class="absolute top-4 right-4 px-2.5 py-0.5 rounded-pill bg-accent text-bg text-[11px] font-bold uppercase tracking-wide">Premium</span>
+        <span class="absolute top-4 right-4 px-2.5 py-0.5 rounded-pill bg-accent text-bg text-[11px] font-bold tracking-wide">Premium</span>
         <div class="w-11 h-11 rounded-2xl bg-accent/15 flex items-center justify-center mb-5" aria-hidden="true">
           <!-- Sparkle/AI icon -->
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <path d="M11 2v4M11 16v4M2 11h4M16 11h4M4.93 4.93l2.83 2.83M14.24 14.24l2.83 2.83M4.93 17.07l2.83-2.83M14.24 7.76l2.83-2.83" stroke="#D9F24B" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="11" cy="11" r="2.5" stroke="#D9F24B" stroke-width="1.8"/>
+            <path d="M11 2v4M11 16v4M2 11h4M16 11h4M4.93 4.93l2.83 2.83M14.24 14.24l2.83 2.83M4.93 17.07l2.83-2.83M14.24 7.76l2.83-2.83" stroke="#4B57C9" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="11" cy="11" r="2.5" stroke="#4B57C9" stroke-width="1.8"/>
           </svg>
         </div>
         <h3 class="text-text font-semibold text-lg mb-2">AI smart redistribution</h3>
@@ -468,7 +483,7 @@
   <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
 
     <div class="text-center mb-14">
-      <p class="text-muted text-sm font-medium uppercase tracking-widest mb-3">Simple pricing</p>
+      <p class="text-muted text-sm font-medium tracking-wide mb-3">Simple pricing</p>
       <h2 id="pricing-heading" class="font-display text-3xl sm:text-4xl font-semibold text-text">
         Start free. Upgrade when you're ready.
       </h2>
@@ -482,7 +497,7 @@
       <!-- Free card -->
       <div class="rounded-3xl bg-surface border border-border p-8 flex flex-col">
         <div class="mb-6">
-          <p class="text-muted text-sm font-medium uppercase tracking-widest mb-2">Free</p>
+          <p class="text-muted text-sm font-medium tracking-wide mb-2">Free</p>
           <div class="flex items-baseline gap-1 mb-3">
             <span class="font-display text-5xl font-semibold text-text">$0</span>
             <span class="text-muted text-sm">/ forever</span>
@@ -516,8 +531,8 @@
             <span class="text-text">Offline-first sync</span>
           </li>
           <li class="flex items-start gap-3 text-sm">
-            <span class="text-muted mt-0.5 flex-shrink-0" aria-hidden="true">&#x25A1;</span>
-            <span class="text-muted">Contains non-intrusive ads</span>
+            <span class="text-accent mt-0.5 flex-shrink-0" aria-hidden="true">&#10003;</span>
+            <span class="text-text">No ads — ever, on any tier</span>
           </li>
         </ul>
 
@@ -532,12 +547,12 @@
       <!-- Premium card (accented) -->
       <div class="rounded-3xl bg-surface border border-accent accent-glow p-8 flex flex-col relative">
         <!-- "Most popular" badge -->
-        <span class="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-pill bg-accent text-bg text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+        <span class="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-pill bg-accent text-bg text-xs font-bold tracking-wide whitespace-nowrap">
           Recommended
         </span>
 
         <div class="mb-6">
-          <p class="text-accent text-sm font-medium uppercase tracking-widest mb-2">Premium</p>
+          <p class="text-accent text-sm font-medium tracking-wide mb-2">Premium</p>
           <div class="flex items-baseline gap-1 mb-3">
             <span class="font-display text-5xl font-semibold text-text">$10</span>
             <span class="text-muted text-sm">/ month</span>
