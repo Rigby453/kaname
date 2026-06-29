@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Реквизиты и оферта — Главное (Kaizen)</title>
+  <meta name="description" content="Реквизиты продавца, условия подписки и публичная оферта сервиса «Главное»." />
+
+  <!-- Google Fonts: Fraunces (display) + Hanken Grotesk (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#141009',
+            surface: '#241D11',
+            text:    '#F6EFE1',
+            muted:   '#9E9070',
+            accent:  '#D9F24B',
+            ember:   '#FF6A3D',
+            border:  '#3A3020',
+          },
+          fontFamily: {
+            display: ['Fraunces', 'Georgia', 'serif'],
+            body:    ['Hanken Grotesk', 'system-ui', 'sans-serif'],
+          },
+          borderRadius: { '2xl': '16px', '3xl': '24px', 'pill': '999px' },
+        },
+      },
+    }
+  </script>
+
+  <style>
+    body { background-color: #141009; color: #F6EFE1; font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+    html { scroll-behavior: smooth; }
+    .prose-legal h2 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.5rem; color: #F6EFE1; }
+    .prose-legal p, .prose-legal li { color: #C9BFA6; line-height: 1.65; }
+    .prose-legal a { color: #D9F24B; }
+    .prose-legal dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.25rem; }
+    @media (max-width: 480px) { .prose-legal dl { grid-template-columns: 1fr; gap: 0.1rem 0; } .prose-legal dt { margin-top: 0.6rem; } }
+    .prose-legal dt { color: #9E9070; }
+    .prose-legal dd { color: #F6EFE1; }
+  </style>
+</head>
+<body class="font-body">
+
+  <!-- HEADER -->
+  <header class="border-b border-border">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
+      <a href="index.html" class="font-display text-xl font-semibold text-text hover:text-accent transition-colors duration-150">Главное</a>
+      <a href="index.html" class="text-sm text-muted hover:text-text transition-colors duration-150">← На главную</a>
+    </div>
+  </header>
+
+  <!-- CONTENT -->
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <h1 class="font-display text-3xl sm:text-4xl font-semibold mb-2">Реквизиты и публичная оферта</h1>
+    <p class="text-muted text-sm mb-8">Обновлено: июнь 2026</p>
+
+    <div class="prose-legal max-w-none">
+
+      <h2>1. Продавец</h2>
+      <p>
+        Услуги оказывает физическое лицо, применяющее специальный налоговый режим
+        «Налог на профессиональный доход» (самозанятый).
+      </p>
+      <dl class="mt-3 bg-surface border border-border rounded-2xl p-5">
+        <dt>Продавец</dt><dd>Лунёв Артемий Александрович (самозанятый, НПД)</dd>
+        <dt>ИНН</dt><dd>772792313532</dd>
+        <dt>Сайт</dt><dd><a href="index.html">https://rigby453.github.io/glavnoe</a></dd>
+        <dt>E-mail</dt><dd><a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a></dd>
+      </dl>
+
+      <h2>2. Предмет оферты</h2>
+      <p>
+        Настоящий документ является публичной офертой. Оплачивая подписку, пользователь
+        принимает условия настоящей оферты в полном объёме. Продавец предоставляет доступ к
+        платной подписке <strong>«Главное» Premium</strong> — расширенным функциям приложения-планировщика
+        «Главное» (Kaizen), включая функции на основе искусственного интеллекта (умное
+        перераспределение задач, варианты планов, расширенные инсайты дневника).
+      </p>
+      <p>
+        Базовые функции приложения доступны бесплатно и без рекламы. Premium — дополнительная
+        платная возможность; реклама в сервисе отсутствует.
+      </p>
+
+      <h2>3. Стоимость и порядок оплаты</h2>
+      <dl class="mt-3 bg-surface border border-border rounded-2xl p-5">
+        <dt>Тариф</dt><dd>«Главное» Premium</dd>
+        <dt>Стоимость</dt><dd>399 ₽ в месяц</dd>
+        <dt>Период</dt><dd>Ежемесячная подписка (автопродление)</dd>
+        <dt>Способ оплаты</dt><dd>Банковская карта онлайн через сервис ЮKassa</dd>
+      </dl>
+      <p class="mt-3">
+        Оплата производится в российских рублях. После успешной оплаты доступ к функциям
+        Premium активируется автоматически. Подписка продлевается каждый месяц до момента
+        её отмены пользователем.
+      </p>
+
+      <h2>4. Отмена и возврат</h2>
+      <p>
+        Пользователь может отменить подписку в любой момент — автопродление прекратится,
+        а доступ к Premium сохранится до конца оплаченного периода. По вопросам возврата
+        за неиспользованный период обратитесь на e-mail
+        <a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a>; обращение рассматривается в
+        течение 10 рабочих дней, возврат осуществляется тем же способом, которым была
+        произведена оплата.
+      </p>
+
+      <h2>5. Контакты</h2>
+      <p>
+        По всем вопросам, связанным с оплатой, подпиской и работой сервиса, пишите на
+        <a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a>. Сопутствующие документы:
+        <a href="privacy.html">Политика конфиденциальности</a> и
+        <a href="terms.html">Условия использования</a>.
+      </p>
+
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-border py-10 mt-4">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted">
+        <p>&copy; 2026 Kaizen. All rights reserved.</p>
+        <nav class="flex gap-5" aria-label="Legal navigation">
+          <a href="privacy.html" class="hover:text-text transition-colors duration-150">Privacy</a>
+          <a href="terms.html"   class="hover:text-text transition-colors duration-150">Terms</a>
+          <a href="requisites.html" class="hover:text-text transition-colors duration-150 text-accent">Реквизиты</a>
+          <a href="index.html"   class="hover:text-text transition-colors duration-150">Home</a>
+        </nav>
+      </div>
+      <p class="mt-3 text-xs text-muted text-center">Самозанятый Лунёв А. А. · ИНН 772792313532</p>
+    </div>
+  </footer>
+
+</body>
+</html>
