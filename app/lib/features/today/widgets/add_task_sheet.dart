@@ -44,6 +44,7 @@ import '../../../core/utils/tag_parser.dart';
 import '../../../services/notifications/notification_service.dart';
 import '../../plan/recurrence.dart';
 import '../../plan/widgets/recurrence_providers.dart';
+import '../../plan/widgets/recurrence_scope_dialog.dart';
 import '../task_colors.dart';
 import '../undo_provider.dart';
 
@@ -1092,13 +1093,47 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     String? savedItemId;
 
     if (_isVirtualOccurrence) {
+      // B4: Извлекаем якорь и дату повтора заранее — нужны как для scope-диалога,
+      // так и для materializeOccurrence.
+      final anchorId = anchorIdFromVirtual(widget.existing!.id);
+      final occDate =
+          dateFromVirtual(widget.existing!.id) ?? widget.existing!.scheduledAt;
+
+      // B4: Если изменилось время суток — спрашиваем пользователя, к каким
+      // экземплярам применить изменение (стандарт Google Calendar).
+      // Сравниваем только h/m: форма работает с точностью до минуты.
+      final origAt = widget.existing!.scheduledAt;
+      final timeChanged = _scheduledAt.hour != origAt.hour ||
+          _scheduledAt.minute != origAt.minute;
+      if (timeChanged) {
+        if (!mounted) return;
+        final scope = await showRecurrenceScopeDialog(context);
+        if (!mounted) return;
+        // Пользователь отменил диалог → остаёмся в форме, НЕ сохраняем.
+        if (scope == null) return;
+
+        if (scope == RecurrenceEditScope.thisAndFuture) {
+          // Разрезаем серию: новый якорь с [occDate, newTime]; старый продолжается
+          // до UNTIL = occDate − 1.
+          await dao.rescheduleThisAndFuture(anchorId, occDate, _scheduledAt);
+          if (mounted) Navigator.of(context).pop();
+          return;
+        } else if (scope == RecurrenceEditScope.wholeSeries) {
+          // Меняем время суток на всём якоре и уже материализованных строках.
+          await dao.rescheduleWholeSeries(anchorId, _scheduledAt);
+          if (mounted) Navigator.of(context).pop();
+          return;
+        }
+        // RecurrenceEditScope.onlyThis → продолжаем с materializeOccurrence ниже.
+      }
+
       // Редактирование одного дня серии: материализуем его в реальную строку
       // с применёнными правками (анкер получает EXDATE на эту дату).
       // materializeOccurrence уже скопировал подзадачи-шаблон с якоря; затем
       // переопределяем их черновиком этого дня (replaceForItem).
       final concreteId = await dao.materializeOccurrence(
-        anchorIdFromVirtual(widget.existing!.id),
-        dateFromVirtual(widget.existing!.id) ?? widget.existing!.scheduledAt,
+        anchorId,
+        occDate,
         title: title,
         type: _type,
         priority: _priority,

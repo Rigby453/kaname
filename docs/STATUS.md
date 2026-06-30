@@ -4,6 +4,20 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Feature B4 Stage 2 — перенос повторяющихся задач: UI-диалог + интеграция (2026-06-30)
+
+- **[x] `app/lib/features/plan/widgets/recurrence_scope_dialog.dart`** — NEW. `enum RecurrenceEditScope { onlyThis, thisAndFuture, wholeSeries }` + `showRecurrenceScopeDialog(BuildContext) → Future<RecurrenceEditScope?>`. Нижний лист Kaname (R20, hairline 0.5, Phosphor-иконки calendarBlank/arrowRight/repeat). 3 опции + Cancel. Overflow-safe на 320px + textScale 2.0.
+- **[x] `app/lib/features/today/widgets/add_task_sheet.dart`** — импорт `recurrence_scope_dialog.dart`. В `_save()/_isVirtualOccurrence`-ветке: если `_scheduledAt.h:m != origAt.h:m` → `showRecurrenceScopeDialog` перед `materializeOccurrence`. `null` → return (остаёмся в форме); `thisAndFuture` → `dao.rescheduleThisAndFuture` + pop; `wholeSeries` → `dao.rescheduleWholeSeries` + pop; `onlyThis` → существующий `materializeOccurrence` путь (все поля). Поведение без изменения времени не изменено.
+- **[x] `app/lib/features/plan/widgets/time_grid.dart`** — TODO-комментарий в `_commitDrag` (drag-перенос виртуального повтора): объясняет, почему диалог пока не вызывается (async-safety drag-конвейера); приоритет — путь через форму.
+- **[x] `app/lib/core/l10n/strings/today.dart`** — 4 новых ключа: `today.recur_scope_title`, `today.recur_scope_only_this`, `today.recur_scope_this_future`, `today.recur_scope_all`. Все 11 языков.
+- **[x] `app/test/recurrence_scope_dialog_test.dart`** — 6 widget-тестов: no-overflow 320px+textScale2.0, тап onlyThis/thisAndFuture/wholeSeries возвращает правильный enum, Cancel → null, dismiss → лист закрывается.
+
+## Feature B4 Stage 1 — перенос повторяющихся задач: логика и DAO (2026-06-30)
+
+- **[x] `app/lib/features/plan/recurrence.dart`** — три новых чистых помощника: `timeOfDayDelta(oldDt, newDt) → Duration` (дельта времени суток), `splitHeadRule(rule, splitDate) → RecurrenceRule` (UNTIL=splitDate−1, EXDATE только прошлое), `splitTailRule(rule, splitDate) → RecurrenceRule` (без UNTIL/с унаследованным, EXDATE только будущее). Без зависимостей Flutter/Drift.
+- **[x] `app/lib/core/database/daos/items_dao.dart`** — три новых публичных метода: `rescheduleSingleOccurrence(anchorId, date, newScheduledAt)` (делегирует materializeOccurrence с scheduledAt-override), `rescheduleThisAndFuture(anchorId, date, newScheduledAt)` (расщепляет серию: UNTIL якоря + новый якорь + копия шаблона подзадач + сдвиг будущих concrete-строк), `rescheduleWholeSeries(anchorId, newScheduledAt, {fromDate})` (сдвигает scheduledAt якоря + все / >= fromDate concrete-строки). Схема БД не изменена.
+- **[x] `app/test/recurrence_reschedule_test.dart`** — 28 тестов (in-memory NativeDatabase): 4 теста `timeOfDayDelta`, 3 `splitHeadRule`, 6 `splitTailRule`, 3 `rescheduleSingleOccurrence`, 8 `rescheduleThisAndFuture`, 5 `rescheduleWholeSeries`. Прямой async, без pumpAndSettle.
+
 ## Feature B7 — autocomplete/подсказки тегов в форме создания задачи (2026-06-30)
 
 - **[x] `app/lib/core/database/daos/items_dao.dart`** — новый метод `allUsedTags()`: читает все строки с тегами, split по запятой, trim+lowercase, подсчёт частоты, сортировка по частоте (убывание)+алфавит. Чистый Dart, build_runner не требуется.

@@ -431,6 +431,55 @@ String? removeExDateFromRule(String? raw, DateTime day) {
 }
 
 // ---------------------------------------------------------------------------
+// Хелперы для расщепления и переноса серий (B4 — rescheduling).
+// Чистые функции — без зависимостей от Drift/Flutter; покрыты юнит-тестами.
+// ---------------------------------------------------------------------------
+
+/// Вычисляет дельту между временем суток двух DateTime.
+/// Результат — Duration в минутах; может быть отрицательным (новое время раньше).
+/// Используется при переносе серии для сдвига материализованных экземпляров
+/// относительно якоря.
+Duration timeOfDayDelta(DateTime oldDt, DateTime newDt) {
+  final oldMins = oldDt.hour * 60 + oldDt.minute;
+  final newMins = newDt.hour * 60 + newDt.minute;
+  return Duration(minutes: newMins - oldMins);
+}
+
+/// Правило для «головы» серии после расщепления по дате [splitDate].
+/// Старое правило с UNTIL = splitDate − 1 день и EXDATE только для дат
+/// строго до [splitDate]. Голова порождает повторы только в прошлом.
+RecurrenceRule splitHeadRule(RecurrenceRule rule, DateTime splitDate) {
+  final split = _dateOnly(splitDate);
+  final before = split.subtract(const Duration(days: 1));
+  // Оставляем в EXDATE только «прошлые» материализованные даты.
+  final pastExDates = rule.exDates.where((d) => d.isBefore(split)).toSet();
+  return rule.copyWith(
+    until: before,
+    exDates: pastExDates,
+  );
+}
+
+/// Правило для «хвоста» серии после расщепления по дате [splitDate].
+/// FREQ / BYDAY / BYMONTHDAY сохраняются; UNTIL убирается (если исходный UNTIL
+/// перекрывает splitDate — наследуется); EXDATE — только даты >= [splitDate]
+/// (будущие материализованные экземпляры, которые перейдут к новому якорю).
+RecurrenceRule splitTailRule(RecurrenceRule rule, DateTime splitDate) {
+  final split = _dateOnly(splitDate);
+  // Будущие EXDATE переходят к новому якорю, чтобы не плодить виртуалов.
+  final futureExDates = rule.exDates.where((d) => !d.isBefore(split)).toSet();
+  // Наследуем UNTIL только если он выходит за splitDate (иначе хвост бесконечен).
+  final inheritedUntil =
+      (rule.until != null && rule.until!.isAfter(split)) ? rule.until : null;
+  return RecurrenceRule(
+    freq: rule.freq,
+    until: inheritedUntil,
+    exDates: futureExDates,
+    byDays: rule.byDays,
+    byMonthDay: rule.byMonthDay,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Удобные конструкторы правил (для UI и будущего NL-парсера).
 // Парсер фразы вроде «каждый понедельник» может собрать правило этими функциями.
 // ---------------------------------------------------------------------------

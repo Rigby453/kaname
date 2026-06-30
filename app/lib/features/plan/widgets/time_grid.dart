@@ -1696,6 +1696,12 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
     // Виртуальный повтор серии: материализуем этот день с новым временем
     // (анкер получает EXDATE на дату), иначе updateItem по синтетическому id
     // был бы no-op и перенос потерялся бы.
+    //
+    // TODO(B4): drag-перенос виртуального повтора сейчас всегда применяет
+    // «onlyThis» (materializeOccurrence). Добавить showRecurrenceScopeDialog
+    // здесь после того, как drag-конвейер станет async-safe (сейчас _commitDrag
+    // вызывается из _DragGestureHandler без await и без BuildContext для диалога).
+    // Корректный путь выбора области уже реализован в add_task_sheet._save().
     if (isVirtualOccurrenceId(widget.item.id)) {
       await dao.materializeOccurrence(
         anchorIdFromVirtual(widget.item.id),

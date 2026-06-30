@@ -14,7 +14,10 @@ import '../../../features/plan/recurrence.dart'
         RecurrenceRule,
         addExDateToRule,
         removeExDateFromRule,
-        setUntilOnRule;
+        setUntilOnRule,
+        timeOfDayDelta,
+        splitHeadRule,
+        splitTailRule;
 import '../../../services/sound/completion_sound_service.dart';
 
 part 'items_dao.g.dart';
@@ -625,5 +628,169 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
         updatedAt: Value(DateTime.now()),
       ),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // B4: перенос повторяющейся задачи на новое время (три варианта).
+  // ---------------------------------------------------------------------------
+
+  /// «ТОЛЬКО ЭТА» — материализует один экземпляр на [date] с новым временем
+  /// [newScheduledAt]. Если день уже материализован — обновляет его scheduledAt.
+  /// Якорь-серия не изменяется (кроме добавления [date] в EXDATE — стандартный
+  /// механизм materializeOccurrence). Возвращает id concrete-строки или null,
+  /// если якорь не найден / не является серией.
+  Future<String?> rescheduleSingleOccurrence(
+    String anchorId,
+    DateTime date,
+    DateTime newScheduledAt,
+  ) async {
+    // materializeOccurrence уже обрабатывает оба пути:
+    //   a) дата не в EXDATE → создаёт concrete-строку с заданным scheduledAt;
+    //   b) дата уже в EXDATE (day был материализован ранее) → обновляет scheduledAt.
+    return materializeOccurrence(anchorId, date, scheduledAt: newScheduledAt);
+  }
+
+  /// «ЭТА И БУДУЩИЕ» — расщепляет серию по дате [date]:
+  ///   1. Якорь ([anchorId]) получает UNTIL = [date] − 1 день; из EXDATE убираются
+  ///      даты >= [date] (они переходят к новому якорю).
+  ///   2. Создаётся новый якорь (новый UUID) с тем же FREQ/BYDAY/BYMONTHDAY,
+  ///      scheduledAt = [newScheduledAt]; EXDATE = бывшие EXDATE >= [date] из старой
+  ///      серии (чтобы не плодить виртуалы по уже материализованным дням).
+  ///   3. Шаблон подзадач копируется с якоря на новый якорь.
+  ///   4. Уже материализованные concrete-строки на датах >= [date] сдвигаются на
+  ///      дельту времени суток (newScheduledAt.timeOfDay − anchor.timeOfDay).
+  /// Возвращает id нового якоря или null, если исходный якорь не найден.
+  Future<String?> rescheduleThisAndFuture(
+    String anchorId,
+    DateTime date,
+    DateTime newScheduledAt,
+  ) async {
+    final anchor = await getItemById(anchorId);
+    if (anchor == null) return null;
+    final rule = RecurrenceRule.parse(anchor.recurrenceRule);
+    if (rule == null) return null;
+
+    final now = DateTime.now();
+    final splitDate = _dateOnly(date);
+
+    // Дельта времени суток: насколько сдвигаем уже материализованные экземпляры.
+    final delta = timeOfDayDelta(anchor.scheduledAt, newScheduledAt);
+
+    // 1. Обновляем старый якорь: UNTIL = splitDate − 1, EXDATE — только прошлое.
+    final headRule = splitHeadRule(rule, splitDate);
+    await updateItem(
+      anchorId,
+      ItemsTableCompanion(
+        recurrenceRule: Value(headRule.toRuleString()),
+        updatedAt: Value(now),
+      ),
+    );
+
+    // 2. Создаём новый якорь для хвоста (с [date]).
+    final tailRule = splitTailRule(rule, splitDate);
+    final newAnchorId = uuidV4();
+    await into(itemsTable).insert(
+      ItemsTableCompanion(
+        id: Value(newAnchorId),
+        userId: Value(anchor.userId),
+        title: Value(anchor.title),
+        type: Value(anchor.type),
+        priority: Value(anchor.priority),
+        status: const Value('pending'),
+        scheduledAt: Value(newScheduledAt),
+        durationMinutes: Value(anchor.durationMinutes),
+        isProtected: Value(anchor.isProtected),
+        recurrenceRule: Value(tailRule.toRuleString()),
+        moduleLink: Value(anchor.moduleLink),
+        color: Value(anchor.color),
+        location: Value(anchor.location),
+        tags: Value(anchor.tags),
+        reminderMinutesBefore: Value(anchor.reminderMinutesBefore),
+        createdAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+
+    // 3. Копируем шаблон подзадач с якоря на новый якорь.
+    final templateSubtasks = await (select(subtasksTable)
+          ..where((t) => t.itemId.equals(anchorId))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .get();
+    for (final st in templateSubtasks) {
+      await into(subtasksTable).insert(
+        SubtasksTableCompanion(
+          id: Value(uuidV4()),
+          itemId: Value(newAnchorId),
+          title: Value(st.title),
+          done: Value(st.done),
+          sortOrder: Value(st.sortOrder),
+        ),
+      );
+    }
+
+    // 4. Сдвигаем будущие материализованные concrete-строки (даты из старого
+    //    EXDATE >= splitDate). Ищем через _findMaterializedOccurrence по дате.
+    final futureDates =
+        rule.exDates.where((d) => !d.isBefore(splitDate)).toList();
+    for (final exDate in futureDates) {
+      final concrete = await _findMaterializedOccurrence(anchor, exDate);
+      if (concrete != null) {
+        await updateItem(
+          concrete.id,
+          ItemsTableCompanion(
+            scheduledAt: Value(concrete.scheduledAt.add(delta)),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+    }
+
+    return newAnchorId;
+  }
+
+  /// «ВСЯ СЕРИЯ» — сдвигает время суток якоря [anchorId] к [newScheduledAt]
+  /// и применяет ту же дельту к уже материализованным concrete-строкам.
+  /// [fromDate] — если задан, сдвигаются только concrete-строки на датах >=
+  /// [fromDate]; якорь обновляется всегда. Удобно для «применить с сегодня».
+  Future<void> rescheduleWholeSeries(
+    String anchorId,
+    DateTime newScheduledAt, {
+    DateTime? fromDate,
+  }) async {
+    final anchor = await getItemById(anchorId);
+    if (anchor == null) return;
+    final rule = RecurrenceRule.parse(anchor.recurrenceRule);
+    if (rule == null) return;
+
+    final now = DateTime.now();
+    final delta = timeOfDayDelta(anchor.scheduledAt, newScheduledAt);
+
+    // 1. Обновляем scheduledAt якоря.
+    await updateItem(
+      anchorId,
+      ItemsTableCompanion(
+        scheduledAt: Value(newScheduledAt),
+        updatedAt: Value(now),
+      ),
+    );
+
+    // 2. Сдвигаем материализованные экземпляры (все, или только >= fromDate).
+    final cutoff = fromDate != null ? _dateOnly(fromDate) : null;
+    final targetDates = rule.exDates
+        .where((d) => cutoff == null || !d.isBefore(cutoff))
+        .toList();
+
+    for (final exDate in targetDates) {
+      final concrete = await _findMaterializedOccurrence(anchor, exDate);
+      if (concrete != null) {
+        await updateItem(
+          concrete.id,
+          ItemsTableCompanion(
+            scheduledAt: Value(concrete.scheduledAt.add(delta)),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+    }
   }
 }
