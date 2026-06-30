@@ -167,9 +167,8 @@ class WaterReminderNotifier extends StateNotifier<bool> {
 // ---------------------------------------------------------------------------
 
 class _KaCard extends StatelessWidget {
-  const _KaCard({required this.child, this.padding = const EdgeInsets.all(16)});
+  const _KaCard({required this.child});
   final Widget child;
-  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +179,7 @@ class _KaCard extends StatelessWidget {
         border: Border.all(color: ext.border, width: 0.5),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Padding(padding: padding, child: child),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
     );
   }
 }
@@ -224,52 +223,57 @@ class HealthScreen extends ConsumerWidget {
         Text(context.s('health.title'), style: textTheme.displaySmall),
 
         // ── NUTRITION ──────────────────────────────────────────────────────
+        // Water — всегда видим, поэтому секция/заголовок остаются всегда.
         _HealthSectionHeader(labelKey: 'health.section_nutrition'),
         _buildWaterCard(context, ref, textTheme, total, waterGoalMl, progress, dao),
-        const SizedBox(height: 8),
-        _HealthModuleTile(
-          enabled: nutritionOn,
-          titleKey: 'health.food',
-          subtitleKey: 'health.food_subtitle',
-          icon: PhosphorIcons.forkKnife(),
-          route: '/food',
-          onToggle: (v) => ref.read(nutritionModeProvider.notifier).set(v),
-        ),
+        // Food — опциональный модуль (#17): выключен → НЕ показываем карточку
+        // вообще (ни тумблер, ни ссылку). Включается только в Profile → Behavior.
+        if (nutritionOn) ...[
+          const SizedBox(height: 8),
+          _HealthModuleTile(
+            titleKey: 'health.food',
+            subtitleKey: 'health.food_subtitle',
+            icon: PhosphorIcons.forkKnife(),
+            route: '/food',
+          ),
+        ],
 
         // ── SLEEP ──────────────────────────────────────────────────────────
         _HealthSectionHeader(labelKey: 'health.section_sleep'),
         const _SleepCard(),
 
         // ── MIND ───────────────────────────────────────────────────────────
-        _HealthSectionHeader(labelKey: 'health.section_mind'),
-        _HealthModuleTile(
-          enabled: meditationOn,
-          titleKey: 'health.meditation',
-          subtitleKey: 'health.meditation_subtitle',
-          icon: PhosphorIcons.flowerLotus(),
-          route: '/meditation',
-          onToggle: (v) => ref.read(meditationLibraryModeProvider.notifier).set(v),
-        ),
-        const SizedBox(height: 8),
-        _HealthModuleTile(
-          enabled: breathingOn,
-          titleKey: 'health.breathing',
-          subtitleKey: 'health.breathing_subtitle',
-          icon: PhosphorIcons.wind(),
-          route: '/breathing',
-          onToggle: (v) => ref.read(breathingEditorModeProvider.notifier).set(v),
-        ),
+        // Опциональные модули (#17): секция целиком скрыта, если ОБА выключены.
+        if (meditationOn || breathingOn) ...[
+          _HealthSectionHeader(labelKey: 'health.section_mind'),
+          if (meditationOn)
+            _HealthModuleTile(
+              titleKey: 'health.meditation',
+              subtitleKey: 'health.meditation_subtitle',
+              icon: PhosphorIcons.flowerLotus(),
+              route: '/meditation',
+            ),
+          if (meditationOn && breathingOn) const SizedBox(height: 8),
+          if (breathingOn)
+            _HealthModuleTile(
+              titleKey: 'health.breathing',
+              subtitleKey: 'health.breathing_subtitle',
+              icon: PhosphorIcons.wind(),
+              route: '/breathing',
+            ),
+        ],
 
         // ── MOVEMENT ───────────────────────────────────────────────────────
-        _HealthSectionHeader(labelKey: 'health.section_movement'),
-        _HealthModuleTile(
-          enabled: workoutOn,
-          titleKey: 'health.workouts',
-          subtitleKey: 'health.workouts_subtitle',
-          icon: PhosphorIcons.barbell(),
-          route: '/workouts',
-          onToggle: (v) => ref.read(workoutModeProvider.notifier).set(v),
-        ),
+        // Опциональный модуль (#17): выключен → секция целиком скрыта.
+        if (workoutOn) ...[
+          _HealthSectionHeader(labelKey: 'health.section_movement'),
+          _HealthModuleTile(
+            titleKey: 'health.workouts',
+            subtitleKey: 'health.workouts_subtitle',
+            icon: PhosphorIcons.barbell(),
+            route: '/workouts',
+          ),
+        ],
 
         const SizedBox(height: 16),
         _ManageModulesRow(),
@@ -297,6 +301,8 @@ class HealthScreen extends ConsumerWidget {
         const SizedBox(height: 8),
 
         // ── NUTRITION + SLEEP side by side ─────────────────────────────────
+        // Food — опциональный модуль (#17): выключен → карточка не рендерится
+        // вообще. Включается только в Profile → Behavior.
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -308,15 +314,15 @@ class HealthScreen extends ConsumerWidget {
                   _buildWaterCard(
                     context, ref, textTheme, total, waterGoalMl, progress, dao,
                   ),
-                  const SizedBox(height: 8),
-                  _HealthModuleTile(
-                    enabled: nutritionOn,
-                    titleKey: 'health.food',
-                    subtitleKey: 'health.food_subtitle',
-                    icon: PhosphorIcons.forkKnife(),
-                    route: '/food',
-                    onToggle: (v) => ref.read(nutritionModeProvider.notifier).set(v),
-                  ),
+                  if (nutritionOn) ...[
+                    const SizedBox(height: 8),
+                    _HealthModuleTile(
+                      titleKey: 'health.food',
+                      subtitleKey: 'health.food_subtitle',
+                      icon: PhosphorIcons.forkKnife(),
+                      route: '/food',
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -335,6 +341,8 @@ class HealthScreen extends ConsumerWidget {
         const SizedBox(height: 8),
 
         // ── MIND + MOVEMENT side by side ───────────────────────────────────
+        // Опциональные модули (#17): секция целиком скрыта, когда выключена
+        // (для Mind — когда выключены ОБА: meditation и breathing).
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -342,26 +350,24 @@ class HealthScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _HealthSectionHeader(labelKey: 'health.section_mind'),
-                  _HealthModuleTile(
-                    enabled: meditationOn,
-                    titleKey: 'health.meditation',
-                    subtitleKey: 'health.meditation_subtitle',
-                    icon: PhosphorIcons.flowerLotus(),
-                    route: '/meditation',
-                    onToggle: (v) =>
-                        ref.read(meditationLibraryModeProvider.notifier).set(v),
-                  ),
-                  const SizedBox(height: 8),
-                  _HealthModuleTile(
-                    enabled: breathingOn,
-                    titleKey: 'health.breathing',
-                    subtitleKey: 'health.breathing_subtitle',
-                    icon: PhosphorIcons.wind(),
-                    route: '/breathing',
-                    onToggle: (v) =>
-                        ref.read(breathingEditorModeProvider.notifier).set(v),
-                  ),
+                  if (meditationOn || breathingOn) ...[
+                    _HealthSectionHeader(labelKey: 'health.section_mind'),
+                    if (meditationOn)
+                      _HealthModuleTile(
+                        titleKey: 'health.meditation',
+                        subtitleKey: 'health.meditation_subtitle',
+                        icon: PhosphorIcons.flowerLotus(),
+                        route: '/meditation',
+                      ),
+                    if (meditationOn && breathingOn) const SizedBox(height: 8),
+                    if (breathingOn)
+                      _HealthModuleTile(
+                        titleKey: 'health.breathing',
+                        subtitleKey: 'health.breathing_subtitle',
+                        icon: PhosphorIcons.wind(),
+                        route: '/breathing',
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -370,15 +376,15 @@ class HealthScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _HealthSectionHeader(labelKey: 'health.section_movement'),
-                  _HealthModuleTile(
-                    enabled: workoutOn,
-                    titleKey: 'health.workouts',
-                    subtitleKey: 'health.workouts_subtitle',
-                    icon: PhosphorIcons.barbell(),
-                    route: '/workouts',
-                    onToggle: (v) => ref.read(workoutModeProvider.notifier).set(v),
-                  ),
+                  if (workoutOn) ...[
+                    _HealthSectionHeader(labelKey: 'health.section_movement'),
+                    _HealthModuleTile(
+                      titleKey: 'health.workouts',
+                      subtitleKey: 'health.workouts_subtitle',
+                      icon: PhosphorIcons.barbell(),
+                      route: '/workouts',
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -638,26 +644,26 @@ class _HealthSectionHeader extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // _HealthModuleTile — §4.2 object card.
-// enabled=true  → nav card с caretRight (Material+InkWell для ripple).
-// enabled=false → инлайн Switch (_KaCard).
+//
+// Только nav card (caretRight, Material+InkWell для ripple) — рендерится ТОЛЬКО
+// когда модуль включён в Profile → Behavior (feature_modes_provider.dart).
+// Выключенные модули в Health не отображаются вообще (#17): нет карточки,
+// нет инлайн-тумблера. Включить модуль можно только через Profile → Behavior
+// (см. _ManageModulesRow ниже) — это единственный источник истины для тумблеров.
 // ---------------------------------------------------------------------------
 
 class _HealthModuleTile extends StatelessWidget {
   const _HealthModuleTile({
-    required this.enabled,
     required this.titleKey,
     required this.subtitleKey,
     required this.icon,
     required this.route,
-    required this.onToggle,
   });
 
-  final bool enabled;
   final String titleKey;
   final String subtitleKey;
   final IconData icon;
   final String route;
-  final ValueChanged<bool> onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -665,86 +671,48 @@ class _HealthModuleTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final surface = Theme.of(context).colorScheme.surface;
 
-    if (enabled) {
-      // Включён → навигационная карточка, InkWell ripple внутри Material
-      return Material(
-        color: surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: ext.border, width: 0.5),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => context.push(route),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Icon(icon, size: 20, color: ext.textMuted),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        context.s(titleKey),
-                        style: textTheme.bodyLarge,
-                        overflow: TextOverflow.ellipsis,
+    return Material(
+      color: surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: ext.border, width: 0.5),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => context.push(route),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: ext.textMuted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      context.s(titleKey),
+                      style: textTheme.bodyLarge,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      context.s(subtitleKey),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: ext.textMuted,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        context.s(subtitleKey),
-                        style: textTheme.bodySmall?.copyWith(
-                          color: ext.textMuted,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Icon(PhosphorIcons.caretRight(), size: 16, color: ext.textMuted),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              Icon(PhosphorIcons.caretRight(), size: 16, color: ext.textMuted),
+            ],
           ),
         ),
-      );
-    }
-
-    // Выключен → инлайн-переключатель
-    return _KaCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: ext.textMuted.withValues(alpha: 0.45)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  context.s(titleKey),
-                  style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  context.s(subtitleKey),
-                  style: textTheme.bodySmall?.copyWith(
-                    color: ext.textMuted.withValues(alpha: 0.7),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Switch.adaptive(value: false, onChanged: onToggle),
-        ],
       ),
     );
   }

@@ -277,14 +277,24 @@ class _CategoryLimitRow extends StatelessWidget {
             Icon(_categoryIcon(categoryKey), size: 20, color: ext.textMuted),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(categoryName, style: textTheme.bodyLarge),
+              child: Text(
+                categoryName,
+                style: textTheme.bodyLarge,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
             ),
             const SizedBox(width: 8),
-            Text(
-              subtitle,
-              style: textTheme.bodySmall?.copyWith(
-                color: currentMinutes == 0 ? ext.textFaint : ext.textMuted,
-                fontFeatures: const [FontFeature.tabularFigures()],
+            // Flexible + ellipsis: защита от overflow на 320dp / textScale 1.5
+            Flexible(
+              child: Text(
+                subtitle,
+                style: textTheme.bodySmall?.copyWith(
+                  color: currentMinutes == 0 ? ext.textFaint : ext.textMuted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
             const SizedBox(width: 8),
@@ -550,12 +560,21 @@ class _UsageTile extends ConsumerWidget {
         ? (usedMinutes / limitMinutes).clamp(0.0, 1.0).toDouble()
         : null;
 
-    // Подпись: «used / limit» или просто «used».
-    final usedLabel = '${context.s('screentime.used_today')}: '
-        '$usedMinutes ${context.s('screentime.min_per_day')}';
-    final subtitle = hasLimit
+    // Подпись в самой строке: только короткий формат «used / limit», когда
+    // лимит задан — он всегда короче, чем ширина строки и не нуждается
+    // в дополнительной строке.
+    // Без лимита подпись «Использовано сегодня: N мин/день» заметно длиннее
+    // (особенно в DE/FR/RU) и не помещается рядом с именем категории — даже
+    // если у строки формально есть свободное место, Expanded(categoryName)
+    // и Flexible(subtitle) с одинаковым flex делят его строго пополам, из-за
+    // чего длинная подпись обрезалась серединой слова («Использовано сего…ю»).
+    // Решение (#7): без лимита подпись переносится на отдельную строку ниже
+    // во всю ширину карточки — там ей всегда достаточно места.
+    final compactSubtitle = hasLimit
         ? '$usedMinutes / $limitMinutes ${context.s('screentime.min_per_day')}'
-        : usedLabel;
+        : null;
+    final usedTodayLabel = '${context.s('screentime.used_today')}: '
+        '$usedMinutes ${context.s('screentime.min_per_day')}';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -571,23 +590,42 @@ class _UsageTile extends ConsumerWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(categoryName, style: textTheme.bodyLarge),
-              ),
-              const SizedBox(width: 8),
-              // Flexible + ellipsis: защита от overflow на 320dp / textScale 1.5
-              Flexible(
                 child: Text(
-                  subtitle,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: isOver ? ext.ember : ext.textMuted,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                  categoryName,
+                  style: textTheme.bodyLarge,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
               ),
+              // Короткая подпись «used / limit» — только когда лимит задан.
+              if (compactSubtitle != null) ...[
+                const SizedBox(width: 8),
+                // Flexible + ellipsis: защита от overflow на 320dp / textScale 1.5
+                Flexible(
+                  child: Text(
+                    compactSubtitle,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: isOver ? ext.ember : ext.textMuted,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
             ],
           ),
+          // Без лимита — длинная подпись на отдельной полноширинной строке (#7).
+          if (!hasLimit) ...[
+            const SizedBox(height: 4),
+            Text(
+              usedTodayLabel,
+              style: textTheme.bodySmall?.copyWith(
+                color: ext.textMuted,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
           if (hasLimit) ...[
             const SizedBox(height: 8),
             ClipRRect(
@@ -1010,35 +1048,46 @@ class _AppRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            // Метка категории — chip-like (border + R12)
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: ext.border,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    catLabel,
-                    style:
-                        textTheme.bodySmall?.copyWith(color: ext.textMuted),
-                  ),
-                  // Маркер «есть пользовательский оверрайд» — точка accent
-                  if (hasUserOverride) ...[
-                    const SizedBox(width: 4),
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        shape: BoxShape.circle,
+            // Метка категории — chip-like (border + R12).
+            // Flexible: на узкой ширине / крупном тексте чип должен сжаться
+            // (а его текст — обрезаться многоточием), а не выталкивать Row
+            // за пределы экрана — длинное имя пакета уже забирает место через
+            // Expanded выше, и без Flexible здесь chip держит свою натуральную
+            // ширину независимо от того, сколько места реально осталось.
+            Flexible(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: ext.border,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        catLabel,
+                        style: textTheme.bodySmall
+                            ?.copyWith(color: ext.textMuted),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ),
+                    // Маркер «есть пользовательский оверрайд» — точка accent
+                    if (hasUserOverride) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             const SizedBox(width: 4),

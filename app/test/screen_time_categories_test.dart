@@ -126,6 +126,55 @@ void main() {
     });
   });
 
+  group('filterTrackedPackages (#8 — неверное «Всего сегодня»)', () {
+    test('убирает лаунчер и systemui, реальные приложения остаются', () {
+      final filtered = filterTrackedPackages(const {
+        'com.miui.home': 480, // лаунчер «в фокусе» весь день — не реальное использование
+        'com.android.systemui': 60,
+        'android': 45,
+        'com.instagram.android': 35,
+        'com.google.android.youtube': 50,
+      });
+      expect(filtered.containsKey('com.miui.home'), isFalse);
+      expect(filtered.containsKey('com.android.systemui'), isFalse);
+      expect(filtered.containsKey('android'), isFalse);
+      expect(filtered['com.instagram.android'], 35);
+      expect(filtered['com.google.android.youtube'], 50);
+      expect(filtered.length, 2);
+    });
+
+    test('пустой ввод → пустой результат', () {
+      expect(filterTrackedPackages(const {}), isEmpty);
+    });
+
+    test('без системных пакетов карта не меняется', () {
+      final filtered = filterTrackedPackages(const {
+        'com.instagram.android': 35,
+        'org.telegram.messenger': 10,
+      });
+      expect(filtered, {
+        'com.instagram.android': 35,
+        'org.telegram.messenger': 10,
+      });
+    });
+
+    test(
+        'итог после фильтрации + категоризации не включает время лаунчера '
+        '(репро бага «11ч 22м при ~2ч реального использования»)', () {
+      final filtered = filterTrackedPackages(const {
+        'com.miui.home': 480, // 8ч — артефакт Android, не использование
+        'com.android.systemui': 162, // ещё ~2.7ч
+        'com.instagram.android': 35,
+        'com.google.android.youtube': 95,
+      });
+      final categorized = categorizeUsageMinutes(filtered);
+      final total = categorized.values.fold<int>(0, (a, b) => a + b);
+      // 35 + 95 = 130 мин (2ч10м), НЕ 772 мин (12ч52м), если бы лаунчер
+      // и systemui остались в подсчёте.
+      expect(total, 130);
+    });
+  });
+
   group('androidCategoryToOurCategory', () {
     test('CATEGORY_GAME (0) → games', () {
       expect(androidCategoryToOurCategory(0), 'games');

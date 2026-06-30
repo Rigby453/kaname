@@ -178,6 +178,62 @@ Map<String, int> categorizeUsageMinutes(
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Исключение «не настоящего» использования (#8 — неверный «Всего сегодня»)
+// ---------------------------------------------------------------------------
+//
+// Android считает домашний экран (launcher) и часть системных компонентов
+// «в фокусе» почти всё время, пока пользователь не открыл стороннее приложение
+// (между переключениями, на заблокированном экране и т.д.) — это артефакт
+// UsageStatsManager, а не реальное использование. Если не отфильтровать такие
+// пакеты ДО агрегации, они почти всегда оказываются самым крупным «приложением»
+// (часто многочасовым) и искусственно завышают «Всего сегодня» в разы, хотя
+// каждое настоящее приложение (Instagram, YouTube…) по отдельности посчитано
+// верно. Это и была причина бага «11ч 22м при реальных ~2ч использования».
+
+/// Пакеты лаунчеров основных производителей + системный UI/«android».
+/// Список не претендует на полноту (десятки OEM-лаунчеров), но покрывает
+/// самые массовые случаи. Полное решение (определение лаунчера по умолчанию
+/// через PackageManager) — TODO на платформенной стороне (MainActivity.kt).
+const Set<String> kExcludedSystemPackages = <String>{
+  'android', // системный пакет уровня платформы
+  'com.android.systemui',
+  'com.android.settings',
+  'com.android.launcher3',
+  'com.google.android.apps.nexuslauncher', // Pixel
+  'com.miui.home', // MIUI / HyperOS (Xiaomi/Redmi/POCO)
+  'com.mi.android.globallauncher',
+  'com.sec.android.app.launcher', // Samsung One UI
+  'com.huawei.android.launcher',
+  'com.hihonor.android.launcher',
+  'com.oppo.launcher',
+  'com.coloros.launcher',
+  'com.vivo.launcher',
+  'com.bbk.launcher2',
+  'com.oneplus.launcher',
+  'com.lge.launcher3',
+  'com.asus.launcher',
+  'com.sonyericsson.home',
+  'com.motorola.launcher3',
+  'com.transsion.XOSLauncher', // Tecno / Infinix / itel
+  'com.realme.launcher',
+};
+
+/// Убирает пакеты из [kExcludedSystemPackages] перед агрегацией минут.
+///
+/// Чистая функция (без I/O) — применяется к сырой карте `packageName → minutes`
+/// ДО [categorizeUsageMinutes], чтобы лаунчер/systemui не попадали ни в одну
+/// категорию (включая 'other') и не искажали суммарный итог «Всего сегодня».
+Map<String, int> filterTrackedPackages(Map<String, int> perPackageMinutes) {
+  if (perPackageMinutes.isEmpty) return perPackageMinutes;
+  final result = <String, int>{};
+  perPackageMinutes.forEach((package, minutes) {
+    if (kExcludedSystemPackages.contains(package)) return;
+    result[package] = minutes;
+  });
+  return result;
+}
+
 /// Определяет эффективную категорию одного пакета по той же цепочке приоритетов,
 /// что и [categorizeUsageMinutes]. Используется при построении per-app breakdown.
 ///

@@ -233,14 +233,19 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
     // packageName → минуты в foreground за сегодня.
     // Используем округление вверх (ceiling): 1–59 сек = 1 мин, чтобы короткие сессии
     // (например, игра 30 сек ночью) не терялись при floor-делении на 60000.
-    final perPackageMinutes = <String, int>{};
+    final rawPerPackageMinutes = <String, int>{};
     perPackageStats.forEach((package, info) {
       final ms = info.totalTimeInForegroundMs ?? 0;
       if (ms <= 0) return;
       // ceil: 1..59 999 мс → 1 мин; 60 000 мс → 1 мин; 60 001 мс → 2 мин.
       final minutes = (ms / 60000).ceil();
-      perPackageMinutes[package] = minutes;
+      rawPerPackageMinutes[package] = minutes;
     });
+
+    // Убираем лаунчер/системный UI (#8) — Android считает их «в фокусе»
+    // почти весь день, что без фильтрации завышает «Всего сегодня» в разы,
+    // хотя реальные приложения по отдельности посчитаны верно.
+    final perPackageMinutes = filterTrackedPackages(rawPerPackageMinutes);
 
     // Читаем пользовательские оверрайды (наивысший приоритет).
     // _ref может быть null в тестах — тогда оверрайдов нет.

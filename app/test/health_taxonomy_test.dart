@@ -1,10 +1,17 @@
-// Тест: Health screen корректно отображает 4 тематические группы
-// (Nutrition / Sleep / Mind / Movement) без overflow.
+// Тест: Health screen корректно отображает тематические группы
+// (Nutrition / Sleep / Mind / Movement) без overflow, и корректно скрывает
+// отключённые опциональные модули (#17 — disabled modules must not appear as
+// a toggle-card in Health; they're hidden entirely and switch ONLY in
+// Profile → Behavior).
 //
 // Проверяем:
-//   1. Все 4 заголовка секций рендерятся на 320px (высота достаточная).
-//   2. Нет RenderFlex overflow ни на 320x2500px, ни при textScale 1.5 на 360x2500px.
-//   3. По умолчанию (все флаги=false) 4 модульных Switch присутствует в дереве.
+//   1. Default (все флаги=false): Nutrition/Sleep всегда видны (Water/Sleep —
+//      не опциональны); Mind/Movement ПОЛНОСТЬЮ скрыты (оба их модуля выключены);
+//      нет ни одной карточки/Switch для Food/Meditation/Breathing/Workouts.
+//   2. Все флаги=true: все 4 секции видны, модули — nav-карточки (caretRight),
+//      БЕЗ инлайн-Switch (тумблер живёт только в Profile → Behavior).
+//   3. Нет RenderFlex overflow ни на 320x2500px, ни при textScale 1.5 на 360x2500px
+//      (в обоих состояниях флагов).
 //
 // Примечание о высоте: ListView lazy-строит только видимые элементы.
 // Используем высоту 2500px, чтобы все элементы были в дереве. Ширина 320px
@@ -12,6 +19,7 @@
 
 import 'package:app/core/database/database.dart';
 import 'package:app/core/database/database_providers.dart';
+import 'package:app/core/settings/feature_modes_provider.dart';
 import 'package:app/core/theme/app_theme.dart';
 import 'package:app/core/theme/theme_provider.dart' show sharedPreferencesProvider;
 import 'package:app/features/health/health_screen.dart';
@@ -20,6 +28,7 @@ import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ---------------------------------------------------------------------------
@@ -126,8 +135,8 @@ void main() {
 
   group('HealthScreen — taxonomy grouping', () {
     testWidgets(
-        '320px width: все 4 тематические секции присутствуют, нет overflow',
-        (tester) async {
+        '320px width, default (все модули выключены): Nutrition/Sleep видны, '
+        'Mind/Movement скрыты целиком, нет overflow', (tester) async {
       // Высота 2500px чтобы все lazy-ListView элементы попали в дерево;
       // ширина 320px для проверки горизонтального overflow.
       await _setSize(tester, _narrowTallSize);
@@ -136,11 +145,13 @@ void main() {
       );
       await _settle(tester);
 
-      // Все 4 заголовка секций должны быть найдены в дереве
+      // Water/Sleep не опциональны — секции всегда есть.
       expect(find.text('Nutrition'), findsWidgets);
       expect(find.text('Sleep'), findsWidgets);
-      expect(find.text('Mind'), findsWidgets);
-      expect(find.text('Movement'), findsWidgets);
+      // Mind/Movement держат ТОЛЬКО опциональные модули — оба выключены →
+      // секции (и их заголовки) #17 не рендерятся вообще.
+      expect(find.text('Mind'), findsNothing);
+      expect(find.text('Movement'), findsNothing);
 
       // Нет исключений (overflow и др.)
       expect(tester.takeException(), isNull);
@@ -149,8 +160,84 @@ void main() {
     });
 
     testWidgets(
-        'textScale 1.5: все 4 тематические секции присутствуют, нет overflow',
+        'default (все модули выключены): нет ни одной карточки/Switch для '
+        'Food/Meditation/Breathing/Workouts (#17)', (tester) async {
+      await _setSize(tester, _narrowTallSize);
+      await tester.pumpWidget(
+        _buildHarness(db, prefs, const HealthScreen()),
+      );
+      await _settle(tester);
+
+      // Заголовки опциональных модулей не должны встречаться нигде на экране.
+      expect(find.text('Food'), findsNothing);
+      expect(find.text('Meditation'), findsNothing);
+      expect(find.text('Breathing'), findsNothing);
+      expect(find.text('Workouts'), findsNothing);
+
+      // Единственный Switch на экране в default-состоянии — water reminders.
+      final switchWidgets =
+          find.byWidgetPredicate((w) => w is Switch || w is CupertinoSwitch);
+      expect(switchWidgets, findsOneWidget);
+
+      expect(tester.takeException(), isNull);
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        'все модули включены: все 4 секции видны, модули — nav-карточки '
+        'БЕЗ инлайн-Switch (тумблер только в Profile → Behavior)',
         (tester) async {
+      SharedPreferences.setMockInitialValues({
+        kNutritionModeKey: true,
+        kWorkoutModeKey: true,
+        kMeditationLibraryModeKey: true,
+        kBreathingEditorModeKey: true,
+      });
+      prefs = await SharedPreferences.getInstance();
+
+      await _setSize(tester, _narrowTallSize);
+      await tester.pumpWidget(
+        _buildHarness(db, prefs, const HealthScreen()),
+      );
+      await _settle(tester);
+
+      expect(find.text('Nutrition'), findsWidgets);
+      expect(find.text('Sleep'), findsWidgets);
+      expect(find.text('Mind'), findsWidgets);
+      expect(find.text('Movement'), findsWidgets);
+
+      expect(find.text('Food'), findsOneWidget);
+      expect(find.text('Meditation'), findsOneWidget);
+      expect(find.text('Breathing'), findsOneWidget);
+      expect(find.text('Workouts'), findsOneWidget);
+
+      // Только water reminders Switch — модульные карточки больше не имеют
+      // инлайн-тумблера (#17): включаются только в Profile → Behavior.
+      final switchWidgets =
+          find.byWidgetPredicate((w) => w is Switch || w is CupertinoSwitch);
+      expect(switchWidgets, findsOneWidget);
+
+      // Вместо тумблера — caretRight (nav-карточка), по одной на модуль.
+      final caretIcons = find.byWidgetPredicate(
+        (w) => w is Icon && w.icon == PhosphorIcons.caretRight(),
+      );
+      expect(caretIcons, findsAtLeast(4));
+
+      expect(tester.takeException(), isNull);
+      await _unmount(tester);
+    });
+
+    testWidgets(
+        'все модули включены, textScale 1.5: все 4 секции видны, нет overflow',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        kNutritionModeKey: true,
+        kWorkoutModeKey: true,
+        kMeditationLibraryModeKey: true,
+        kBreathingEditorModeKey: true,
+      });
+      prefs = await SharedPreferences.getInstance();
+
       await _setSize(tester, _normalTallSize);
       await tester.pumpWidget(
         _buildHarness(
@@ -170,29 +257,6 @@ void main() {
 
       expect(tester.takeException(), isNull);
 
-      await _unmount(tester);
-    });
-
-    testWidgets(
-        'default state (все флаги=false): 4 модульных Switch в дереве',
-        (tester) async {
-      await _setSize(tester, _narrowTallSize);
-      // Все флаги = false (дефолт — пустой prefs)
-      await tester.pumpWidget(
-        _buildHarness(db, prefs, const HealthScreen()),
-      );
-      await _settle(tester);
-
-      // В default-состоянии все 4 опциональных модуля показывают Switch(false).
-      // Switch.adaptive может рендериться как Switch или CupertinoSwitch в зависимости
-      // от платформы; ищем оба типа вместе.
-      final switchWidgets =
-          find.byWidgetPredicate((w) => w is Switch || w is CupertinoSwitch);
-      // Ожидаем минимум 4 — по одному на Food / Meditation / Breathing / Workouts
-      // Плюс Water reminders Switch в карточке воды = 5 итого.
-      expect(switchWidgets, findsAtLeast(4));
-
-      expect(tester.takeException(), isNull);
       await _unmount(tester);
     });
   });
