@@ -65,6 +65,32 @@ class FoodLogsDao extends DatabaseAccessor<AppDatabase>
     await (delete(foodLogsTable)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Ручная правка КБЖУ/сахара/клетчатки ОДНОЙ записи (food-1: детальный шит
+  /// просмотра/редактирования лога). Меняет только абсолютные значения этой
+  /// записи (как хранятся в food_logs) — НЕ трогает date/meal/name/grams и
+  /// НЕ пишет в глобальную базу продуктов (Open Food Facts). null = очистить
+  /// поле (пользователь стёр значение).
+  Future<void> updateLogMacros(
+    String id, {
+    double? calories,
+    double? protein,
+    double? fat,
+    double? carbs,
+    double? sugar,
+    double? fiber,
+  }) async {
+    await (update(foodLogsTable)..where((t) => t.id.equals(id))).write(
+      FoodLogsTableCompanion(
+        calories: Value(calories),
+        protein: Value(protein),
+        fat: Value(fat),
+        carbs: Value(carbs),
+        sugar: Value(sugar),
+        fiber: Value(fiber),
+      ),
+    );
+  }
+
   /// Записи за последние [days] дней, свежие первыми.
   /// Используется как источник «недавних продуктов» для AI-сборки меню.
   Future<List<FoodLogsTableData>> recentLogs(int days) {

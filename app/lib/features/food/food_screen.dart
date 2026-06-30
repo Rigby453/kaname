@@ -45,6 +45,7 @@ import 'ai_menu_sheet.dart';
 import 'barcode_scanner_screen.dart';
 import 'food_balance.dart';
 import 'food_icons.dart';
+import 'food_log_detail_sheet.dart';
 import 'food_nutrition.dart';
 import 'meal_slots.dart';
 import '../../core/settings/food_preferences_provider.dart';
@@ -709,6 +710,7 @@ class _FoodRow extends ConsumerWidget {
       key: ValueKey('food_log_${log.id}'),
       onDelete: () => _deleteWithUndo(context, ref),
       // §4 card: surface1 + 0.5 hairline + R14, dense row (не ListTile)
+      // Тап по строке → шит просмотра/правки КБЖУ этой записи (food-1).
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
@@ -719,40 +721,47 @@ class _FoodRow extends ConsumerWidget {
             width: 0.5,
           ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-          child: Row(
-            children: [
-              FoodIconTile(name: log.name, size: 36),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      log.name,
-                      style: textTheme.bodyMedium,
-                      overflow: TextOverflow.ellipsis,
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => showFoodLogDetailSheet(context, log),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+              child: Row(
+                children: [
+                  FoodIconTile(name: log.name, size: 36),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          log.name,
+                          style: textTheme.bodyMedium,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          rowSubtitle,
+                          style: textTheme.bodySmall?.copyWith(color: mutedColor),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      rowSubtitle,
-                      style: textTheme.bodySmall?.copyWith(color: mutedColor),
-                      overflow: TextOverflow.ellipsis,
+                  ),
+                  IconButton(
+                    tooltip: context.s('food.remove_tooltip'),
+                    icon: Icon(
+                      PhosphorIcons.x(),
+                      size: 18,
+                      color: ext?.textFaint,
                     ),
-                  ],
-                ),
+                    onPressed: () => _deleteWithUndo(context, ref),
+                  ),
+                ],
               ),
-              IconButton(
-                tooltip: context.s('food.remove_tooltip'),
-                icon: Icon(
-                  PhosphorIcons.x(),
-                  size: 18,
-                  color: ext?.textFaint,
-                ),
-                onPressed: () => _deleteWithUndo(context, ref),
-              ),
-            ],
+            ),
           ),
         ),
       ),
