@@ -31,6 +31,17 @@ Before starting any task:
 - Shared contracts (/docs/*.yaml, /docs/*.json, /docs/*.md) — read, never rewrite unless instructed.
 - If you need to change a shared contract, ask first and log in /docs/decisions.md.
 
+## Running the app — backend target (НЕ localhost по умолчанию)
+По прямому требованию пользователя: при запуске приложения (телефон **и** веб) подключаться
+**ТОЛЬКО к настроенному боевому бэкенду (Render)**, а не к `localhost`/LAN.
+- Не поднимать локальный `npm run dev` и не указывать `API_BASE_URL=http://localhost:3000`,
+  если пользователь явно не попросил локальный режим.
+- Запуск: `scripts/run-phone.ps1` (телефон) и `scripts/run-web.ps1` (браузер) — оба по
+  умолчанию используют боевой URL; localhost/LAN только по флагу `-Local`.
+- Боевой URL хранится в этих скриптах (`$DefaultApiBaseUrl`) и в GitHub repo variable
+  `vars.API_BASE_URL` (для web-деплоя). Если боевой сервис недоступно/`no-server` —
+  сообщить пользователю и спросить актуальный URL, **не** молча откатываться на localhost.
+
 ## Agent reliability & test-run hygiene
 Subagents sometimes **drop their connection mid-response** ("API Error: Connection closed") or get stopped — they usually still did real work but lose their final report. Handle it, don't trust the report:
 - **Verify from disk, not from the agent's word**: after any agent finishes/dies, run `git status --short`, confirm the expected new files exist, run `flutter analyze` on changed files. Agents typically leave a *compilable, partial* result.

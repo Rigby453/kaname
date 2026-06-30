@@ -1,23 +1,30 @@
-﻿# Запуск Kaizen на телефоне: находит LAN IP ноутбука и запускает flutter run
-# с --dart-define=API_BASE_URL=http://<LAN_IP>:3000, чтобы телефон видел бэкенд.
+﻿# Запуск Kaizen на телефоне через flutter run.
+#
+# ПРАВИЛО (по требованию пользователя): по умолчанию приложение подключается
+# ТОЛЬКО к настроенному боевому бэкенду (Render), НЕ к localhost/LAN.
+# Локальный backend поднимается лишь при явном флаге -Local.
 #
 # Использование (из корня репо или откуда угодно):
 #   powershell -ExecutionPolicy Bypass -File scripts\run-phone.ps1
+#   # -> подключится к $DefaultApiBaseUrl (боевой Render)
+#
+#   # Переопределить адрес боевого бэкенда (если URL другой):
+#   powershell -ExecutionPolicy Bypass -File scripts\run-phone.ps1 -ApiBaseUrl https://<имя>.onrender.com
+#
+#   # ЛОКАЛЬНЫЙ режим (только если осознанно нужен localhost/LAN; требует npm run dev):
+#   powershell -ExecutionPolicy Bypass -File scripts\run-phone.ps1 -Local
+#
 #   # дополнительные аргументы уходят в flutter run, например выбор устройства:
 #   powershell -ExecutionPolicy Bypass -File scripts\run-phone.ps1 -- -d <device-id>
 #
-#   # ПОДКЛЮЧИТЬСЯ К БОЕВОМУ БЭКЕНДУ (Render) вместо локального LAN —
-#   # тогда телефон стучится в интернет, а не на ноутбук (нужно для ИИ: Gemini
-#   # вызывается с франкфуртского сервера и не блокируется по гео):
-#   powershell -ExecutionPolicy Bypass -File scripts\run-phone.ps1 -ApiBaseUrl https://kaizen-backend.onrender.com
-#
 # Требования: телефон подключён по USB (flutter devices его видит).
-# Для LAN-режима: бэкенд запущен (cd backend; npm run dev), телефон и ноутбук в одной Wi-Fi сети.
-# Для -ApiBaseUrl: ничего локально поднимать не нужно — используется задеплоенный бэкенд.
+# Для боевого режима ничего локально поднимать не нужно — используется задеплоенный бэкенд.
+# Для -Local: бэкенд запущен (cd backend; npm run dev), телефон и ноутбук в одной Wi-Fi сети.
 
 param(
     [int]$Port = 3000,
     [string]$ApiBaseUrl = '',
+    [switch]$Local,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$FlutterArgs
 )
@@ -26,13 +33,21 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $appDir = Join-Path $repoRoot 'app'
 
+# Боевой бэкенд по умолчанию. Если реальный URL другой — задавай через -ApiBaseUrl
+# или поправь это значение. НЕ заменять на localhost.
+$DefaultApiBaseUrl = 'https://kaizen-backend-d5fr.onrender.com'
+
 # --- 1. Определяем API_BASE_URL ---
 if (-not [string]::IsNullOrEmpty($ApiBaseUrl)) {
-    # Явно задан адрес бэкенда (например, Render): телефон будет стучаться туда, не на localhost.
+    # Явно задан адрес бэкенда (например, другой Render-сервис).
     $apiUrl = $ApiBaseUrl.TrimEnd('/')
     Write-Host "API_BASE_URL (задан вручную): $apiUrl" -ForegroundColor Green
+} elseif (-not $Local) {
+    # По умолчанию — боевой сервер (НЕ localhost).
+    $apiUrl = $DefaultApiBaseUrl.TrimEnd('/')
+    Write-Host "API_BASE_URL (боевой Render): $apiUrl" -ForegroundColor Green
 } else {
-    # LAN IP: берём интерфейс с маршрутом по умолчанию (реальная сеть, не виртуалки)
+    # -Local: LAN IP ноутбука (только по явному запросу).
     $defaultRoute = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
         Sort-Object RouteMetric, ifMetric | Select-Object -First 1
     if ($null -eq $defaultRoute) {
@@ -45,8 +60,8 @@ if (-not [string]::IsNullOrEmpty($ApiBaseUrl)) {
         Write-Error 'Не удалось определить LAN IPv4-адрес.'
     }
     $apiUrl = "http://${lanIp}:${Port}"
-    Write-Host "LAN IP ноутбука: $lanIp" -ForegroundColor Green
-    Write-Host "API_BASE_URL:    $apiUrl" -ForegroundColor Green
+    Write-Host "ЛОКАЛЬНЫЙ режим (-Local). LAN IP ноутбука: $lanIp" -ForegroundColor Yellow
+    Write-Host "API_BASE_URL:    $apiUrl" -ForegroundColor Yellow
 }
 
 # --- 2. Проверка, что бэкенд отвечает (не блокирует запуск, только предупреждает) ---
