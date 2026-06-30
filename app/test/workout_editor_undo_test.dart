@@ -26,6 +26,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ---------------------------------------------------------------------------
@@ -145,7 +146,7 @@ void main() {
     // Future.value() — это немедленно-resolved Future, которое завершается как
     // microtask при pump(). Это сохраняет AnimationController SnackBar в
     // fake-async зоне и позволяет pump(duration) двигать анимацию.
-    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    await tester.tap(find.byIcon(PhosphorIcons.trash()).last);
     await tester.pump(); // start _deleteExercise; suspend at await removeExercise
     await tester.pump(); // microtask: removeExercise resolves; _deleteExercise resumes → showUndoSnackBar
     await tester.pump(const Duration(milliseconds: 300)); // SnackBar enter animation (~250ms)
@@ -183,7 +184,7 @@ void main() {
     expect(find.text('Push-up'), findsOneWidget);
 
     // Удаляем упражнение (pump-only: NativeDatabase.memory() = Future.value()).
-    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    await tester.tap(find.byIcon(PhosphorIcons.trash()).last);
     await tester.pump(); // suspend at await removeExercise
     await tester.pump(); // microtask: remove done → showUndoSnackBar
     await tester.pump(const Duration(milliseconds: 300)); // SnackBar animation

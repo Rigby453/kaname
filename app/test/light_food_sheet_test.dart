@@ -20,6 +20,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ---------------------------------------------------------------------------
@@ -262,8 +263,8 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Soup');
       await tester.pump();
 
-      // Нажимаем кнопку [+] (иконка add)
-      await tester.tap(find.byIcon(Icons.add));
+      // Нажимаем кнопку [+] (Phosphor plus, IconButton)
+      await tester.tap(find.widgetWithIcon(IconButton, PhosphorIcons.plus()));
       await tester.pumpAndSettle();
 
       // Запись должна появиться в списке

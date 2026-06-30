@@ -506,26 +506,34 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
 
                 // Чипы выбора техники: встроенные пресеты + пользовательские.
                 // §4.3 choice chips: selected = accentTint + accent border.
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (var i = 0; i < breathingPresets.length; i++)
-                      _TechChip(
-                        label: _localizePresetName(breathingPresets[i].name),
-                        selected: _selectedId == 'builtin:$i',
-                        onTap: () =>
-                            setState(() => _selectedId = 'builtin:$i'),
-                      ),
-                    // Пользовательские техники — с кнопкой удаления.
-                    for (final t in custom)
-                      _TechChip(
-                        label: t.name,
-                        selected: _selectedId == t.id,
-                        onTap: () => setState(() => _selectedId = t.id),
-                        onDelete: () => _deleteCustom(t),
-                      ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final aw = constraints.maxWidth;
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var i = 0; i < breathingPresets.length; i++)
+                          _TechChip(
+                            label:
+                                _localizePresetName(breathingPresets[i].name),
+                            selected: _selectedId == 'builtin:$i',
+                            maxContentWidth: aw,
+                            onTap: () =>
+                                setState(() => _selectedId = 'builtin:$i'),
+                          ),
+                        // Пользовательские техники — с кнопкой удаления.
+                        for (final t in custom)
+                          _TechChip(
+                            label: t.name,
+                            selected: _selectedId == t.id,
+                            maxContentWidth: aw,
+                            onTap: () => setState(() => _selectedId = t.id),
+                            onDelete: () => _deleteCustom(t),
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
 
@@ -549,17 +557,23 @@ class _BreathingScreenState extends ConsumerState<BreathingScreen>
                 const SizedBox(height: 12),
 
                 // Чипы длительности — локализованы через plMinutes (§ anti-regression)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _sessionDurationMinutes.map((mins) {
-                    return _TechChip(
-                      label: plMinutes(context, mins),
-                      selected: _durationMinutes == mins,
-                      onTap: () =>
-                          setState(() => _durationMinutes = mins),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final aw = constraints.maxWidth;
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _sessionDurationMinutes.map((mins) {
+                        return _TechChip(
+                          label: plMinutes(context, mins),
+                          selected: _durationMinutes == mins,
+                          maxContentWidth: aw,
+                          onTap: () =>
+                              setState(() => _durationMinutes = mins),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
+                  },
                 ),
                 const SizedBox(height: 8),
               ],
@@ -741,12 +755,17 @@ class _TechChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.maxContentWidth,
     this.onDelete,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  /// Реальная доступная ширина ряда чипов (из LayoutBuilder вокруг Wrap).
+  /// Надёжнее MediaQuery: совпадает с фактическим layout и в тесте, и в
+  /// узких контейнерах (split-view/планшет).
+  final double maxContentWidth;
   final VoidCallback? onDelete;
 
   @override
@@ -782,10 +801,9 @@ class _TechChip extends StatelessWidget {
               // На 320px: max = 320-48-24 = 248dp (без delete) или 224dp (с delete).
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width -
-                      48 -
-                      24 -
-                      (onDelete != null ? 24 : 0),
+                  // maxContentWidth — уже доступная ширина ряда (без паддинга
+                  // экрана); вычитаем паддинги самого чипа и иконку удаления.
+                  maxWidth: maxContentWidth - 24 - (onDelete != null ? 24 : 0),
                 ),
                 child: Text(
                   label,

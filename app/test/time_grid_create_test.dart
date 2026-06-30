@@ -26,6 +26,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Зеркалит приватную _kBlockPickupDelay из time_grid.dart. Если меняешь порог
@@ -159,7 +160,7 @@ void main() {
           reason: 'диапазон 09:00–10:00 = 60 минут (снэп 15)');
 
       // Закрываем лист, затем размонтируем (чистим таймеры).
-      await tester.tap(find.byIcon(Icons.close));
+      await tester.tap(find.byIcon(PhosphorIcons.x(PhosphorIconsStyle.regular)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       await unmountAndFlush(tester);
