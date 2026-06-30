@@ -5,6 +5,9 @@
 //   • история ночей = hairline-divided rows (не карточки-тайлы)
 //   • пустое состояние = KaiMascot(neutral, 64) + подсказка + CTA
 //   • Phosphor-иконки; без хардкода строк.
+// #22 (батч): переключатель периода День/Неделя/Месяц + бар+линия чарт часов
+// сна по дням для Недели/Месяца (avgHours в SleepStats — среднее ПО НОЧАМ,
+// не по дням периода; уже корректно, фикса не требовалось — см. отчёт).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,37 +21,63 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/date_navigator.dart';
 import '../../core/widgets/kai_loader.dart';
+import '../../core/widgets/period_switcher.dart';
+import '../../core/widgets/trend_chart.dart';
 import '../mascot/kai_mascot.dart';
+import 'sleep_stats.dart' show nightlyHours;
 
 // ---------------------------------------------------------------------------
-// Провайдеры (логика не изменена)
+// Провайдеры (бизнес-логика расчёта статистики не изменена)
 // ---------------------------------------------------------------------------
 
-/// Выбранная дата в sleep report.
+/// Выбранная дата в sleep report — для Week/Month это «конец» (anchor)
+/// скользящего окна включительно, как и в water report.
 final sleepSelectedDateProvider = StateProvider.autoDispose<DateTime>((ref) {
   return DateTime.now();
 });
 
-/// Ночи, попадающие в выбранный день.
+/// Выбранный период отчёта (#22) — День/Неделя/Месяц.
+final sleepReportPeriodProvider =
+    StateProvider.autoDispose<ReportPeriod>((ref) => ReportPeriod.day);
+
+/// Ночи, попадающие в выбранное окно (1/7/30 дней, заканчивающееся на
+/// выбранной дате включительно).
 final sleepFilteredNightsProvider =
     StreamProvider.autoDispose<List<SleepLogsTableData>>((ref) {
   final selectedDate = ref.watch(sleepSelectedDateProvider);
+  final period = ref.watch(sleepReportPeriodProvider);
   final dao = ref.watch(sleepDaoProvider);
 
-  final startOfDay = DateTime(
+  final anchorDay = DateTime(
     selectedDate.year,
     selectedDate.month,
     selectedDate.day,
   );
-  final endOfDay = startOfDay.add(const Duration(days: 1));
+  final startOfWindow = anchorDay.subtract(Duration(days: period.days - 1));
+  final endOfWindow = anchorDay.add(const Duration(days: 1));
 
-  return dao.watchNightsByDateRange(startOfDay, endOfDay);
+  return dao.watchNightsByDateRange(startOfWindow, endOfWindow);
 });
 
-/// Статистика за выбранный период.
+/// Статистика за выбранный период. avgHours — среднее ПО НОЧАМ с данными
+/// (не sum/период) — это корректная метрика для сна (в отличие от воды, где
+/// денежная единица периода важна), фикса triage water-weekly-headline-sum
+/// сюда не применим.
 final sleepStatsForDateProvider = Provider.autoDispose<SleepStats>((ref) {
   final nights = ref.watch(sleepFilteredNightsProvider).value ?? [];
   return _calculateStats(nights);
+});
+
+/// Часы сна по дням окна (для бар+линия чарта Week/Month) — переиспользует
+/// nightlyHours из sleep_stats.dart (та же логика, что и мини-график на
+/// HealthScreen).
+final sleepPeriodHoursProvider =
+    Provider.autoDispose<List<({DateTime day, double hours})>>((ref) {
+  final nights = ref.watch(sleepFilteredNightsProvider).value ?? [];
+  final period = ref.watch(sleepReportPeriodProvider);
+  final anchor = ref.watch(sleepSelectedDateProvider);
+  final anchorDay = DateTime(anchor.year, anchor.month, anchor.day);
+  return nightlyHours(nights, anchorDay, period.days);
 });
 
 // ---------------------------------------------------------------------------
@@ -118,8 +147,10 @@ class SleepReportScreen extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final selectedDate = ref.watch(sleepSelectedDateProvider);
+    final period = ref.watch(sleepReportPeriodProvider);
     final nights = ref.watch(sleepFilteredNightsProvider);
     final stats = ref.watch(sleepStatsForDateProvider);
+    final periodHours = ref.watch(sleepPeriodHoursProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -136,6 +167,16 @@ class SleepReportScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          // ── Переключатель периода (#22) — день/неделя/месяц ────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: PeriodSwitcher(
+              period: period,
+              onChanged: (p) =>
+                  ref.read(sleepReportPeriodProvider.notifier).state = p,
+            ),
+          ),
+
           // ── DateNavigator ─────────────────────────────────────────────────
           // surface1 + 0.5dp hairline + R14, отступы 24 по бокам, 12 сверху
           Padding(
@@ -149,6 +190,8 @@ class SleepReportScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: DateNavigator(
                 date: selectedDate,
+                stepDays: period.days,
+                label: period.rangeLabel(selectedDate),
                 onChanged: (d) =>
                     ref.read(sleepSelectedDateProvider.notifier).state = d,
               ),
@@ -209,6 +252,37 @@ class SleepReportScreen extends ConsumerWidget {
                         );
                       },
                     ),
+
+                    // ── Бар+линия чарт часов сна по дням (Week/Month, #22) ──
+                    if (period != ReportPeriod.day) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        context.s('sleep.chart_section'),
+                        style: textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (ctx) {
+                          final locale =
+                              Localizations.localeOf(ctx).toString();
+                          final labels = period == ReportPeriod.week
+                              ? [
+                                  for (final h in periodHours)
+                                    DateFormat('EEEEE', locale).format(h.day),
+                                ]
+                              : sparseMonthLabels(
+                                  [for (final h in periodHours) h.day],
+                                );
+                          return BarLineChart(
+                            values: [for (final h in periodHours) h.hours],
+                            labels: labels,
+                            goalLine: 7,
+                            height: 120,
+                            highlightIndex: periodHours.length - 1,
+                          );
+                        },
+                      ),
+                    ],
 
                     const SizedBox(height: 28),
 

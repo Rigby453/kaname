@@ -23,9 +23,11 @@ class DateNavigator extends StatelessWidget {
     required this.date,
     required this.onChanged,
     this.firstDate,
+    this.stepDays = 1,
+    this.label,
   });
 
-  /// Текущая выбранная дата.
+  /// Текущая выбранная дата (для week/month — конец окна, включительно).
   final DateTime date;
 
   /// Вызывается при выборе новой даты (через стрелки или DatePicker).
@@ -33,6 +35,14 @@ class DateNavigator extends StatelessWidget {
 
   /// Нижняя граница DatePicker. По умолчанию DateTime(2020).
   final DateTime? firstDate;
+
+  /// Шаг навигации стрелками в днях: 1 — день (по умолчанию), 7 — неделя,
+  /// 30 — месяц (см. ReportPeriod в core/widgets/period_switcher.dart).
+  final int stepDays;
+
+  /// Переопределяет авто-подпись `DateFormat.yMMMMd(date)` — нужно для
+  /// week/month, где подпись это диапазон, а не одна дата.
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -42,20 +52,23 @@ class DateNavigator extends StatelessWidget {
     final now = DateTime.now();
     final todayDate = DateTime(now.year, now.month, now.day);
     final selectedDate = DateTime(date.year, date.month, date.day);
-    final isToday = selectedDate == todayDate;
+    // Шаг можно сделать только пока окно ещё не доходит до сегодня —
+    // следующий клик всегда clamp'ится до todayDate (не уезжает в будущее).
+    final canGoForward = selectedDate.isBefore(todayDate);
 
     return Row(
       children: [
-        // Предыдущий день — Phosphor caretLeft (20dp)
+        // Предыдущий период — Phosphor caretLeft (20dp)
         IconButton(
           icon: PhosphorIcon(
             PhosphorIcons.caretLeft(PhosphorIconsStyle.regular),
             size: 20,
           ),
-          onPressed: () => onChanged(date.subtract(const Duration(days: 1))),
+          onPressed: () =>
+              onChanged(date.subtract(Duration(days: stepDays))),
         ),
 
-        // Тапаемая подпись даты → открывает DatePicker
+        // Тапаемая подпись даты/диапазона → открывает DatePicker
         Expanded(
           child: GestureDetector(
             onTap: () => _showPicker(context),
@@ -64,7 +77,7 @@ class DateNavigator extends StatelessWidget {
               children: [
                 Flexible(
                   child: Text(
-                    DateFormat.yMMMMd().format(date),
+                    label ?? DateFormat.yMMMMd().format(date),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -85,15 +98,18 @@ class DateNavigator extends StatelessWidget {
           ),
         ),
 
-        // Следующий день — отключён, если уже сегодня — Phosphor caretRight (20dp)
+        // Следующий период — отключён, если окно уже у сегодня — Phosphor caretRight (20dp)
         IconButton(
           icon: PhosphorIcon(
             PhosphorIcons.caretRight(PhosphorIconsStyle.regular),
             size: 20,
           ),
-          onPressed: isToday
-              ? null
-              : () => onChanged(date.add(const Duration(days: 1))),
+          onPressed: canGoForward
+              ? () {
+                  final next = date.add(Duration(days: stepDays));
+                  onChanged(next.isAfter(todayDate) ? todayDate : next);
+                }
+              : null,
         ),
       ],
     );
