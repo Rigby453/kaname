@@ -6,31 +6,31 @@
   <title>Terms of Use — Kaizen</title>
   <meta name="description" content="Kaizen terms of use — your rights and responsibilities as a user." />
 
-  <!-- Google Fonts: Fraunces (display) + Hanken Grotesk (body) -->
+  <!-- Google Fonts: Geist (one family) + Hanken Grotesk fallback -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Tailwind config: Focus theme tokens -->
+  <!-- Tailwind config: Kaname Day-theme tokens -->
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            bg:      '#141009',
-            surface: '#241D11',
-            text:    '#F6EFE1',
-            muted:   '#9E9070',
-            accent:  '#D9F24B',
-            ember:   '#FF6A3D',
-            border:  '#3A3020',
+            bg:      '#F6F5F2',
+            surface: '#FFFFFF',
+            text:    '#1B1A18',
+            muted:   '#8E8A85',
+            accent:  '#4B57C9',
+            ember:   '#C2510C',
+            border:  '#E6E4DE',
           },
           fontFamily: {
-            display: ['Fraunces', 'Georgia', 'serif'],
-            body:    ['Hanken Grotesk', 'system-ui', 'sans-serif'],
+            display: ['Geist', 'Hanken Grotesk', 'sans-serif'],
+            body:    ['Geist', 'Hanken Grotesk', 'system-ui', 'sans-serif'],
           },
           borderRadius: {
             '2xl': '16px',
@@ -44,32 +44,32 @@
 
   <style>
     body {
-      background-color: #141009;
-      color: #F6EFE1;
-      font-family: 'Hanken Grotesk', system-ui, sans-serif;
+      background-color: #F6F5F2;
+      color: #1B1A18;
+      font-family: 'Geist', 'Hanken Grotesk', system-ui, sans-serif;
     }
     html { scroll-behavior: smooth; }
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #141009; }
-    ::-webkit-scrollbar-thumb { background: #3A3020; border-radius: 999px; }
+    ::-webkit-scrollbar-track { background: #F6F5F2; }
+    ::-webkit-scrollbar-thumb { background: #E6E4DE; border-radius: 999px; }
 
     .prose-doc h2 {
-      font-family: 'Fraunces', Georgia, serif;
+      font-family: 'Geist', 'Hanken Grotesk', sans-serif;
       font-size: 1.375rem;
       font-weight: 600;
-      color: #F6EFE1;
+      color: #1B1A18;
       margin-top: 2.5rem;
       margin-bottom: 0.75rem;
     }
     .prose-doc h3 {
       font-size: 1rem;
       font-weight: 600;
-      color: #F6EFE1;
+      color: #1B1A18;
       margin-top: 1.5rem;
       margin-bottom: 0.5rem;
     }
     .prose-doc p {
-      color: #9E9070;
+      color: #8E8A85;
       line-height: 1.75;
       margin-bottom: 1rem;
     }
@@ -79,26 +79,26 @@
       margin-bottom: 1rem;
     }
     .prose-doc ul li {
-      color: #9E9070;
+      color: #8E8A85;
       line-height: 1.75;
       margin-bottom: 0.35rem;
     }
     .prose-doc a {
-      color: #D9F24B;
+      color: #4B57C9;
       text-decoration: underline;
-      text-decoration-color: rgba(217, 242, 75, 0.4);
+      text-decoration-color: rgba(75, 87, 201, 0.4);
     }
     .prose-doc a:hover {
-      text-decoration-color: #D9F24B;
+      text-decoration-color: #4B57C9;
     }
     .prose-doc strong {
-      color: #F6EFE1;
+      color: #1B1A18;
       font-weight: 600;
     }
     .callout {
-      background: #241D11;
-      border: 1px solid #3A3020;
-      border-left: 3px solid #D9F24B;
+      background: #FFFFFF;
+      border: 1px solid #E6E4DE;
+      border-left: 3px solid #4B57C9;
       border-radius: 8px;
       padding: 1rem 1.25rem;
       margin-bottom: 1.25rem;
@@ -164,7 +164,7 @@
       Kaizen is a student productivity planner. It helps you organise tasks, track habits and
       mood, and understand why your plans fail. The free tier uses rule-based logic to
       reschedule your day. The paid Premium tier adds AI-powered suggestions, deeper diary
-      insights, and removes all ads.
+      insights. Kaizen shows no ads on any tier — free or Premium.
     </p>
     <p>
       Kaizen is a personal planning tool, not a medical or mental-health service. Do not rely
@@ -194,7 +194,7 @@
     <h3>Free tier</h3>
     <p>
       The free tier is available at no charge and includes rule-based planning features,
-      streaks, diary, and week planning. The free tier contains non-intrusive ads. We reserve
+      streaks, diary, and week planning. The free tier is fully usable and contains no ads. We reserve
       the right to adjust what is included in the free tier at any time, with reasonable
       notice.
     </p>
@@ -211,8 +211,7 @@
 
     <p>
       Premium is a recurring monthly subscription at <strong>$10 per month</strong> (or local
-      equivalent where applicable). It unlocks AI-powered features, removes all ads, and adds
-      advanced insights.
+      equivalent where applicable). It unlocks AI-powered features and adds advanced insights.
     </p>
     <ul>
       <li>Billing is handled by the platform you use (Apple App Store, Google Play, or web).</li>

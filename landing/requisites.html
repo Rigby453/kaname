@@ -6,10 +6,10 @@
   <title>Реквизиты и оферта — Главное (Kaizen)</title>
   <meta name="description" content="Реквизиты продавца, условия подписки и публичная оферта сервиса «Главное»." />
 
-  <!-- Google Fonts: Fraunces (display) + Hanken Grotesk (body) -->
+  <!-- Google Fonts: Geist (one family) + Hanken Grotesk fallback -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,17 +18,17 @@
       theme: {
         extend: {
           colors: {
-            bg:      '#141009',
-            surface: '#241D11',
-            text:    '#F6EFE1',
-            muted:   '#9E9070',
-            accent:  '#D9F24B',
-            ember:   '#FF6A3D',
-            border:  '#3A3020',
+            bg:      '#F6F5F2',
+            surface: '#FFFFFF',
+            text:    '#1B1A18',
+            muted:   '#8E8A85',
+            accent:  '#4B57C9',
+            ember:   '#C2510C',
+            border:  '#E6E4DE',
           },
           fontFamily: {
-            display: ['Fraunces', 'Georgia', 'serif'],
-            body:    ['Hanken Grotesk', 'system-ui', 'sans-serif'],
+            display: ['Geist', 'Hanken Grotesk', 'sans-serif'],
+            body:    ['Geist', 'Hanken Grotesk', 'system-ui', 'sans-serif'],
           },
           borderRadius: { '2xl': '16px', '3xl': '24px', 'pill': '999px' },
         },
@@ -37,15 +37,15 @@
   </script>
 
   <style>
-    body { background-color: #141009; color: #F6EFE1; font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+    body { background-color: #F6F5F2; color: #1B1A18; font-family: 'Geist', 'Hanken Grotesk', system-ui, sans-serif; }
     html { scroll-behavior: smooth; }
-    .prose-legal h2 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.5rem; color: #F6EFE1; }
-    .prose-legal p, .prose-legal li { color: #C9BFA6; line-height: 1.65; }
-    .prose-legal a { color: #D9F24B; }
+    .prose-legal h2 { font-family: 'Geist', 'Hanken Grotesk', sans-serif; font-weight: 600; font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.5rem; color: #1B1A18; }
+    .prose-legal p, .prose-legal li { color: #6E6B66; line-height: 1.65; }
+    .prose-legal a { color: #4B57C9; }
     .prose-legal dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.25rem; }
     @media (max-width: 480px) { .prose-legal dl { grid-template-columns: 1fr; gap: 0.1rem 0; } .prose-legal dt { margin-top: 0.6rem; } }
-    .prose-legal dt { color: #9E9070; }
-    .prose-legal dd { color: #F6EFE1; }
+    .prose-legal dt { color: #8E8A85; }
+    .prose-legal dd { color: #1B1A18; }
   </style>
 </head>
 <body class="font-body">
