@@ -5,6 +5,7 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/database/database_providers.dart';
 import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../services/api/api_client.dart';
 import '../../services/streak/freeze_accrual_service.dart'
@@ -94,10 +95,17 @@ class AuthController extends Notifier<bool> {
     state = api.token != null || (prefs.getBool(_kGuestKey) ?? false);
   }
 
-  /// Выход: чистим токен и офлайн-флаг → возврат на экран входа.
+  /// Выход: чистим токен, офлайн-флаг, локальные prefs-данные и Drift-БД.
+  /// После этого другой аккаунт не увидит чужих задач/данных.
   Future<void> logout() async {
+    // 1. Инвалидируем JWT-токен на API-клиенте
     await ref.read(apiClientProvider).clearToken();
+    // 2. Сбрасываем гостевой флаг
     await _clearGuest();
+    // 3. Сбрасываем локальный премиум-override (привязан к пользователю)
+    await ref.read(sharedPreferencesProvider).remove(kLocalPremiumUntilKey);
+    // 4. Удаляем ВСЕ пользовательские строки из Drift в одной транзакции
+    await ref.read(appDatabaseProvider).clearAllUserData();
     state = false;
   }
 

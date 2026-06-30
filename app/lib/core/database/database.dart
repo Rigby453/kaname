@@ -692,6 +692,39 @@ class AppDatabase extends _$AppDatabase {
   /// DAO для логов настроения после медитации (schemaVersion 22). Локальный.
   MoodLogsDao get moodLogsDao => MoodLogsDao(this);
 
+  /// Очищает ВСЕ пользовательские данные в одной транзакции.
+  /// Вызывается ТОЛЬКО в явном logout-флоу — не при обычном запуске.
+  /// Схема/версия БД не затрагивается; строки таблиц стираются, сами таблицы
+  /// остаются (нет DROP TABLE). После очистки другой аккаунт не увидит чужих данных.
+  Future<void> clearAllUserData() async {
+    await transaction(() async {
+      await delete(itemsTable).go();
+      await delete(streakTable).go();
+      await delete(waterLogsTable).go();
+      await delete(dayLogsTable).go();
+      await delete(foodLogsTable).go();
+      await delete(syncQueueTable).go();
+      await delete(shoppingItemsTable).go();
+      await delete(recipesTable).go();
+      await delete(recipeIngredientsTable).go();
+      await delete(sleepLogsTable).go();
+      await delete(workoutsTable).go();
+      await delete(workoutExercisesTable).go();
+      await delete(workoutSessionsTable).go();
+      await delete(goalsTable).go();
+      await delete(goalStepsTable).go();
+      // Сначала логи (FK-зависимые), потом родительские привычки
+      await delete(habitLogsTable).go();
+      await delete(habitsTable).go();
+      await delete(itemAttachmentsTable).go();
+      await delete(subtasksTable).go();
+      await delete(workoutSetLogsTable).go();
+      await delete(customBreathingTable).go();
+      await delete(customMeditationTable).go();
+      await delete(moodLogsTable).go();
+    });
+  }
+
   @override
   int get schemaVersion => 22;
 

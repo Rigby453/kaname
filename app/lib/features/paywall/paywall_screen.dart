@@ -27,6 +27,7 @@ import '../../core/branding.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
+import 'compare_plans_screen.dart';
 import '../../features/mascot/kai_mascot.dart';
 import '../../features/mascot/kai_speech_bubble.dart';
 import '../../services/api/api_client.dart';
@@ -402,6 +403,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// правая колонка — планы + CTA + ссылки.
   Widget _buildWide(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final isAuthed = ref.read(authControllerProvider.notifier).isAuthenticated;
 
@@ -478,6 +480,30 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         style: textTheme.bodySmall
                             ?.copyWith(color: ext.textFaint),
                       ),
+
+                      const SizedBox(height: 8),
+
+                      // Кнопка «Сравнить тарифы»
+                      TextButton.icon(
+                        onPressed: () => showComparePlansSheet(context),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 0, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: Icon(
+                          PhosphorIcons.list(),
+                          size: 15,
+                          color: colorScheme.primary,
+                        ),
+                        label: Text(
+                          context.s('paywall.compare_plans_btn'),
+                          style: textTheme.labelMedium?.copyWith(
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -502,6 +528,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// все элементы в одну колонку.
   Widget _buildNarrow(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final isAuthed = ref.read(authControllerProvider.notifier).isAuthenticated;
 
@@ -558,10 +585,37 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
         // Пометка о бесплатном тире
         Padding(
-          padding: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Text(
             context.s('paywall.free_includes'),
             style: textTheme.bodySmall?.copyWith(color: ext.textFaint),
+          ),
+        ),
+
+        // Кнопка «Сравнить тарифы» — открывает шит Free vs Premium
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => showComparePlansSheet(context),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: Icon(
+                PhosphorIcons.list(),
+                size: 15,
+                color: colorScheme.primary,
+              ),
+              label: Text(
+                context.s('paywall.compare_plans_btn'),
+                style: textTheme.labelMedium?.copyWith(
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
           ),
         ),
 

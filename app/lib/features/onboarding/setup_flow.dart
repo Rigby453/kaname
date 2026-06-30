@@ -1,7 +1,7 @@
 // Онбординг (quiz-style flow) — персонализация после первого запуска.
 // Заменяет прежний 7-шаговый SetupFlowScreen.
 //
-// Архитектура: единый PageView из 14 «страниц» (индексы 0–13).
+// Архитектура: единый PageView из 15 «страниц» (индексы 0–14).
 // Каждая страница — изолированный _build*() метод.
 // Состояние хранится в полях виджета-state; сохранение — в _finish().
 //
@@ -15,7 +15,7 @@
 //   4  возраст+пол · 5 рост+вес · 6 активность
 //   7  первая задача (вставляется в Drift) · 8 демо переноса (no progress bar)
 //   9  время разборов + расписание сна · 10 уведомления · 11 тон · 12 тема
-//   13 саммари (последний; CTA → _finish() → /paywall, отдельного экрана нет)
+//   13 откуда узнал (C1) · 14 саммари (последний; CTA → _finish() → /paywall)
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -58,6 +58,9 @@ const reviewEveningHourKey = 'review_evening_hour';
 
 /// Ключ интересов (старый список — сохраняется для совместимости).
 const interestsKey = 'interests';
+
+/// SharedPreferences key для канала привлечения (откуда пользователь узнал о приложении).
+const acquisitionSourceKey = 'acquisition_source';
 
 // Новые ключи, вводимые этим файлом.
 const _kGoalsKey = 'onboarding_goals';
@@ -104,11 +107,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   int _page = 0;
 
   // Общее число экранов.
-  // 14 экранов: ценность и выбор языка перенесены в /onboarding (первый запуск),
+  // 15 экранов: ценность и выбор языка перенесены в /onboarding (первый запуск),
   // здесь — персонализация (цели → тело → первая задача → демо → время разборов →
-  // уведомления → тон → тема → саммари). Саммари — последний экран; его CTA ведёт
-  // прямо на /paywall через _finish() (отдельного экрана-хендоффа больше нет).
-  static const _pageCount = 14;
+  // уведомления → тон → тема → откуда узнал → саммари). Саммари — последний экран;
+  // его CTA ведёт прямо на /paywall через _finish() (отдельного экрана-хендоффа нет).
+  static const _pageCount = 15;
 
   // --- Экран 5: цели ---
   final Set<String> _selectedGoals = {};
@@ -146,6 +149,9 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   // для создания «ночного окна» без задач/напоминаний.
   int _bedtimeHour = kDefaultBedtimeHour; // 23:00
   int _wakeHour = kDefaultWakeHour;       // 07:00
+
+  // --- Шаг acquisition source: откуда узнал ---
+  String? _acquisitionSource; // null = не выбрано / пропущено
 
   // --- Экран 15: саммари (KaiLoader stub) ---
   bool _summaryReady = false;
@@ -288,6 +294,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
       } catch (_) {
         // Уведомления не должны блокировать завершение.
       }
+    }
+
+    // Канал привлечения (откуда узнал о приложении; null = пропущено)
+    if (_acquisitionSource != null) {
+      await prefs.setString(acquisitionSourceKey, _acquisitionSource!);
     }
 
     await prefs.setBool(setupDoneKey, true);
@@ -477,7 +488,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
-    // Последний экран — саммари (индекс 13); его CTA вызывает _finish() → /paywall.
+    // Последний экран — саммари (индекс 14); его CTA вызывает _finish() → /paywall.
     final isLastPage = _page == _pageCount - 1;
 
     return Scaffold(
@@ -497,24 +508,25 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
                   _page = i;
                   // Сбрасываем демо при возврате на экран демо-пересборки (8)
                   if (i == 8) _taskMoved = false;
-                  // Запускаем «расчёт» на экране сводки (13)
-                  if (i == 13) _triggerSummaryReady();
+                  // Запускаем «расчёт» на экране сводки (14)
+                  if (i == 14) _triggerSummaryReady();
                 }),
                 children: [
-                  _buildScreen5(),       // 0  Цели
-                  _buildScreen6(),       // 1  Время на планирование
-                  _buildScreen7(),       // 2  Горизонт
-                  _buildScreen8(),       // 3  Проекция
-                  _buildScreen9(),       // 4  Возраст/пол
-                  _buildScreen10(),      // 5  Рост/вес
-                  _buildScreen11(),      // 6  Активность
-                  _buildScreen12(),      // 7  Первая задача
-                  _buildScreen13(),      // 8  Демо-пересборка
-                  _buildScreen14(),      // 9  Время разборов
-                  _buildNotifStep(),     // 10 Разрешение на уведомления
-                  _buildToneStep(),      // 11 Тон gentle/harsh
-                  _buildThemeStep(),     // 12 Тема оформления
-                  _buildScreen15(),      // 13 Сводка (последний; CTA → /paywall)
+                  _buildScreen5(),           // 0  Цели
+                  _buildScreen6(),           // 1  Время на планирование
+                  _buildScreen7(),           // 2  Горизонт
+                  _buildScreen8(),           // 3  Проекция
+                  _buildScreen9(),           // 4  Возраст/пол
+                  _buildScreen10(),          // 5  Рост/вес
+                  _buildScreen11(),          // 6  Активность
+                  _buildScreen12(),          // 7  Первая задача
+                  _buildScreen13(),          // 8  Демо-пересборка
+                  _buildScreen14(),          // 9  Время разборов
+                  _buildNotifStep(),         // 10 Разрешение на уведомления
+                  _buildToneStep(),          // 11 Тон gentle/harsh
+                  _buildThemeStep(),         // 12 Тема оформления
+                  _buildAcquisitionStep(),   // 13 Откуда узнал (C1)
+                  _buildScreen15(),          // 14 Сводка (последний; CTA → /paywall)
                 ],
               ),
             ),
@@ -528,7 +540,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Прогресс-индикатор (X/14, скрыт на демо-экране 8)
+  // Прогресс-индикатор (X/15, скрыт на демо-экране 8)
   // ---------------------------------------------------------------------------
 
   Widget _buildProgressRow(
@@ -660,7 +672,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
         10 => 'onboarding_quiz.notif_cta', // Уведомления
         11 => 'onboarding_quiz.tone_cta', // Тон
         12 => 'onboarding_quiz.theme_cta', // Тема
-        13 => 'onboarding_quiz.s15_cta', // Сводка
+        13 => 'onboarding_quiz.acq_cta', // Откуда узнал (C1)
+        14 => 'onboarding_quiz.s15_cta', // Сводка
         _ => 'onboarding_quiz.s5_cta',
       };
 
@@ -1611,6 +1624,88 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             shape: BoxShape.circle,
           ),
         ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Шаг 13 (C1): Откуда узнал о приложении (single select + skip)
+  // ---------------------------------------------------------------------------
+  // Результат пишется в SharedPreferences под ключом acquisitionSourceKey.
+  // null (не выбрано / «Пропустить») → ключ не трогается в _finish().
+
+  Widget _buildAcquisitionStep() {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    // Варианты: (prefs-код, PhosphorIcon, l10n-ключ)
+    final options = [
+      (
+        'app_store_google_play',
+        PhosphorIcons.deviceMobile(),
+        'onboarding_quiz.acq_app_store',
+      ),
+      (
+        'friend',
+        PhosphorIcons.usersThree(),
+        'onboarding_quiz.acq_friend',
+      ),
+      (
+        'social',
+        PhosphorIcons.shareNetwork(),
+        'onboarding_quiz.acq_social',
+      ),
+      (
+        'ad',
+        PhosphorIcons.megaphone(),
+        'onboarding_quiz.acq_ad',
+      ),
+      (
+        'search',
+        PhosphorIcons.magnifyingGlass(),
+        'onboarding_quiz.acq_search',
+      ),
+      (
+        'other',
+        PhosphorIcons.dotsThree(),
+        'onboarding_quiz.acq_other',
+      ),
+    ];
+
+    return _stepFrame(
+      kaiEmotion: KaiEmotion.thinking,
+      title: context.s('onboarding_quiz.acq_title'),
+      subtitle: context.s('onboarding_quiz.acq_subtitle'),
+      child: Column(
+        children: [
+          // Список карточек-вариантов
+          ...options.map((opt) {
+            final (code, icon, key) = opt;
+            return _choiceTile(
+              selected: _acquisitionSource == code,
+              title: context.s(key),
+              leading: Icon(icon, size: 20),
+              onTap: () => setState(() => _acquisitionSource = code),
+            );
+          }),
+
+          const SizedBox(height: 12),
+
+          // «Пропустить» — явный сброс выбора и переход к следующему шагу.
+          // Overflow-safe: Flexible не нужен — текстовая кнопка в центре строки.
+          Center(
+            child: TextButton(
+              onPressed: () {
+                setState(() => _acquisitionSource = null);
+                _next();
+              },
+              child: Text(
+                context.s('onboarding_quiz.acq_skip'),
+                style: textTheme.labelLarge?.copyWith(color: ext.textMuted),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

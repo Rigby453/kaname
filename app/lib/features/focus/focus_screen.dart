@@ -1,17 +1,29 @@
 // Фокус-сессии (SPEC C8): пресеты 25/5, 50/10, 52/17, 90/20, 67/15.
 // Kaname redesign §Phase 5: полный рестайл.
 //
-// Idle:   heading + пресет-чипы (pill, accentTint when selected) + одна Start CTA.
-// Running: большой MM:SS mono-таймер + метка фазы + Pause/Stop (secondary)
-//          + Kai ambient в углу (IgnorePointer).
+// Режимы:
+//   Таймер — обратный отсчёт; пресеты work/break; фазы work→rest→work→…
+//   Секундомер — счёт вперёд; старт/пауза/продолжить/сброс; mm:ss / h:mm:ss.
+//
+// Переключатель режима — пилюли в Kaname-стиле (surface + hairline / accentTint +
+// accent border); видим только в idle-состоянии.
+//
+// Idle (таймер):   heading + пресет-чипы (pill, accentTint when selected) + Start CTA.
+// Idle (секундомер): «00:00» приглушённый + Start CTA.
+// Running (таймер): большой MM:SS mono-таймер + метка фазы + Pause/Stop.
+// Running (секундомер): счётчик MM:SS/h:mm:ss + Pause/Resume + Reset.
+//
+// Kai ambient в углу (IgnorePointer) на обоих running-экранах.
 // Трение: PopScope → AlertDialog при попытке уйти с активной сессии.
+//
+// Логирование: сессии в БД не пишутся (completedFocusBlocks — in-memory счётчик).
 //
 // Дизайн-система (design-tokens v4, REDESIGN-KANAME §4.3):
 //   Чипы: accentTint fill + accent border (selected) / surface + hairline (idle).
-//   Таймер: displayLarge (40sp) + tabular figures — «мономерные» цифры.
-//   Kai: size 56, thinking(work) / neutral(rest), IgnorePointer.
-//   Кнопки: ONE FilledButton (Start); Pause/Stop = OutlinedButton (secondary).
-//   Иконки: Phosphor (play-fill для Start, pause/play/stop regular для управления).
+//   Таймер/счётчик: displayLarge (40sp) + tabular figures — «мономерные» цифры.
+//   Kai: size 56, thinking(work/running) / neutral(rest/paused), IgnorePointer.
+//   Кнопки: ONE FilledButton (Start); Pause/Stop/Reset = OutlinedButton (secondary).
+//   Иконки: Phosphor (play-fill для Start, pause/play/stop/arrow regular для управления).
 //   reduce-motion уважается во всех AnimatedContainer/AnimatedOpacity.
 
 import 'dart:async';
@@ -26,6 +38,7 @@ import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../mascot/kai_mascot.dart';
+import 'focus_stopwatch_controller.dart';
 
 // ---------------------------------------------------------------------------
 // Данные пресетов (не переводятся — числовые метки)
@@ -48,6 +61,9 @@ const _presets = [
 
 enum _Phase { idle, work, rest }
 
+/// Режим фокус-экрана: обратный отсчёт (timer) или секундомер (stopwatch).
+enum _Mode { timer, stopwatch }
+
 // ---------------------------------------------------------------------------
 // Виджет
 // ---------------------------------------------------------------------------
@@ -60,17 +76,27 @@ class FocusScreen extends StatefulWidget {
 }
 
 class _FocusScreenState extends State<FocusScreen> {
+  // --- Режим ---
+  _Mode _mode = _Mode.timer;
+
+  // --- Таймер (обратный отсчёт) ---
   int _presetIndex = 0;
   _Phase _phase = _Phase.idle;
   int _secondsLeft = 0;
   bool _running = false;
-  Timer? _ticker;
   int _completedFocusBlocks = 0;
+
+  // --- Секундомер ---
+  final _sw = FocusStopwatchController();
+
+  // --- Общий тикер: используется и таймером, и секундомером ---
+  Timer? _ticker;
 
   _Preset get _preset => _presets[_presetIndex];
 
-  // Активна ли сессия (не в idle)
-  bool get _inSession => _phase != _Phase.idle;
+  /// Активна ли сессия (не в idle). Учитывает текущий режим.
+  bool get _inSession =>
+      _mode == _Mode.timer ? _phase != _Phase.idle : _sw.inSession;
 
   @override
   void dispose() {
@@ -79,7 +105,7 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Логика таймера (бизнес-логика не меняется)
+  // Логика таймера (обратный отсчёт) — не изменена
   // ---------------------------------------------------------------------------
 
   void _start() {
@@ -125,11 +151,38 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // Логика секундомера
+  // ---------------------------------------------------------------------------
+
+  /// Старт (или Continue после паузы, если тикер уже запущен).
+  void _swStart() {
+    setState(() => _sw.start());
+    // Перезапускаем тикер; tick() сам проверяет _sw.running — пауза не ломает тикер.
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => _sw.tick());
+    });
+  }
+
+  /// Пауза / Продолжить.
+  void _swTogglePause() => setState(() {
+        if (_sw.running) {
+          _sw.pause();
+        } else {
+          _sw.start();
+        }
+      });
+
+  /// Сброс: отменяет тикер и возвращает секундомер в idle.
+  void _swReset() {
+    _ticker?.cancel();
+    setState(() => _sw.reset());
+  }
+
+  // ---------------------------------------------------------------------------
   // Мягкое трение при навигации «назад» из активной сессии
   // ---------------------------------------------------------------------------
 
-  /// Показывает диалог подтверждения и, если пользователь соглашается,
-  /// останавливает сессию и возвращается назад.
   Future<void> _showExitDialog(BuildContext context) async {
     final leave = await showDialog<bool>(
       context: context,
@@ -139,12 +192,10 @@ class _FocusScreenState extends State<FocusScreen> {
           title: Text(ctx.s('focus.exit_title')),
           content: Text(ctx.s('focus.exit_body')),
           actions: [
-            // «Остаться» — не деструктивное, первое
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: Text(ctx.s('focus.exit_stay')),
             ),
-            // «Уйти» — деструктивное, ember
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               child: Text(
@@ -158,9 +209,12 @@ class _FocusScreenState extends State<FocusScreen> {
     );
 
     if (leave == true && mounted) {
-      // Останавливаем сессию → canPop станет true после rebuild.
-      // addPostFrameCallback гарантирует pop ПОСЛЕ пересборки PopScope.
-      _stop();
+      // Останавливаем активную сессию
+      if (_mode == _Mode.timer) {
+        _stop();
+      } else {
+        _swReset();
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).maybePop();
       });
@@ -168,7 +222,7 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Форматирование таймера MM:SS
+  // Форматирование таймера MM:SS (обратный отсчёт)
   // ---------------------------------------------------------------------------
 
   String get _mmss {
@@ -188,19 +242,19 @@ class _FocusScreenState extends State<FocusScreen> {
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     return PopScope(
-      // Системный back разрешён только из idle; во время сессии — трение
       canPop: !_inSession,
-      onPopInvoked: (didPop) {
-        if (didPop) return; // pop прошёл — ничего не делать
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
         _showExitDialog(context);
       },
       child: Scaffold(
         appBar: AppBar(title: Text(context.s('focus.title'))),
         body: Padding(
-          // 24dp экранные поля (design-tokens §spacing.lg)
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: _inSession
-              ? _buildRunning(textTheme, colorScheme, ext)
+              ? (_mode == _Mode.timer
+                  ? _buildRunning(textTheme, colorScheme, ext)
+                  : _buildStopwatchRunning(textTheme, colorScheme, ext))
               : _buildIdle(textTheme, colorScheme, ext),
         ),
       ),
@@ -208,7 +262,7 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Idle — выбор пресета
+  // Idle — выбор режима / пресета
   // ---------------------------------------------------------------------------
 
   Widget _buildIdle(
@@ -219,29 +273,46 @@ class _FocusScreenState extends State<FocusScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Заголовок — headlineMedium (22sp, w500)
-        Text(
-          context.s('focus.pick_session'),
-          style: textTheme.headlineMedium,
-        ),
-        const SizedBox(height: 6),
-        // Подсказка о форматах — bodySmall, textMuted
-        Text(
-          context.s('focus.session_hint'),
-          style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
-        ),
+        // Переключатель Таймер / Секундомер — всегда вверху idle-экрана
+        _buildModeSwitcher(colorScheme, ext, textTheme),
         const SizedBox(height: 24),
-        // Пресет-чипы: pill-border, accentTint при выборе (§4.3 tokens)
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: List.generate(
-            _presets.length,
-            (i) => _buildPresetChip(i, colorScheme, ext, textTheme),
+
+        // Контент, зависящий от режима
+        if (_mode == _Mode.timer) ...[
+          Text(
+            context.s('focus.pick_session'),
+            style: textTheme.headlineMedium,
           ),
-        ),
+          const SizedBox(height: 6),
+          Text(
+            context.s('focus.session_hint'),
+            style: textTheme.bodySmall?.copyWith(color: ext.textMuted),
+          ),
+          const SizedBox(height: 24),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(
+              _presets.length,
+              (i) => _buildPresetChip(i, colorScheme, ext, textTheme),
+            ),
+          ),
+        ] else ...[
+          // Секундомер в idle: большой «00:00» приглушённым цветом
+          Center(
+            child: Text(
+              _sw.display,
+              style: textTheme.displayLarge?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: ext.textFaint,
+              ),
+            ),
+          ),
+        ],
+
         const Spacer(),
-        // Счётчик блоков (только если есть хоть один)
+
+        // Счётчик завершённых блоков (только если есть хоть один)
         if (_completedFocusBlocks > 0) ...[
           Center(
             child: Text(
@@ -253,18 +324,108 @@ class _FocusScreenState extends State<FocusScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        // Единственная primary CTA на экране — FilledButton (accent)
+
+        // Start CTA — режим выбирает нужный обработчик
         FilledButton.icon(
           icon: Icon(PhosphorIcons.play(PhosphorIconsStyle.fill), size: 20),
           label: Text(context.s('focus.btn_start')),
-          onPressed: _start,
+          onPressed: _mode == _Mode.timer ? _start : _swStart,
         ),
         const SizedBox(height: 8),
       ],
     );
   }
 
-  /// Один пресет-чип. Pill-форма, animated container.
+  // ---------------------------------------------------------------------------
+  // Переключатель режима: pill-чипы «Таймер» / «Секундомер»
+  // ---------------------------------------------------------------------------
+
+  Widget _buildModeSwitcher(
+    ColorScheme colorScheme,
+    FocusThemeExtension ext,
+    TextTheme textTheme,
+  ) {
+    // Expanded-чипы внутри Row: оба занимают половину ширины.
+    // Overflow-safe на 320px (текст может быть длиннее в некоторых языках).
+    return Row(
+      children: [
+        Expanded(
+          child: _buildModeChip(
+            _Mode.timer,
+            PhosphorIcons.timer(),
+            context.s('focus.mode_timer'),
+            colorScheme,
+            ext,
+            textTheme,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildModeChip(
+            _Mode.stopwatch,
+            PhosphorIcons.clockClockwise(),
+            context.s('focus.mode_stopwatch'),
+            colorScheme,
+            ext,
+            textTheme,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModeChip(
+    _Mode mode,
+    IconData icon,
+    String label,
+    ColorScheme colorScheme,
+    FocusThemeExtension ext,
+    TextTheme textTheme,
+  ) {
+    final selected = _mode == mode;
+    final reduce = reduceMotionOf(context);
+
+    return GestureDetector(
+      onTap: () => setState(() => _mode = mode),
+      child: AnimatedContainer(
+        duration: reduce ? Duration.zero : kDurationFast,
+        curve: kCurveLift,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? ext.accentTint : colorScheme.surface,
+          borderRadius: BorderRadius.circular(999), // pill
+          border: Border.all(
+            color: selected ? colorScheme.primary : ext.border,
+            width: selected ? 1.0 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? ext.accentInk : ext.textMuted,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.labelLarge?.copyWith(
+                  color: selected ? ext.accentInk : ext.textMuted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Один пресет-чип таймера.
   Widget _buildPresetChip(
     int index,
     ColorScheme colorScheme,
@@ -281,19 +442,17 @@ class _FocusScreenState extends State<FocusScreen> {
         curve: kCurveLift,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          // Выбранный: accentTint подложка; не выбранный: surface
           color: selected ? ext.accentTint : colorScheme.surface,
-          borderRadius: BorderRadius.circular(999), // pill
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: selected ? colorScheme.primary : ext.border,
-            width: selected ? 1.0 : 0.5, // hairline vs selected border
+            width: selected ? 1.0 : 0.5,
           ),
         ),
         child: Text(
           _presets[index].label,
           style: textTheme.labelLarge?.copyWith(
             color: selected ? ext.accentInk : ext.textMuted,
-            // Табулярные цифры: ширина цифр фиксирована, не скачет при анимации
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
@@ -302,7 +461,7 @@ class _FocusScreenState extends State<FocusScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Running — таймер + управление + Kai
+  // Running (таймер) — без изменений
   // ---------------------------------------------------------------------------
 
   Widget _buildRunning(
@@ -312,17 +471,15 @@ class _FocusScreenState extends State<FocusScreen> {
   ) {
     final isWork = _phase == _Phase.work;
 
-    // Stack(expand): заполняет всё доступное пространство Scaffold body
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Основной контент — вертикально по центру
         Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Метка фазы — titleMedium: accent(work) / textMuted(rest)
+              // Метка фазы
               Text(
                 isWork
                     ? context.s('focus.phase_work')
@@ -332,7 +489,7 @@ class _FocusScreenState extends State<FocusScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Большой таймер MM:SS — displayLarge (40sp) + mono-цифры
+              // Большой таймер MM:SS
               Text(
                 _mmss,
                 style: textTheme.displayLarge?.copyWith(
@@ -341,7 +498,6 @@ class _FocusScreenState extends State<FocusScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Пресет-подпись — bodySmall, textFaint (самый тихий)
               Text(
                 _preset.label,
                 style: textTheme.bodySmall?.copyWith(
@@ -350,8 +506,6 @@ class _FocusScreenState extends State<FocusScreen> {
                 ),
               ),
               const SizedBox(height: 48),
-              // Pause/Resume + Stop — оба OutlinedButton (secondary)
-              // Flexible позволяет кнопкам сжаться на узких экранах (320px)
               Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -392,34 +546,123 @@ class _FocusScreenState extends State<FocusScreen> {
           ),
         ),
 
-        // Kai — ambient в правом нижнем углу.
-        // IgnorePointer: не перехватывает тапы, не мешает кнопкам.
-        Positioned(
-          right: 0,
-          bottom: 0,
-          child: IgnorePointer(
-            child: Consumer(
-              builder: (context, ref, _) {
-                final showKai = ref.watch(showKaiProvider);
-                if (!showKai) return const SizedBox.shrink();
-                final isHarsh = ref.watch(toneProvider) == AppTone.harsh;
-                final reduce = reduceMotionOf(context);
-                return AnimatedOpacity(
-                  opacity: 1.0,
-                  duration: reduce ? Duration.zero : kDurationNormal,
-                  child: KaiMascot(
-                    size: 56,
-                    // thinking — во время работы; neutral — во время перерыва
-                    emotion:
-                        isWork ? KaiEmotion.thinking : KaiEmotion.neutral,
-                    isHarsh: isHarsh,
+        // Kai ambient
+        _buildKaiAmbient(isWork: isWork),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Running (секундомер)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildStopwatchRunning(
+    TextTheme textTheme,
+    ColorScheme colorScheme,
+    FocusThemeExtension ext,
+  ) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Метка режима
+              Text(
+                context.s('focus.mode_stopwatch'),
+                style: textTheme.titleMedium?.copyWith(
+                  color: _sw.running ? colorScheme.primary : ext.textMuted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Счётчик времени: mm:ss / h:mm:ss
+              Text(
+                _sw.display,
+                style: textTheme.displayLarge?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 48),
+              // Пауза/Продолжить + Сброс
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      icon: Icon(
+                        _sw.running
+                            ? PhosphorIcons.pause()
+                            : PhosphorIcons.play(),
+                        size: 20,
+                      ),
+                      label: Text(
+                        _sw.running
+                            ? context.s('focus.btn_pause')
+                            : context.s('focus.btn_resume'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: _swTogglePause,
+                    ),
                   ),
-                );
-              },
-            ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      icon: Icon(
+                        PhosphorIcons.arrowCounterClockwise(),
+                        size: 20,
+                      ),
+                      label: Text(
+                        context.s('focus.btn_reset'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: _swReset,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
+
+        // Kai ambient: thinking — тикает, neutral — пауза
+        _buildKaiAmbient(isWork: _sw.running),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Kai ambient (общий для обоих running-экранов)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildKaiAmbient({required bool isWork}) {
+    return Positioned(
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: Consumer(
+          builder: (context, ref, _) {
+            final showKai = ref.watch(showKaiProvider);
+            if (!showKai) return const SizedBox.shrink();
+            final isHarsh = ref.watch(toneProvider) == AppTone.harsh;
+            final reduce = reduceMotionOf(context);
+            return AnimatedOpacity(
+              opacity: 1.0,
+              duration: reduce ? Duration.zero : kDurationNormal,
+              child: KaiMascot(
+                size: 56,
+                emotion: isWork ? KaiEmotion.thinking : KaiEmotion.neutral,
+                isHarsh: isHarsh,
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }

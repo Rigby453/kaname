@@ -4,6 +4,34 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Feature E2 — экран «Прозрачность Premium» (2026-06-30)
+
+- **[x] `app/lib/core/widgets/premium_lock_badge.dart`** — NEW. Переиспользуемый виджет-таблетка `PremiumLockBadge` (Phosphor `lock(fill)` + метка «Premium» через l10n). Параметр `showLabel` для компактного использования (только иконка). Размещается рядом с любой premium-фичей на любом экране.
+- **[x] `app/lib/features/paywall/compare_plans_screen.dart`** — NEW. `ComparePlansTable` — таблица «фича | Free | Premium» с иконками `check(fill)` / `lock(fill)`. 3 секции: Productivity (6 строк, все бесплатные) / Wellbeing (5 строк, бесплатные) / AI features (6 строк, Premium only). Hairline cards + hairline dividers (design-tokens). `ComparePlansSheet` — обёртка-шит (modal bottom sheet, R20, shadow, хэндл, заголовок, ✕). `showComparePlansSheet(context)` — публичная функция-открывалка.
+- **[x] `app/lib/features/paywall/paywall_screen.dart`** — добавлена кнопка «Compare plans» (TextButton.icon + Phosphor `list`) в обоих layout (`_buildNarrow` / `_buildWide`), открывает `showComparePlansSheet`. `colorScheme` добавлен в оба builder-метода.
+- **[x] `app/lib/core/l10n/strings/profile_paywall.dart`** — 20 новых ключей в секции `paywall.compare_*`: `lock_badge_label`, `compare_plans_btn`, `compare_plans_title`, `compare_col_free/premium`, `compare_section_productivity/wellbeing/ai`, `compare_tasks_planning`, `compare_priority_limit`, `compare_streaks`, `compare_review`, `compare_diary`, `compare_plan_sharing`, `compare_water`, `compare_sleep`, `compare_breathing`, `compare_workouts`, `compare_food_basic`, `compare_ai_insights`. Все 11 языков. AI-строки таблицы переиспользуют существующие `paywall.benefit_*_title` ключи.
+- **[x] `app/test/premium_compare_test.dart`** — 7 тестов: 400px рендер (no exception), 320px антирегрессия overflow, 6 lock-иконок на AI-строках, 28 check-иконок на free+premium строках, ComparePlansSheet с заголовком и кнопкой ✕, PremiumLockBadge с иконкой и меткой, PremiumLockBadge(showLabel:false) без метки.
+
+## Feature F1 — режим секундомера в фокус-сессии (2026-06-30)
+
+- **[x] `app/lib/features/focus/focus_stopwatch_controller.dart`** — новый файл. Чистая Dart-логика: `start/pause/reset/tick/display`. Без зависимостей Flutter; тестируется изолированно.
+- **[x] `app/lib/features/focus/focus_screen.dart`** — добавлен переключатель режимов (пилюли «Таймер» / «Секундомер» в Kaname-стиле с `accentTint`/`border`/Phosphor-иконками `timer`/`clockClockwise`). Idle секундомера: «00:00» в `textFaint`. Running секундомера: `_sw.display` (`mm:ss` / `h:mm:ss`) + `FontFeature.tabularFigures` + кнопки Пауза/Продолжить + Сброс (`arrowCounterClockwise`). Существующий таймер обратного отсчёта, пресеты, Kai ambient — не тронуты. PopScope и exit-диалог работают для обоих режимов.
+- **[x] `app/lib/core/l10n/strings/misc.dart`** — 3 новых ключа (`focus.mode_timer`, `focus.mode_stopwatch`, `focus.btn_reset`), все 11 языков.
+- **[x] `app/test/focus_stopwatch_test.dart`** — 15 unit-тестов для `FocusStopwatchController`: idle state, start, tick, pause, resume, reset, display (mm:ss / h:mm:ss переход на 3600 с), полный state machine.
+
+## Feature C1 — онбординг: шаг «Откуда узнал?» (2026-06-30)
+
+- **[x] `app/lib/core/l10n/strings/onboarding_quiz.dart`** — 10 новых ключей `onboarding_quiz.acq_*` (title/subtitle/cta/skip + 6 вариантов). Все 11 языков.
+- **[x] `app/lib/features/onboarding/setup_flow.dart`** — новый шаг `_buildAcquisitionStep()` (индекс 13), `_pageCount` 14→15, `acquisitionSourceKey = 'acquisition_source'`, поле `_acquisitionSource`, сохранение в `_finish()` (null = не пишем). UI: 6 `_choiceTile` (Phosphor-иконки) + TextButton «Пропустить» внутри контента; стиль — Kaname (accent-border у выбранной карточки).
+- **[x] `app/test/onboarding_steps_test.dart`** — `_summaryPage` 13→14 (саммари сдвинулся из-за C1).
+- **[x] `app/test/acquisition_source_test.dart`** — 7 тестов: 3 widget (рендер 320px/textScale 2.0, 6 вариантов, тап без исключений) + 4 prefs-unit (round-trip 6 кодов, skip→ключ отсутствует, константа равна 'acquisition_source').
+
+## Fix C3 — logout не чистил локальные данные (2026-06-30)
+
+- **[x] `AppDatabase.clearAllUserData()`** — новый метод в `app/lib/core/database/database.dart`. Одна транзакция, удаляет ВСЕ строки из 23 пользовательских таблиц (items, streak, water_logs, day_logs, food_logs, sync_queue, shopping_items, recipes, recipe_ingredients, sleep_logs, workouts, workout_exercises, workout_sessions, goals, goal_steps, habit_logs, habits, item_attachments, subtasks, workout_set_logs, custom_breathing, custom_meditation, mood_logs). Схема/версия БД не затрагивается.
+- **[x] `AuthController.logout()`** — теперь последовательно: clearToken → clearGuest → remove(kLocalPremiumUntilKey) → clearAllUserData() → state=false. Другой аккаунт не увидит чужих задач.
+- **[x] `app/test/logout_clear_test.dart`** — 3 unit-теста на in-memory NativeDatabase: засев данных → clear → count==0 по 14 таблицам; идемпотентность; streak (без PK) очищается.
+
 ## Backend — YooKassa billing prep (2026-06-30, ADR-058)
 
 - **[x] `backend/src/billing/yookassaWebhook.ts`** — HMAC-SHA256 stub для входящих вебхуков ЮKassa. `verifyYookassaWebhook(rawBody, headers)` + `computeYookassaSignature(rawBody, secret)`. Dev-режим без `YOOKASSA_WEBHOOK_SECRET`. 14 unit-тестов.

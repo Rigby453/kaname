@@ -46,10 +46,11 @@ const Size _size = Size(320, 760);
 const double _scale = 2.0;
 
 // Индексы страниц новых шагов в PageView.
+// Шаг 13 = acquisition source (C1). Сводка сдвинута на 14.
 const int _notifPage = 10;
 const int _tonePage = 11;
 const int _themePage = 12;
-const int _summaryPage = 13;
+const int _summaryPage = 14; // был 13; C1 занял индекс 13
 
 void main() {
   late AppDatabase db;
@@ -147,7 +148,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(prefs.getString('app_theme_key'), 'calm');
 
-    // --- Сводка (index 13): запускает 400ms таймер готовности ---
+    // --- Сводка (index 14): запускает 400ms таймер готовности ---
     await goToPage(tester, _summaryPage);
     await tester.pump(const Duration(milliseconds: 500));
     expect(tester.takeException(), isNull);
