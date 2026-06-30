@@ -9,10 +9,29 @@
 // Паттерн безопасного удаления ингредиентов (ADR-delete-safe):
 //   - Свайп влево (SwipeToDelete) ИЛИ кнопка-корзина trailing IconButton
 //   - Оба пути идут через _deleteIngredient(), который показывает Undo-snackbar.
+//
+// #25 расширенный редактор (schemaVersion 23): описание (свободный текст),
+// шаги приготовления (текст + опц. фото, image_picker), ссылка на видео
+// (url_launcher). Те же шаблоны (диалог + Undo-snackbar), что у ингредиентов.
+// Фото шагов хранятся как в today/widgets/add_task_sheet.dart: на мобильных —
+// копия файла в documents/attachments/, на web — base64 data-URI; рендер через
+// общий хелпер core/widgets/attachment_view.dart::attachmentImage().
+//
+// #27: поиск ингредиента в _IngredientSearchSheet стал live (debounce ~300мс),
+// по образцу _FoodSearchSheetState в food_screen.dart — без кнопки.
 
+import 'dart:async';
+import 'dart:convert' show base64Encode;
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/animations/app_sheet.dart';
 import '../../core/database/database.dart';
@@ -20,6 +39,7 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/attachment_view.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
 import '../../core/widgets/undo_snack_bar.dart';
@@ -30,9 +50,39 @@ import 'recipe_nutrition.dart';
 import 'recipes_screen.dart' show
     promptRecipeName,
     recipeIngredientsProvider,
-    recipeProvider;
+    recipeProvider,
+    recipeStepsProvider;
 
 const List<String> _meals = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+/// Результат диалога добавления/редактирования шага.
+typedef _StepDialogResult = ({String text, String? photoPath});
+
+/// Сохраняет фото шага и возвращает путь для хранения в БД.
+///   • web → base64 data-URI (нет файловой системы);
+///   • мобильные → копия в documents/attachments/ (как у вложений задач).
+Future<String> _storeStepPhoto(XFile file) async {
+  if (kIsWeb) {
+    final bytes = await file.readAsBytes();
+    final mime = file.mimeType ?? 'image/jpeg';
+    return 'data:$mime;base64,${base64Encode(bytes)}';
+  }
+  final dir = await getApplicationDocumentsDirectory();
+  final ext = p.extension(file.path).isEmpty ? '.jpg' : p.extension(file.path);
+  final fileName = 'recipe_step_${DateTime.now().millisecondsSinceEpoch}$ext';
+  final dest = File(p.join(dir.path, 'attachments', fileName));
+  await dest.parent.create(recursive: true);
+  await File(file.path).copy(dest.path);
+  return dest.path;
+}
+
+bool _isHttpUrl(String text) {
+  if (text.isEmpty) return true; // пустое значение допустимо — убирает ссылку
+  final uri = Uri.tryParse(text);
+  return uri != null &&
+      (uri.scheme == 'http' || uri.scheme == 'https') &&
+      uri.host.isNotEmpty;
+}
 
 // ConsumerStatefulWidget — нужен mounted-check после async операций.
 class RecipeEditorScreen extends ConsumerStatefulWidget {
@@ -46,7 +96,7 @@ class RecipeEditorScreen extends ConsumerStatefulWidget {
 
 class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
 
-  // --- Действия -------------------------------------------------------------
+  // --- Действия: рецепт / ингредиенты ----------------------------------------
 
   Future<void> _rename(RecipesTableData recipe) async {
     final name = await promptRecipeName(
@@ -144,6 +194,84 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
     );
   }
 
+  // --- Действия: описание (#25) -----------------------------------------------
+
+  Future<void> _editDescription(RecipesTableData recipe) async {
+    final text = await _promptDescription(context, initial: recipe.description ?? '');
+    if (text == null) return;
+    await ref.read(recipesDaoProvider).updateDescription(widget.recipeId, text);
+  }
+
+  // --- Действия: видео-ссылка (#25) -------------------------------------------
+
+  Future<void> _editVideoUrl(RecipesTableData recipe) async {
+    final url = await showDialog<String>(
+      context: context,
+      builder: (_) => _VideoUrlDialog(initial: recipe.videoUrl ?? ''),
+    );
+    if (url == null) return;
+    await ref.read(recipesDaoProvider).updateVideoUrl(widget.recipeId, url);
+  }
+
+  Future<void> _openVideo(String url) async {
+    final uri = Uri.tryParse(url);
+    var ok = false;
+    if (uri != null) {
+      try {
+        ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        ok = false;
+      }
+    }
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.s('food.video_open_failed'))),
+      );
+    }
+  }
+
+  // --- Действия: шаги приготовления (#25) --------------------------------------
+
+  Future<void> _addStep() async {
+    final result = await showDialog<_StepDialogResult>(
+      context: context,
+      builder: (_) => const _StepEditDialog(),
+    );
+    if (result == null) return;
+    await ref.read(recipesDaoProvider).addStep(
+          recipeId: widget.recipeId,
+          text: result.text,
+          photoPath: result.photoPath,
+        );
+  }
+
+  Future<void> _editStep(RecipeStepsTableData step) async {
+    final result = await showDialog<_StepDialogResult>(
+      context: context,
+      builder: (_) => _StepEditDialog(
+        initialText: step.stepText,
+        initialPhotoPath: step.photoPath,
+      ),
+    );
+    if (result == null) return;
+    await ref.read(recipesDaoProvider).updateStep(
+          step.id,
+          text: result.text,
+          photoPath: result.photoPath,
+        );
+  }
+
+  Future<void> _deleteStep(RecipeStepsTableData step) async {
+    final dao = ref.read(recipesDaoProvider);
+    await dao.removeStep(step.id);
+    if (!mounted) return;
+    showUndoSnackBar(
+      context,
+      message: context.s('food.step_removed'),
+      onUndo: () => dao.restoreStep(step),
+    );
+  }
+
   // --- UI -------------------------------------------------------------------
 
   @override
@@ -154,13 +282,14 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
     final mutedColor = ext?.textMuted ?? cs.onSurface.withAlpha(153);
     final faintColor = ext?.textFaint ?? cs.onSurface.withAlpha(100);
     final borderColor = ext?.border ?? cs.outline.withAlpha(50);
-    final emberColor = ext?.ember ?? cs.error;
     final tone = ref.watch(toneProvider);
 
     final recipe = ref.watch(recipeProvider(widget.recipeId)).valueOrNull;
     final ingredients =
         ref.watch(recipeIngredientsProvider(widget.recipeId)).valueOrNull ??
             const <RecipeIngredientsTableData>[];
+    final steps = ref.watch(recipeStepsProvider(widget.recipeId)).valueOrNull ??
+        const <RecipeStepsTableData>[];
 
     if (recipe == null) {
       return Scaffold(
@@ -173,6 +302,11 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
 
     final totals = recipeTotals(ingredients);
     final per100 = recipePer100g(totals.total, totals.totalGrams);
+
+    final hasDescription =
+        recipe.description != null && recipe.description!.trim().isNotEmpty;
+    final isEmptyRecipe =
+        ingredients.isEmpty && steps.isEmpty && !hasDescription;
 
     return Scaffold(
       appBar: AppBar(
@@ -188,98 +322,193 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ingredients.isEmpty
-                ? _emptyIngredients(context, ext, tone)
-                : ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    itemCount: ingredients.length,
-                    separatorBuilder: (_, __) => Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      color: borderColor,
-                      indent: 16,
-                      endIndent: 16,
-                    ),
-                    itemBuilder: (context, i) {
-                      final ing = ingredients[i];
-                      // SwipeToDelete: свайп влево → _deleteIngredient
-                      return SwipeToDelete(
-                        key: ValueKey(ing.id),
-                        onDelete: () => _deleteIngredient(ing),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
+            child: isEmptyRecipe
+                ? _emptyEditor(context, ext, tone)
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    children: [
+                      // --- Описание ---------------------------------------------
+                      _SectionHeader(
+                        title: context.s('food.description_section'),
+                        onEdit: () => _editDescription(recipe),
+                      ),
+                      const SizedBox(height: 6),
+                      if (hasDescription)
+                        Text(recipe.description!, style: tt.bodyMedium)
+                      else
+                        Text(
+                          context.s('food.description_empty'),
+                          style: tt.bodyMedium?.copyWith(color: mutedColor),
+                        ),
+                      const SizedBox(height: 20),
+
+                      // --- Шаги приготовления ------------------------------------
+                      _SectionHeader(title: context.s('food.steps_section')),
+                      const SizedBox(height: 6),
+                      if (steps.isEmpty)
+                        Text(
+                          context.s('food.steps_empty'),
+                          style: tt.bodyMedium?.copyWith(color: mutedColor),
+                        )
+                      else
+                        ...steps.asMap().entries.map(
+                              (e) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: SwipeToDelete(
+                                  key: ValueKey('step_${e.value.id}'),
+                                  onDelete: () => _deleteStep(e.value),
+                                  child: _StepRow(
+                                    index: e.key + 1,
+                                    step: e.value,
+                                    onEdit: () => _editStep(e.value),
+                                    onDelete: () => _deleteStep(e.value),
+                                  ),
+                                ),
+                              ),
+                            ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        icon: Icon(PhosphorIcons.plus(), size: 18),
+                        label: Text(context.s('food.add_step_btn')),
+                        onPressed: _addStep,
+                      ),
+                      const SizedBox(height: 20),
+
+                      // --- Ингредиенты -------------------------------------------
+                      _SectionHeader(title: context.s('food.ingredients_section')),
+                      const SizedBox(height: 6),
+                      if (ingredients.isEmpty)
+                        Text(
+                          context.s('food.ingredients_empty'),
+                          style: tt.bodyMedium?.copyWith(color: mutedColor),
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          itemCount: ingredients.length,
+                          separatorBuilder: (_, _) => Divider(
+                            height: 1,
+                            thickness: 0.5,
+                            color: borderColor,
                           ),
-                          child: Row(
-                            children: [
-                              // Название + калории
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
+                          itemBuilder: (context, i) {
+                            final ing = ingredients[i];
+                            // SwipeToDelete: свайп влево → _deleteIngredient
+                            return SwipeToDelete(
+                              key: ValueKey(ing.id),
+                              onDelete: () => _deleteIngredient(ing),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                child: Row(
                                   children: [
-                                    Text(
-                                      ing.name,
-                                      style: tt.bodyMedium,
-                                      overflow: TextOverflow.ellipsis,
+                                    // Название + калории
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            ing.name,
+                                            style: tt.bodyMedium,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (ing.calories != null) ...[
+                                            const SizedBox(height: 1),
+                                            Text(
+                                              context
+                                                  .s('food.kcal_val')
+                                                  .replaceFirst(
+                                                    '{val}',
+                                                    (ing.calories! *
+                                                            ing.grams /
+                                                            100)
+                                                        .round()
+                                                        .toString(),
+                                                  ),
+                                              style: tt.bodySmall?.copyWith(
+                                                color: mutedColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
-                                    if (ing.calories != null) ...[
-                                      const SizedBox(height: 1),
-                                      Text(
+                                    // Кнопка граммов — ghost (вторичное действие)
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                      ),
+                                      onPressed: () => _editGrams(ing),
+                                      child: Text(
                                         context
-                                            .s('food.kcal_val')
+                                            .s('food.grams_val')
                                             .replaceFirst(
                                               '{val}',
-                                              (ing.calories! * ing.grams / 100)
-                                                  .round()
-                                                  .toString(),
+                                              ing.grams.round().toString(),
                                             ),
-                                        style: tt.bodySmall?.copyWith(
+                                        style: tt.labelMedium?.copyWith(
                                           color: mutedColor,
                                         ),
                                       ),
-                                    ],
+                                    ),
+                                    // Корзина — textFaint (мягко, не агрессивно)
+                                    IconButton(
+                                      icon: Icon(
+                                        PhosphorIcons.trash(),
+                                        size: 20,
+                                        color: faintColor,
+                                      ),
+                                      tooltip: context.s('btn.delete'),
+                                      onPressed: () => _deleteIngredient(ing),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
                                   ],
                                 ),
                               ),
-                              // Кнопка граммов — ghost (вторичное действие)
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
-                                ),
-                                onPressed: () => _editGrams(ing),
-                                child: Text(
-                                  context
-                                      .s('food.grams_val')
-                                      .replaceFirst(
-                                        '{val}',
-                                        ing.grams.round().toString(),
-                                      ),
-                                  style: tt.labelMedium?.copyWith(
-                                    color: mutedColor,
-                                  ),
-                                ),
-                              ),
-                              // Корзина — textFaint (мягко, не агрессивно)
-                              IconButton(
-                                icon: Icon(
-                                  PhosphorIcons.trash(),
-                                  size: 20,
-                                  color: faintColor,
-                                ),
-                                tooltip: context.s('btn.delete'),
-                                onPressed: () => _deleteIngredient(ing),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      const SizedBox(height: 20),
+
+                      // --- Видео ---------------------------------------------------
+                      _SectionHeader(
+                        title: context.s('food.video_section'),
+                        onEdit: () => _editVideoUrl(recipe),
+                      ),
+                      const SizedBox(height: 6),
+                      if (recipe.videoUrl != null && recipe.videoUrl!.isNotEmpty)
+                        Row(
+                          children: [
+                            Icon(PhosphorIcons.linkSimple(), size: 16, color: mutedColor),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                recipe.videoUrl!,
+                                style: tt.bodyMedium?.copyWith(color: mutedColor),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(PhosphorIcons.playCircle(), size: 20),
+                              tooltip: context.s('food.open_video_tooltip'),
+                              onPressed: () => _openVideo(recipe.videoUrl!),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        )
+                      else
+                        Text(
+                          context.s('food.video_empty'),
+                          style: tt.bodyMedium?.copyWith(color: mutedColor),
+                        ),
+                      const SizedBox(height: 12),
+                    ],
                   ),
           ),
           // Нижняя панель: итоги + кнопки действий
@@ -325,8 +554,9 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
     );
   }
 
-  /// Пустое состояние списка ингредиентов: KaiMascot (neutral 64) + verb button.
-  Widget _emptyIngredients(
+  /// Пустое состояние совершенно нового рецепта (нет описания/шагов/ингредиентов):
+  /// KaiMascot (neutral 64) + подсказка + три кнопки быстрого старта.
+  Widget _emptyEditor(
     BuildContext context,
     FocusThemeExtension? ext,
     AppTone tone,
@@ -336,8 +566,8 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
         Theme.of(context).colorScheme.onSurface.withAlpha(80);
 
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -348,19 +578,167 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              context.s('food.ingredients_empty'),
+              context.s('food.recipe_empty_hint'),
               textAlign: TextAlign.center,
               style: tt.bodyMedium?.copyWith(color: mutedColor),
             ),
             const SizedBox(height: 16),
-            // Verb button — OutlinedButton (secondary; primary — кнопка «Log» внизу)
-            OutlinedButton.icon(
-              icon: Icon(PhosphorIcons.plus(), size: 18),
-              label: Text(context.s('food.add_ingredient')),
-              onPressed: _addIngredient,
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: Icon(PhosphorIcons.plus(), size: 18),
+                label: Text(context.s('food.add_description_btn')),
+                onPressed: () {
+                  final recipe = ref.read(recipeProvider(widget.recipeId)).valueOrNull;
+                  if (recipe != null) _editDescription(recipe);
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: Icon(PhosphorIcons.plus(), size: 18),
+                label: Text(context.s('food.add_step_btn')),
+                onPressed: _addStep,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: Icon(PhosphorIcons.plus(), size: 18),
+                label: Text(context.s('food.add_ingredient')),
+                onPressed: _addIngredient,
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Заголовок секции редактора: заголовок + опциональная кнопка-карандаш
+// ---------------------------------------------------------------------------
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, this.onEdit});
+
+  final String title;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(title, style: tt.titleSmall, overflow: TextOverflow.ellipsis),
+        ),
+        if (onEdit != null)
+          IconButton(
+            icon: Icon(PhosphorIcons.pencilSimple(), size: 16),
+            tooltip: context.s('btn.edit'),
+            onPressed: onEdit,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Строка шага приготовления — surface1 + hairline + R14, номер + текст + фото
+// ---------------------------------------------------------------------------
+
+class _StepRow extends StatelessWidget {
+  const _StepRow({
+    required this.index,
+    required this.step,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final int index;
+  final RecipeStepsTableData step;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor = ext?.textMuted ?? cs.onSurface.withAlpha(153);
+    final faintColor = ext?.textFaint ?? cs.onSurface.withAlpha(80);
+    final borderColor = ext?.border ?? cs.outline.withAlpha(50);
+    final badgeColor = ext?.accentMuted ?? cs.primary.withAlpha(30);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: 0.5),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: badgeColor, shape: BoxShape.circle),
+            // FittedBox/scaleDown: index circle is fixed-size, big textScale
+            // ("10", "11"…) must shrink to fit rather than overflow visually.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('$index', style: tt.labelMedium),
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (step.photoPath != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: attachmentImage(
+                  step.photoPath!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, _, _) => Icon(
+                    PhosphorIcons.imageBroken(),
+                    size: 18,
+                    color: mutedColor,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(step.stepText, style: tt.bodyMedium),
+            ),
+          ),
+          IconButton(
+            icon: Icon(PhosphorIcons.pencilSimple(), size: 18, color: mutedColor),
+            tooltip: context.s('food.edit_step_tooltip'),
+            onPressed: onEdit,
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            icon: Icon(PhosphorIcons.trash(), size: 18, color: faintColor),
+            tooltip: context.s('btn.delete'),
+            onPressed: onDelete,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
       ),
     );
   }
@@ -450,6 +828,11 @@ class _TotalsCard extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Шит поиска ингредиента (Open Food Facts через бэкенд)
+//
+// #27: поиск стал live — onChanged с дебаунсом ~300мс (как в food_screen.dart
+// _FoodSearchSheetState), кнопка/onSubmitted остаются как явный мгновенный
+// триггер. _requestSeq защищает от гонки: поздний ответ на устаревший запрос
+// игнорируется, если пользователь уже ввёл новый текст.
 // ---------------------------------------------------------------------------
 
 class _IngredientSearchSheet extends ConsumerStatefulWidget {
@@ -465,12 +848,15 @@ class _IngredientSearchSheet extends ConsumerStatefulWidget {
 class _IngredientSearchSheetState
     extends ConsumerState<_IngredientSearchSheet> {
   final _controller = TextEditingController();
+  Timer? _debounce;
+  int _requestSeq = 0;
   List<dynamic> _results = const [];
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -478,18 +864,33 @@ class _IngredientSearchSheetState
   Future<void> _search() async {
     final q = _controller.text.trim();
     if (q.isEmpty) return;
+    final seq = ++_requestSeq;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final products = await ref.read(apiClientProvider).foodSearch(q);
-      if (mounted) setState(() => _results = products);
+      if (!mounted || seq != _requestSeq) return;
+      setState(() => _results = products);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted && seq == _requestSeq) setState(() => _error = e.message);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && seq == _requestSeq) setState(() => _loading = false);
     }
+  }
+
+  /// Live-поиск: debounce ~300мс после остановки ввода (#27).
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    if (value.trim().isEmpty) {
+      setState(() {
+        _results = const [];
+        _error = null;
+      });
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 300), _search);
   }
 
   Future<void> _pick(Map<String, dynamic> product) async {
@@ -559,6 +960,7 @@ class _IngredientSearchSheetState
               autofocus: true,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _search(),
+              onChanged: _onQueryChanged,
               decoration: InputDecoration(
                 hintText: context.s('food.search_hint'),
                 suffixIcon: IconButton(
@@ -685,6 +1087,299 @@ Future<double?> _promptGrams(
       ],
     ),
   );
+}
+
+/// Диалог редактирования описания рецепта (#25). Сохраняет любой текст
+/// (пустая строка → описание убирается).
+Future<String?> _promptDescription(
+  BuildContext context, {
+  required String initial,
+}) {
+  final controller = TextEditingController(text: initial);
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(ctx.s('food.description_section')),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        maxLines: 6,
+        minLines: 3,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: InputDecoration(hintText: ctx.s('food.description_hint')),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(ctx.s('btn.cancel')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+          child: Text(ctx.s('btn.save')),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Диалог ссылки на видео (#25): валидирует http(s):// перед сохранением;
+/// пустое значение разрешено (убирает ссылку).
+class _VideoUrlDialog extends StatefulWidget {
+  const _VideoUrlDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_VideoUrlDialog> createState() => _VideoUrlDialogState();
+}
+
+class _VideoUrlDialogState extends State<_VideoUrlDialog> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final text = _controller.text.trim();
+    if (!_isHttpUrl(text)) {
+      setState(() => _error = context.s('food.video_url_invalid'));
+      return;
+    }
+    Navigator.of(context).pop(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(context.s('food.video_section')),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(
+          hintText: context.s('food.video_url_hint'),
+          errorText: _error,
+        ),
+        onChanged: (_) {
+          if (_error != null) setState(() => _error = null);
+        },
+        onSubmitted: (_) => _save(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.s('btn.cancel')),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: Text(context.s('btn.save')),
+        ),
+      ],
+    );
+  }
+}
+
+/// Диалог добавления/редактирования шага приготовления (#25): текст (обязателен)
+/// + опциональное фото (камера/галерея через image_picker).
+class _StepEditDialog extends StatefulWidget {
+  const _StepEditDialog({this.initialText = '', this.initialPhotoPath});
+
+  final String initialText;
+  final String? initialPhotoPath;
+
+  @override
+  State<_StepEditDialog> createState() => _StepEditDialogState();
+}
+
+class _StepEditDialogState extends State<_StepEditDialog> {
+  late final TextEditingController _controller;
+  String? _photoPath;
+  bool _picking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+    _photoPath = widget.initialPhotoPath;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    final failedMsg = context.s('today.attachment_failed');
+    final cancelledMsg = context.s('today.attachment_cancelled');
+
+    setState(() => _picking = true);
+    XFile? file;
+    try {
+      file = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 1280,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() => _picking = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(failedMsg)));
+      }
+      return;
+    }
+
+    if (file == null) {
+      if (mounted) {
+        setState(() => _picking = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(cancelledMsg)));
+      }
+      return;
+    }
+
+    try {
+      final path = await _storeStepPhoto(file);
+      if (mounted) {
+        setState(() {
+          _photoPath = path;
+          _picking = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _picking = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(failedMsg)));
+      }
+    }
+  }
+
+  void _save() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    Navigator.of(context).pop((text: text, photoPath: _photoPath));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final mutedColor =
+        ext?.textMuted ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+
+    return AlertDialog(
+      title: Text(
+        widget.initialText.isEmpty
+            ? context.s('food.add_step_btn')
+            : context.s('food.edit_step_tooltip'),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLines: 4,
+              minLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(hintText: context.s('food.step_text_hint')),
+            ),
+            const SizedBox(height: 12),
+            if (_photoPath != null)
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: 96,
+                      height: 96,
+                      child: attachmentImage(
+                        _photoPath!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, _, _) => Icon(
+                          PhosphorIcons.imageBroken(),
+                          color: mutedColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _photoPath = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Tooltip(
+                          message: context.s('food.remove_photo_tooltip'),
+                          child: const Icon(Icons.close, size: 14, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else if (_picking)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (!kIsWeb)
+                    OutlinedButton.icon(
+                      icon: Icon(PhosphorIcons.camera(), size: 16),
+                      label: Text(context.s('today.attach_camera')),
+                      onPressed: () => _pickPhoto(ImageSource.camera),
+                    ),
+                  OutlinedButton.icon(
+                    icon: Icon(PhosphorIcons.image(), size: 16),
+                    label: Text(context.s('today.attach_gallery')),
+                    onPressed: () => _pickPhoto(ImageSource.gallery),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.s('btn.cancel')),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: Text(context.s('btn.save')),
+        ),
+      ],
+    );
+  }
 }
 
 /// Диалог логирования рецепта: граммы + приём пищи.

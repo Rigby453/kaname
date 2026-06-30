@@ -36,6 +36,12 @@ final recipeIngredientsProvider = StreamProvider.autoDispose
   return ref.watch(recipesDaoProvider).watchIngredients(recipeId);
 });
 
+/// Шаги приготовления одного рецепта (family по id, #25).
+final recipeStepsProvider = StreamProvider.autoDispose
+    .family<List<RecipeStepsTableData>, String>((ref, recipeId) {
+  return ref.watch(recipesDaoProvider).watchSteps(recipeId);
+});
+
 /// Один рецепт по id (null после удаления).
 final recipeProvider = StreamProvider.autoDispose
     .family<RecipesTableData?, String>((ref, id) {
@@ -66,6 +72,9 @@ class RecipesScreen extends ConsumerWidget {
     final ingredientSnapshot =
         ref.read(recipeIngredientsProvider(recipe.id)).valueOrNull ??
             const <RecipeIngredientsTableData>[];
+    final stepSnapshot =
+        ref.read(recipeStepsProvider(recipe.id)).valueOrNull ??
+            const <RecipeStepsTableData>[];
 
     await dao.deleteRecipe(recipe.id);
 
@@ -74,7 +83,7 @@ class RecipesScreen extends ConsumerWidget {
       context,
       message: '"${recipe.name}" — ${context.s('food.recipe_removed')}',
       onUndo: () async {
-        await dao.restoreRecipe(recipe, ingredientSnapshot);
+        await dao.restoreRecipe(recipe, ingredientSnapshot, steps: stepSnapshot);
       },
     );
   }

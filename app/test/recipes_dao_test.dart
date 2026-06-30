@@ -104,4 +104,110 @@ void main() {
     // здесь ненадёжен, проверяем монотонность.
     expect(after.updatedAt.isBefore(before), isFalse);
   });
+
+  // ---------------------------------------------------------------------------
+  // #25 расширенный редактор: description / videoUrl / шаги (schemaVersion 23)
+  // ---------------------------------------------------------------------------
+
+  test('updateDescription сохраняет и убирает описание', () async {
+    final id = await dao.createRecipe('Pancakes');
+    expect((await dao.watchRecipes().first).single.description, isNull);
+
+    await dao.updateDescription(id, 'Fluffy breakfast pancakes');
+    expect(
+      (await dao.watchRecipes().first).single.description,
+      'Fluffy breakfast pancakes',
+    );
+
+    // Пустая строка убирает описание (null)
+    await dao.updateDescription(id, '');
+    expect((await dao.watchRecipes().first).single.description, isNull);
+  });
+
+  test('updateVideoUrl сохраняет и убирает ссылку', () async {
+    final id = await dao.createRecipe('Omelette');
+    await dao.updateVideoUrl(id, 'https://example.com/omelette');
+    expect(
+      (await dao.watchRecipes().first).single.videoUrl,
+      'https://example.com/omelette',
+    );
+
+    await dao.updateVideoUrl(id, null);
+    expect((await dao.watchRecipes().first).single.videoUrl, isNull);
+  });
+
+  test('addStep → watchSteps возвращает шаги по sortOrder', () async {
+    final id = await dao.createRecipe('Fried rice');
+    await dao.addStep(recipeId: id, text: 'Boil the rice');
+    await dao.addStep(
+      recipeId: id,
+      text: 'Fry with egg and vegetables',
+      photoPath: '/tmp/step2.jpg',
+    );
+
+    final steps = await dao.watchSteps(id).first;
+    expect(steps, hasLength(2));
+    expect(steps[0].stepText, 'Boil the rice');
+    expect(steps[0].photoPath, isNull);
+    expect(steps[1].stepText, 'Fry with egg and vegetables');
+    expect(steps[1].photoPath, '/tmp/step2.jpg');
+    expect(steps[0].sortOrder, lessThan(steps[1].sortOrder));
+  });
+
+  test('updateStep меняет текст и фото шага', () async {
+    final id = await dao.createRecipe('Soup');
+    await dao.addStep(recipeId: id, text: 'Chop vegetables');
+    final step = (await dao.watchSteps(id).first).single;
+
+    await dao.updateStep(step.id, text: 'Chop and sauté vegetables', photoPath: '/tmp/a.jpg');
+
+    final updated = (await dao.watchSteps(id).first).single;
+    expect(updated.stepText, 'Chop and sauté vegetables');
+    expect(updated.photoPath, '/tmp/a.jpg');
+  });
+
+  test('removeStep удаляет только указанный шаг; restoreStep возвращает его', () async {
+    final id = await dao.createRecipe('Salad');
+    await dao.addStep(recipeId: id, text: 'Wash greens');
+    await dao.addStep(recipeId: id, text: 'Add dressing');
+
+    final steps = await dao.watchSteps(id).first;
+    final removed = steps.first;
+    await dao.removeStep(removed.id);
+
+    final afterRemove = await dao.watchSteps(id).first;
+    expect(afterRemove, hasLength(1));
+    expect(afterRemove.single.stepText, 'Add dressing');
+
+    await dao.restoreStep(removed);
+    final afterRestore = await dao.watchSteps(id).first;
+    expect(afterRestore, hasLength(2));
+    expect(afterRestore.map((s) => s.stepText), contains('Wash greens'));
+  });
+
+  test('deleteRecipe удаляет шаги вместе с рецептом; restoreRecipe восстанавливает их', () async {
+    final id = await dao.createRecipe('Stew');
+    await dao.addIngredient(recipeId: id, name: 'Beef', grams: 300);
+    await dao.addStep(recipeId: id, text: 'Brown the beef');
+    await dao.updateDescription(id, 'Slow-cooked beef stew');
+    await dao.updateVideoUrl(id, 'https://example.com/stew');
+
+    final recipe = (await dao.watchRecipes().first).single;
+    final ingredients = await dao.watchIngredients(id).first;
+    final steps = await dao.watchSteps(id).first;
+
+    await dao.deleteRecipe(id);
+    expect(await dao.watchSteps(id).first, isEmpty);
+    expect(await dao.watchRecipes().first, isEmpty);
+
+    await dao.restoreRecipe(recipe, ingredients, steps: steps);
+
+    final restored = (await dao.watchRecipes().first).single;
+    expect(restored.description, 'Slow-cooked beef stew');
+    expect(restored.videoUrl, 'https://example.com/stew');
+    expect(await dao.watchIngredients(id).first, hasLength(1));
+    final restoredSteps = await dao.watchSteps(id).first;
+    expect(restoredSteps, hasLength(1));
+    expect(restoredSteps.single.stepText, 'Brown the beef');
+  });
 }

@@ -242,10 +242,48 @@ class RecipesTable extends Table {
   // Название рецепта
   TextColumn get name => text()();
 
+  // Свободное текстовое описание рецепта (опционально). Сырой пользовательский
+  // текст — не l10n-ключ. Добавлено в schemaVersion 23 (#25 расширенный редактор).
+  TextColumn get description => text().nullable()();
+
+  // Ссылка на видео рецепта (YouTube/др.), опционально. Открывается через
+  // url_launcher. Добавлено в schemaVersion 23.
+  TextColumn get videoUrl => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   // Время последнего изменения (для сортировки)
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Шаги приготовления рецепта: текст + опциональное фото. Локальные, без
+/// синхронизации (как RecipeIngredientsTable). Добавлено в schemaVersion 23.
+class RecipeStepsTable extends Table {
+  @override
+  String get tableName => 'recipe_steps';
+
+  // UUID, генерируется клиентом
+  TextColumn get id => text()();
+
+  // Ссылка на рецепт (родительский)
+  TextColumn get recipeId => text()();
+
+  // Текст шага (сырой пользовательский текст — не l10n-ключ).
+  // ВАЖНО: НЕ называть геттер `text` — имя совпадает с унаследованным
+  // билдер-методом `text()` из Table и приводит к самоссылке (рекурсия в
+  // выводе типов, ломает drift_dev codegen). Поэтому stepText.
+  TextColumn get stepText => text()();
+
+  // Путь к фото шага: на мобильных — реальный путь в documents/attachments/,
+  // на web — base64 data-URI (см. core/widgets/attachment_view.dart,
+  // attachmentImage() умеет рендерить оба варианта). null = фото нет.
+  TextColumn get photoPath => text().nullable()();
+
+  // Порядок отображения в редакторе
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -658,6 +696,7 @@ class SyncQueueTable extends Table {
     ShoppingItemsTable,
     RecipesTable,
     RecipeIngredientsTable,
+    RecipeStepsTable,
     SleepLogsTable,
     WorkoutsTable,
     WorkoutExercisesTable,
@@ -707,6 +746,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(shoppingItemsTable).go();
       await delete(recipesTable).go();
       await delete(recipeIngredientsTable).go();
+      await delete(recipeStepsTable).go();
       await delete(sleepLogsTable).go();
       await delete(workoutsTable).go();
       await delete(workoutExercisesTable).go();
@@ -726,7 +766,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -834,6 +874,15 @@ class AppDatabase extends _$AppDatabase {
           // ключ в prefs не удаляем — потеря данных исключена.
           if (from < 22) {
             await m.createTable(moodLogsTable);
+          }
+          // v23: расширенный редактор рецептов (#25) — recipes.description,
+          // recipes.video_url (оба nullable, существующие рецепты получают
+          // null) + новая таблица recipe_steps (шаги приготовления: текст +
+          // опциональное фото). Старые рецепты/ингредиенты не затронуты.
+          if (from < 23) {
+            await m.addColumn(recipesTable, recipesTable.description);
+            await m.addColumn(recipesTable, recipesTable.videoUrl);
+            await m.createTable(recipeStepsTable);
           }
         },
       );
