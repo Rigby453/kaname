@@ -201,6 +201,74 @@ void main() {
         await tester.pump(const Duration(milliseconds: 1));
       },
     );
+
+    testWidgets(
+      'тап на "Other" раскрывает текстовое поле (вместо немого кода)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(_size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(buildApp());
+        await tester.pump(const Duration(milliseconds: 50));
+        tester.takeException();
+
+        await goToPage(tester, _acqPage);
+
+        // Поля ещё нет, пока 'Other' не выбран.
+        expect(find.byType(TextField), findsNothing);
+
+        await tester.scrollUntilVisible(
+          find.text('Other'),
+          50,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump();
+        await tester.tap(find.text('Other'));
+        await tester.pump(const Duration(milliseconds: 200)); // AnimatedSize
+
+        expect(tester.takeException(), isNull,
+            reason: 'раскрытие поля не должно вызывать исключений');
+        expect(find.byType(TextField), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 1));
+      },
+    );
+
+    testWidgets(
+      'поле "Other" переживает 320px / textScale 2.0 при открытой клавиатуре',
+      (tester) async {
+        await tester.binding.setSurfaceSize(_size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(buildApp());
+        await tester.pump(const Duration(milliseconds: 50));
+        tester.takeException();
+
+        await goToPage(tester, _acqPage);
+        await tester.scrollUntilVisible(
+          find.text('Other'),
+          50,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump();
+        await tester.tap(find.text('Other'));
+        await tester.pump(const Duration(milliseconds: 200));
+
+        // Симулируем открытую клавиатуру: уменьшаем доступную высоту через
+        // viewInsets.bottom (как реальная клавиатура сжимает layout).
+        await tester.binding.setSurfaceSize(const Size(320, 460));
+        await tester.pump();
+        await tester.enterText(find.byType(TextField), 'TikTok blog @someone');
+        await tester.pump();
+
+        expect(tester.takeException(), isNull,
+            reason: 'ввод текста при открытой клавиатуре не должен переполнять layout');
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 1));
+      },
+    );
   });
 
   // ---------------------------------------------------------------------------
@@ -264,5 +332,35 @@ void main() {
         expect(acquisitionSourceKey, equals('acquisition_source'));
       },
     );
+
+    // -------------------------------------------------------------------------
+    // resolveAcquisitionSource — чистая функция, мерджит код + текст поля
+    // 'other' в итоговое значение для записи в prefs.
+    // -------------------------------------------------------------------------
+
+    test('non-other код возвращается как есть, текст поля игнорируется', () {
+      expect(resolveAcquisitionSource('friend', 'whatever'), equals('friend'));
+      expect(resolveAcquisitionSource('app_store_google_play', ''),
+          equals('app_store_google_play'));
+    });
+
+    test('other + заполненное поле → возвращается ТЕКСТ поля (обрезанный)', () {
+      expect(
+        resolveAcquisitionSource('other', '  TikTok blog @someone  '),
+        equals('TikTok blog @someone'),
+      );
+    });
+
+    test('other + пустое поле → fallback на код "other" (обратная совместимость)',
+        () {
+      expect(resolveAcquisitionSource('other', ''), equals('other'));
+      expect(resolveAcquisitionSource('other', '   '), equals('other'));
+    });
+
+    test('other + текст → пишется в prefs сам текст, а не код "other"', () async {
+      final value = resolveAcquisitionSource('other', 'my blog');
+      await prefs.setString(acquisitionSourceKey, value);
+      expect(prefs.getString(acquisitionSourceKey), equals('my blog'));
+    });
   });
 }

@@ -67,6 +67,20 @@ const _kGoalsKey = 'onboarding_goals';
 const _kPlanMinutesKey = 'onboarding_plan_minutes';
 const _kHorizonKey = 'onboarding_horizon';
 
+/// Резолвит итоговое значение acquisition source (C1) для записи в prefs.
+///
+/// Для всех кодов кроме 'other' возвращает код как есть (app_store_google_play,
+/// friend, social, ad, search). Для 'other' — если пользователь заполнил
+/// раскрывающееся текстовое поле, возвращает ЕГО ТЕКСТ (свободная форма,
+/// обрезанная по пробелам); если поле пустое — возвращает код 'other' как
+/// раньше (обратная совместимость с уже существующими 6 кодами).
+/// Чистая функция — тестируется без поднятия виджета.
+String resolveAcquisitionSource(String selectedCode, String otherFieldText) {
+  if (selectedCode != 'other') return selectedCode;
+  final trimmed = otherFieldText.trim();
+  return trimmed.isNotEmpty ? trimmed : 'other';
+}
+
 // ---------------------------------------------------------------------------
 // Вспомогательные типы
 // ---------------------------------------------------------------------------
@@ -152,6 +166,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
 
   // --- Шаг acquisition source: откуда узнал ---
   String? _acquisitionSource; // null = не выбрано / пропущено
+  // Текст из раскрывающегося поля, когда выбран вариант 'other'.
+  final _acquisitionOtherController = TextEditingController();
 
   // --- Экран 15: саммари (KaiLoader stub) ---
   bool _summaryReady = false;
@@ -178,6 +194,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     _heightController.dispose();
     _ageController.dispose();
     _firstTaskController.dispose();
+    _acquisitionOtherController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -296,9 +313,17 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
       }
     }
 
-    // Канал привлечения (откуда узнал о приложении; null = пропущено)
+    // Канал привлечения (откуда узнал о приложении; null = пропущено).
+    // Для 'other' с заполненным текстовым полем сохраняем сам текст, а не код —
+    // см. resolveAcquisitionSource().
     if (_acquisitionSource != null) {
-      await prefs.setString(acquisitionSourceKey, _acquisitionSource!);
+      await prefs.setString(
+        acquisitionSourceKey,
+        resolveAcquisitionSource(
+          _acquisitionSource!,
+          _acquisitionOtherController.text,
+        ),
+      );
     }
 
     await prefs.setBool(setupDoneKey, true);
@@ -1204,14 +1229,50 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   // Экран 13: Демо переноса (NO progress bar)
   // ---------------------------------------------------------------------------
 
+  /// Демо-«план дня»: 3 заглушки с реальным временем + задача самого
+  /// пользователя (добавленная на экране 12), все НАГЛЯДНО размещены по
+  /// часам. 3 из 4 размечены как «не успевшие» по умолчанию — наглядно
+  /// показываем механизм переноса, а не абстрактную анимацию (см. ТЗ §2).
+  List<_DemoTask> _demoTasks() {
+    final userTitle = _addedTaskTitle.trim().isNotEmpty
+        ? _addedTaskTitle.trim()
+        : context.s('onboarding_quiz.s12_hint');
+    return [
+      (
+        title: context.s('onboarding_quiz.s13_demo_task1'),
+        hour: 9,
+        isMain: false,
+        missed: true,
+      ),
+      (
+        title: context.s('onboarding_quiz.s13_demo_task2'),
+        hour: 13,
+        isMain: false,
+        missed: true,
+      ),
+      // Задача самого пользователя — введена на предыдущем экране (12),
+      // здесь она часть «реального» плана дня вперемешку с примерами.
+      (title: userTitle, hour: 17, isMain: true, missed: true),
+      (
+        title: context.s('onboarding_quiz.s13_demo_task3'),
+        hour: 21,
+        isMain: false,
+        missed: false,
+      ),
+    ];
+  }
+
   Widget _buildScreen13() {
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final demo = _demoTasks();
+    final missedCount = demo.where((t) => t.missed).length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
             child: Column(
@@ -1222,13 +1283,14 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
                       ? KaiEmotion.success
                       : KaiEmotion.neutral,
                 ),
-                const SizedBox(height: 10),
-                if (_taskMoved)
+                if (_taskMoved) ...[
+                  const SizedBox(height: 10),
                   KaiSpeechBubble(
                     message: context.s('onboarding_quiz.s13_kai_line'),
                     animate: true,
                     maxWidth: 280,
                   ),
+                ],
               ],
             ),
           ),
@@ -1236,65 +1298,27 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
 
           Text(context.s('onboarding_quiz.s13_title'),
               style: textTheme.headlineSmall),
-          const SizedBox(height: 24),
-
-          // Карточка задачи — «живая» sandbox
-          AnimatedContainer(
-            duration: kDurationNormal,
-            curve: kCurveLift,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: ext.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-                        color: colorScheme.primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _addedTaskTitle.isNotEmpty
-                            ? _addedTaskTitle
-                            : context.s('onboarding_quiz.s13_title'),
-                        style: textTheme.titleSmall,
-                      ),
-                    ),
-                  ],
-                ),
-                if (_taskMoved) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    context.s('onboarding_quiz.s13_task_moved'),
-                    style: textTheme.bodySmall
-                        ?.copyWith(color: ext.success),
-                  ),
-                ],
-              ],
-            ),
+          const SizedBox(height: 8),
+          Text(
+            context.s('onboarding_quiz.s13_question'),
+            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
           ),
+          const SizedBox(height: 20),
 
-          if (!_taskMoved) ...[
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                context.s('onboarding_quiz.s13_question'),
-                style:
-                    textTheme.bodyLarge?.copyWith(color: ext.textMuted),
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: Icon(PhosphorIcons.clockCounterClockwise(), size: 18),
-              label: Text(context.s('onboarding_quiz.s13_move_btn')),
-              onPressed: () => setState(() => _taskMoved = true),
-            ),
-          ],
+          // --- «Сегодняшний план» — настоящие карточки задач (как в Today) ---
+          ...demo.map((t) => _DemoTaskRow(task: t, moved: _taskMoved)),
+
+          const SizedBox(height: 12),
+
+          // --- Карточка-разбор (ember), как настоящий MorningReviewCard ---
+          // Реальные кнопки приложения, не абстрактная анимация.
+          if (!_taskMoved && missedCount > 0)
+            _DemoReviewBanner(
+              count: missedCount,
+              onMoveAll: () => setState(() => _taskMoved = true),
+            )
+          else if (_taskMoved)
+            _DemoSuccessNote(text: context.s('onboarding_quiz.s13_task_moved')),
         ],
       ),
     );
@@ -1689,6 +1713,28 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
             );
           }),
 
+          // 'Other' раскрывает текстовое поле вместо немого кода — пользователь
+          // пишет реальный источник своими словами (сохраняется в _finish()
+          // через resolveAcquisitionSource). AnimatedSize переживает появление/
+          // исчезание поля без скачка layout.
+          AnimatedSize(
+            duration: kDurationFast,
+            curve: kCurveSnap,
+            child: _acquisitionSource == 'other'
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 8),
+                    child: TextField(
+                      controller: _acquisitionOtherController,
+                      textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.done,
+                      decoration: InputDecoration(
+                        hintText: context.s('onboarding_quiz.acq_other_hint'),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+
           const SizedBox(height: 12),
 
           // «Пропустить» — явный сброс выбора и переход к следующему шагу.
@@ -1992,6 +2038,190 @@ class _PriorityExplainer extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Демо переноса (экран «демо-пересборка») — наглядный план дня из
+// нескольких карточек + «настоящая» ember-карточка разбора, как на Today.
+// ---------------------------------------------------------------------------
+
+/// Одна демо-задача «плана дня». title — уже локализованная строка (или
+/// собственный текст пользователя для его задачи), hour — час дня (0–23,
+/// для отображения), isMain — задача из категории «Главное», missed —
+/// помечена ли она «не успевшей» по умолчанию (до переноса).
+typedef _DemoTask = ({String title, int hour, bool isMain, bool missed});
+
+String _formatDemoHour(int h) {
+  final period = h < 12 ? 'AM' : 'PM';
+  final h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+  return '$h12:00 $period';
+}
+
+/// Карточка одной демо-задачи — визуально зеркалит настоящий `_TaskCard` из
+/// Today (Card + ListTile, время слева, акцент по приоритету), но не пишет
+/// ничего в Drift: это sandbox, не реальные данные пользователя.
+class _DemoTaskRow extends StatelessWidget {
+  const _DemoTaskRow({required this.task, required this.moved});
+
+  final _DemoTask task;
+
+  /// true после нажатия «Перенести все на завтра» в _DemoReviewBanner.
+  final bool moved;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    final isOverdue = task.missed && !moved;
+    final isRescheduled = task.missed && moved;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: isOverdue ? ext.ember.withAlpha(14) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isOverdue ? ext.ember.withAlpha(80) : ext.border,
+          width: isOverdue ? 1 : 0.5,
+        ),
+      ),
+      child: ListTile(
+        leading: Text(
+          _formatDemoHour(task.hour),
+          style: textTheme.labelSmall?.copyWith(color: ext.textFaint),
+        ),
+        title: Text(
+          task.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: task.isMain ? textTheme.titleMedium : textTheme.titleSmall,
+        ),
+        subtitle: isOverdue
+            ? Text(
+                context.s('onboarding_quiz.s13_overdue_chip'),
+                style: textTheme.bodySmall
+                    ?.copyWith(color: ext.ember, fontWeight: FontWeight.w600),
+              )
+            : isRescheduled
+                ? Text(
+                    context.s('onboarding_quiz.s13_moved_chip'),
+                    style: textTheme.bodySmall?.copyWith(
+                        color: ext.success, fontWeight: FontWeight.w600),
+                  )
+                : null,
+        trailing: isOverdue
+            ? Icon(PhosphorIcons.warningCircle(), size: 18, color: ext.ember)
+            : isRescheduled
+                ? Icon(PhosphorIcons.arrowRight(), size: 18, color: ext.success)
+                : null,
+      ),
+    );
+  }
+}
+
+/// Ember-карточка разбора — зеркалит настоящий `MorningReviewCard` с Today:
+/// заголовок + счётчик невыполненных + одна настоящая FilledButton-кнопка
+/// «Перенести все на завтра». Именно так carry-over выглядит в проде.
+class _DemoReviewBanner extends StatelessWidget {
+  const _DemoReviewBanner({required this.count, required this.onMoveAll});
+
+  final int count;
+  final VoidCallback onMoveAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final ember = ext.ember;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: ember.withAlpha(20),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ember.withAlpha(80)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(PhosphorIcons.clockCounterClockwise(),
+                  color: ember, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  context.s('onboarding_quiz.s13_review_title'),
+                  style: textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700, color: ember),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: ember.withAlpha(40),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$count',
+                  style: textTheme.labelMedium
+                      ?.copyWith(color: ember, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            context
+                .s('onboarding_quiz.s13_review_body')
+                .replaceAll('{n}', '$count'),
+            style: textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: onMoveAll,
+              child: Text(context.s('onboarding_quiz.s13_move_btn')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Короткая success-строка после переноса — заменяет ember-карточку.
+class _DemoSuccessNote extends StatelessWidget {
+  const _DemoSuccessNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+
+    return Row(
+      children: [
+        Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+            color: ext.success, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: textTheme.bodyMedium
+                ?.copyWith(color: ext.success, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 }

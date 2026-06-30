@@ -596,6 +596,63 @@ const Map<String, Map<String, String>> miscStrings = {
   },
 
   // ---------------------------------------------------------------------------
+  // Развилка «Войти / Продолжить как гость» — последняя страница intro-флоу
+  // (onboarding_screen.dart). Вход НЕ обязателен: гость идёт сразу в /setup.
+  // ---------------------------------------------------------------------------
+  'onboarding.fork_title': {
+    'en': 'Ready when you are.',
+    'ru': 'Готовы начать?',
+    'de': 'Bereit, wenn du es bist.',
+    'fr': 'Prêt quand tu l\'es.',
+    'it': 'Pronto quando vuoi.',
+    'pt': 'Pronto quando você estiver.',
+    'es': 'Listo cuando tú lo estés.',
+    'id': 'Siap kapan pun kamu siap.',
+    'hi': 'जब तुम तैयार हो।',
+    'ja': '準備ができたら始めよう。',
+    'ko': '준비됐을 때 시작해요.',
+  },
+  'onboarding.fork_subtitle': {
+    'en': 'Create an account to sync across devices — or skip it and start right away. You can always log in later.',
+    'ru': 'Создай аккаунт, чтобы синхронизировать данные на всех устройствах — или начни сразу без него. Войти можно в любой момент.',
+    'de': 'Erstelle ein Konto, um Geräte zu synchronisieren — oder starte sofort ohne. Du kannst dich jederzeit später anmelden.',
+    'fr': 'Crée un compte pour synchroniser tes appareils — ou commence tout de suite sans. Tu pourras te connecter plus tard.',
+    'it': 'Crea un account per sincronizzare i dispositivi — oppure inizia subito senza. Potrai accedere quando vuoi.',
+    'pt': 'Crie uma conta para sincronizar seus dispositivos — ou comece agora sem ela. Você pode entrar depois quando quiser.',
+    'es': 'Crea una cuenta para sincronizar tus dispositivos — o empieza ya sin ella. Puedes iniciar sesión cuando quieras.',
+    'id': 'Buat akun untuk menyinkronkan perangkatmu — atau mulai langsung tanpa akun. Kamu bisa masuk kapan saja nanti.',
+    'hi': 'डिवाइस सिंक करने के लिए अकाउंट बनाओ — या बिना अकाउंट के अभी शुरू करो। बाद में कभी भी लॉगिन कर सकते हो।',
+    'ja': 'アカウントを作成すればデバイス間で同期できます。作らずにすぐ始めることもでき、後でいつでもログインできます。',
+    'ko': '계정을 만들면 기기 간 동기화가 가능해요. 계정 없이 바로 시작할 수도 있고, 나중에 언제든 로그인할 수 있어요.',
+  },
+  'onboarding.fork_login_btn': {
+    'en': 'Log in or sign up',
+    'ru': 'Войти или зарегистрироваться',
+    'de': 'Anmelden oder registrieren',
+    'fr': 'Se connecter ou s\'inscrire',
+    'it': 'Accedi o registrati',
+    'pt': 'Entrar ou criar conta',
+    'es': 'Iniciar sesión o registrarse',
+    'id': 'Masuk atau daftar',
+    'hi': 'लॉगिन करें या साइन अप करें',
+    'ja': 'ログインまたは新規登録',
+    'ko': '로그인 또는 회원가입',
+  },
+  'onboarding.fork_guest_btn': {
+    'en': 'Continue as guest',
+    'ru': 'Продолжить как гость',
+    'de': 'Als Gast fortfahren',
+    'fr': 'Continuer en tant qu\'invité',
+    'it': 'Continua come ospite',
+    'pt': 'Continuar como convidado',
+    'es': 'Continuar como invitado',
+    'id': 'Lanjutkan sebagai tamu',
+    'hi': 'मेहमान के रूप में जारी रखें',
+    'ja': 'ゲストとして続ける',
+    'ko': '게스트로 계속하기',
+  },
+
+  // ---------------------------------------------------------------------------
   // Setup flow (setup_flow.dart)
   // ---------------------------------------------------------------------------
   'onboarding.setup_progress': {

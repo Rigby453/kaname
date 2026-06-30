@@ -1,10 +1,17 @@
-// Онбординг первого запуска: Language-слайд + 3 слайда о сути продукта,
-// затем переход к входу.
+// Онбординг первого запуска: Language-слайд + короткое вступление (2 слайда
+// «зачем приложение») + развилка «Войти / Продолжить как гость».
 // Флаг 'onboarding_done' хранится в SharedPreferences; redirect в роутере
 // показывает онбординг, пока флаг не выставлен.
 //
-// Страница 0: выбор языка (3 кнопки; тап выставляет locale + переходит дальше).
-// Страницы 1–3: editorial value slides (Kai на первой).
+// Единый поток (без дублирования онбордингов, см. ТЗ редизайна):
+//   страница 0       — выбор языка (3+ кнопки; тап выставляет locale + переходит дальше);
+//   страницы 1–2     — editorial value slides (короткое вступление, Kai на первой);
+//   страница 3 (last)— развилка: «Войти / зарегистрироваться» → /auth,
+//                       «Продолжить как гость» → continueOffline() сразу в /setup.
+// Вход НЕ обязателен: гость переходит прямо в quiz-онбординг (/setup) без
+// промежуточного экрана входа. Пейвол не показывается на этом шаге вообще —
+// он стоит в самом конце quiz-флоу (см. setup_flow.dart _finish()).
+//
 // Редизайн (design-kai): displayLarge/headlineLarge serif,
 // xxl breathing room, accent только на активном dot + кнопке Continue.
 
@@ -21,6 +28,7 @@ import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../features/mascot/kai_mascot.dart';
+import '../auth/auth_controller.dart'; // authControllerProvider (continueOffline)
 
 const onboardingDoneKey = 'onboarding_done';
 
@@ -35,6 +43,9 @@ class _SlideData {
   final String subtitleKey;
 }
 
+// Короткое вступление — 2 слайда «зачем приложение» (было 3; третий, про
+// дневник, убран ради краткости — спец §1: «1-2 слайда»). Хук + механика
+// переноса остаются: они прямо предвосхищают демо-экран в /setup.
 final _slides = [
   _SlideData(
     PhosphorIcons.flag(),
@@ -46,15 +57,10 @@ final _slides = [
     'onboarding.slide2_title',
     'onboarding.slide2_subtitle',
   ),
-  _SlideData(
-    PhosphorIcons.bookOpen(),
-    'onboarding.slide3_title',
-    'onboarding.slide3_subtitle',
-  ),
 ];
 
-// Всего страниц: 1 language + 3 value.
-const _pageCount = 1 + 3; // 4
+// Всего страниц: 1 language + 2 value + 1 развилка (вход/гость).
+const _pageCount = 1 + 2 + 1; // 4
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -73,9 +79,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  Future<void> _finish() async {
+  // ---------------------------------------------------------------------------
+  // Развилка: вход обязателен НЕ ставится — обе ветки помечают onboarding_done
+  // и либо ведут на полноценный /auth (вход/регистрация), либо включают
+  // офлайн-режим и идут прямо в quiz-онбординг (/setup).
+  // ---------------------------------------------------------------------------
+
+  Future<void> _goToLogin() async {
     await ref.read(sharedPreferencesProvider).setBool(onboardingDoneKey, true);
     if (mounted) context.go('/auth');
+  }
+
+  Future<void> _continueAsGuest() async {
+    await ref.read(sharedPreferencesProvider).setBool(onboardingDoneKey, true);
+    // Гостевой режим (offline-first): данные остаются локально до входа.
+    await ref.read(authControllerProvider.notifier).continueOffline();
+    if (mounted) context.go('/setup');
   }
 
   void _next() {
@@ -84,9 +103,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         duration: effectiveDuration(context, kDurationNormal),
         curve: kCurveLift,
       );
-    } else {
-      _finish();
     }
+    // На развилке (последняя страница) кнопки управляются _buildForkButtons() —
+    // дальше двигаться некуда, _next() здесь не вызывается.
   }
 
   void _back() {
@@ -98,6 +117,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  /// Прыжок сразу на развилку — глобальная кнопка «Пропустить» пропускает
+  /// только вступительные слайды, а не весь онбординг целиком (развилка САМА
+  /// предлагает быстрый путь — «Продолжить как гость»).
+  void _skipToFork() {
+    _pageController.animateToPage(
+      _pageCount - 1,
+      duration: effectiveDuration(context, kDurationNormal),
+      curve: kCurveLift,
+    );
+  }
+
   /// Тап на кнопку языка: выставляет locale LIVE и переходит к следующей странице.
   void _selectLocale(Locale locale) {
     ref.read(localeNotifierProvider.notifier).setLocale(locale);
@@ -105,11 +135,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   bool get _isLangPage => _page == _kLangPage;
-  bool get _isLastPage => _page == _pageCount - 1;
+  bool get _isForkPage => _page == _pageCount - 1;
 
   // ---------------------------------------------------------------------------
   // Прогресс-индикатор (X/4 + кнопка «Пропустить») — идентичен SetupFlowScreen,
-  // чтобы весь онбординг-поток ощущался единым.
+  // чтобы весь онбординг-поток ощущался единым. «Пропустить» скрыта на развилке
+  // (там уже есть явный быстрый путь — «Продолжить как гость»).
   // ---------------------------------------------------------------------------
 
   Widget _buildProgressRow() {
@@ -143,29 +174,33 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               style: textTheme.labelMedium?.copyWith(color: ext.textMuted),
             ),
           ),
-          const SizedBox(width: 8),
-          TextButton(
-            onPressed: _finish,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          if (!_isForkPage) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _skipToFork,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+              child: Text(
+                context.s('btn.skip'),
+                style: textTheme.labelSmall?.copyWith(color: ext.textMuted),
+              ),
             ),
-            child: Text(
-              context.s('btn.skip'),
-              style: textTheme.labelSmall?.copyWith(color: ext.textMuted),
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Нижние кнопки (скрыты на language-слайде; на value-слайдах: назад + CTA)
+  // Нижние кнопки: скрыты на language-слайде; «назад + Next» на value-слайдах;
+  // развилка использует свой собственный набор из двух кнопок.
   // ---------------------------------------------------------------------------
 
   Widget _buildBottomButtons() {
     // Языковой слайд управляется тапом по кнопке языка — нижняя панель не нужна.
     if (_isLangPage) return const SizedBox.shrink();
+    if (_isForkPage) return _buildForkButtons();
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
       child: Row(
@@ -192,12 +227,58 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               height: 52,
               child: FilledButton(
                 onPressed: _next,
-                child: Text(
-                  _isLastPage
-                      ? context.s('onboarding.btn_get_started')
-                      : context.s('onboarding.btn_next'),
+                child: Text(context.s('onboarding.btn_next')),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Развилка: «назад» + primary «Войти/зарегистрироваться» в первой строке,
+  /// secondary «Продолжить как гость» во второй — оба варианта равноценно
+  /// заметны (не маленькая ссылка где-то внизу формы входа).
+  Widget _buildForkButtons() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: OutlinedButton(
+                  onPressed: _back,
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Icon(PhosphorIcons.arrowLeft(), size: 20),
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _goToLogin,
+                    child: Text(context.s('onboarding.fork_login_btn')),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton(
+              onPressed: _continueAsGuest,
+              child: Text(context.s('onboarding.fork_guest_btn')),
             ),
           ),
         ],
@@ -237,7 +318,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       onSelect: _selectLocale,
                     );
                   }
-                  // Страницы 1–3 — value slides (индекс слайда = i - 1)
+                  // Последняя страница — развилка «Войти / Продолжить как гость»
+                  if (i == _pageCount - 1) {
+                    return _ForkSlide(
+                      showKai: showKai && !reduce,
+                      tone: tone,
+                      textTheme: textTheme,
+                      ext: ext,
+                    );
+                  }
+                  // Страницы 1–2 — value slides (индекс слайда = i - 1)
                   final s = _slides[i - 1];
                   final isFirst = i == 1; // первый value-слайд показывает Kai
                   return _OnboardingSlide(
@@ -253,7 +343,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
             ),
 
-            // Нижняя панель: «назад» + CTA (или пусто на language-слайде).
+            // Нижняя панель: «назад» + CTA / развилка / пусто на language-слайде.
             _buildBottomButtons(),
           ],
         ),
@@ -457,6 +547,64 @@ class _OnboardingSlide extends StatelessWidget {
 
           Text(
             context.s(slideData.subtitleKey),
+            style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
+            textAlign: TextAlign.left,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Развилка: «Войти / Продолжить как гость» (последняя страница intro-флоу).
+// Сам контент — только Kai + заголовок + подзаголовок; обе кнопки живут в
+// нижней панели (_buildForkButtons), чтобы быть одинаково заметными.
+// ---------------------------------------------------------------------------
+
+class _ForkSlide extends StatelessWidget {
+  const _ForkSlide({
+    required this.showKai,
+    required this.tone,
+    required this.textTheme,
+    required this.ext,
+  });
+
+  final bool showKai;
+  final AppTone tone;
+  final TextTheme textTheme;
+  final FocusThemeExtension ext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: showKai
+                ? KaiMascot(
+                    size: 96,
+                    emotion: KaiEmotion.success,
+                    isHarsh: tone == AppTone.harsh,
+                  )
+                : Icon(
+                    PhosphorIcons.signIn(),
+                    size: 64,
+                    color: ext.textMuted,
+                  ),
+          ),
+          const SizedBox(height: 48),
+          Text(
+            context.s('onboarding.fork_title'),
+            style: textTheme.headlineLarge,
+            textAlign: TextAlign.left,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            context.s('onboarding.fork_subtitle'),
             style: textTheme.bodyLarge?.copyWith(color: ext.textMuted),
             textAlign: TextAlign.left,
           ),

@@ -1418,18 +1418,31 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ja': 'AIを解放する',
     'ko': 'AI 잠금 해제',
   },
+  // Вариант B (короткий) — три ИИ-возможности через точку-разделитель +
+  // явная оговорка, что бесплатный тариф остаётся полноценным планером.
   'paywall.subheadline': {
-    'en': 'The important stuff, planned for you.',
-    'ru': 'Главное — спланировано за тебя.',
-    'de': 'Das Wichtige, für dich geplant.',
-    'fr': 'L\'essentiel, planifié pour toi.',
-    'it': 'Le cose importanti, pianificate per te.',
-    'pt': 'O que importa, planejado para você.',
-    'es': 'Lo importante, planificado para ti.',
-    'id': 'Hal penting, direncanakan untukmu.',
-    'hi': 'जरूरी चीजें, तुम्हारे लिए प्लान की गईं।',
-    'ja': '大切なことが、あなたのためにプランされます。',
-    'ko': '중요한 것, 당신을 위해 계획됩니다.',
+    'en': 'AI task rescheduling · AI meals & workouts · weekly review. '
+        'Free — the full planner without AI.',
+    'ru': 'ИИ-перенос дел · ИИ-меню и тренировки · разбор недели. '
+        'Бесплатно — весь планер без ИИ.',
+    'de': 'KI-Umplanung · KI-Mahlzeiten & Training · Wochenrückblick. '
+        'Kostenlos — der komplette Planer ohne KI.',
+    'fr': 'Replanification IA · Repas et entraînements IA · bilan hebdomadaire. '
+        'Gratuit — le planificateur complet sans IA.',
+    'it': 'Riprogrammazione AI · Pasti e allenamenti AI · revisione settimanale. '
+        'Gratis — il planner completo senza AI.',
+    'pt': 'Reagendamento com IA · Refeições e treinos com IA · revisão semanal. '
+        'Grátis — o planejador completo sem IA.',
+    'es': 'Reprogramación con IA · Comidas y entrenamientos con IA · revisión semanal. '
+        'Gratis — el planificador completo sin IA.',
+    'id': 'Penjadwalan ulang AI · Menu & latihan AI · tinjauan mingguan. '
+        'Gratis — perencana lengkap tanpa AI.',
+    'hi': 'AI टास्क रीशेड्यूलिंग · AI भोजन और वर्कआउट · साप्ताहिक समीक्षा। '
+        'मुफ्त — बिना AI के पूरा प्लानर।',
+    'ja': 'AIによるタスクの再調整・AIの食事＆ワークアウト・週次レビュー。'
+        '無料 — AIなしの完全なプランナー。',
+    'ko': 'AI 작업 재일정 · AI 식단 및 운동 · 주간 리뷰. '
+        '무료 — AI 없이도 완전한 플래너.',
   },
 
   // Речевой пузырь Kai — тёплый, ненавязчивый
