@@ -10,6 +10,7 @@ import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
 import '../../services/api/api_client.dart';
 import '../../services/streak/freeze_accrual_service.dart'
     show kLocalPremiumUntilKey;
+import '../../services/sync/guest_migration_service.dart';
 import '../../services/sync/sync_service.dart';
 import '../onboarding/setup_flow.dart' show setupDoneKey;
 
@@ -35,39 +36,78 @@ class AuthController extends Notifier<bool> {
   bool get isAuthenticated => ref.read(apiClientProvider).token != null;
 
   /// Вход по паролю. Передайте [email] ИЛИ [phone] — не оба.
+  ///
+  /// C2 — миграция гостевых данных: если пользователь до входа работал в
+  /// офлайн-режиме (guest_mode=true), все локальные данные выгружаются на
+  /// сервер до смены состояния авторизации. Это гарантирует, что гостевые
+  /// задачи/вода/дневник не потеряются и станут видны на других устройствах.
   Future<void> login({
     String? email,
     String? phone,
     required String password,
   }) async {
+    // Читаем флаг ДО login-запроса, пока он ещё выставлен.
+    final wasGuest =
+        ref.read(sharedPreferencesProvider).getBool(_kGuestKey) ?? false;
+
     final resp = await ref.read(apiClientProvider).login(
           email: email,
           phone: phone,
           password: password,
         );
+
+    // C2: токен уже сохранён внутри apiClient.login() → можно мигрировать.
+    // Выполняем ДО _clearGuest(): флаг нам уже не нужен (прочитан выше),
+    // но порядок «миграция → сброс флага» безопаснее (при ошибке следующий
+    // login повторит попытку).
+    if (wasGuest) {
+      await ref.read(guestMigrationServiceProvider).migrateIfNeeded();
+    }
+
     await _clearGuest();
     await _reconcileSetupFlag(resp);
     state = true;
-    _syncInBackground();
+
+    // Обычный фоновый синк: для гостевой миграции он уже выполнен внутри
+    // migrateIfNeeded(); незачем запускать дважды.
+    if (!wasGuest) {
+      _syncInBackground();
+    }
   }
 
   /// Регистрация. Передайте [email] ИЛИ [phone] — не оба.
+  ///
+  /// C2 — аналогично login(): пользователь мог поработать как гость, затем
+  /// решить зарегистрироваться. Выгружаем гостевые данные на новый аккаунт.
   Future<void> register({
     String? email,
     String? phone,
     required String password,
     required String name,
   }) async {
+    // Читаем флаг ДО регистрации — после _clearGuest() он исчезнет.
+    final wasGuest =
+        ref.read(sharedPreferencesProvider).getBool(_kGuestKey) ?? false;
+
     final resp = await ref.read(apiClientProvider).register(
           email: email,
           phone: phone,
           password: password,
           name: name,
         );
+
+    // C2: мигрируем гостевые данные (если были) до смены состояния.
+    if (wasGuest) {
+      await ref.read(guestMigrationServiceProvider).migrateIfNeeded();
+    }
+
     await _clearGuest();
     await _reconcileSetupFlag(resp);
     state = true;
-    _syncInBackground();
+
+    if (!wasGuest) {
+      _syncInBackground();
+    }
   }
 
   /// Сверяет серверный флаг онбординга с локальным `setup_done` ДО смены

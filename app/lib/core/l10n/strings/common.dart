@@ -933,4 +933,33 @@ const Map<String, Map<String, String>> commonStrings = {
     'ja': 'トレーニングを読み込めませんでした',
     'ko': '운동 목록을 불러올 수 없어요',
   },
+
+  // C2 — миграция гостевых данных на аккаунт при первом login/register.
+  // Строки для возможного UI-индикатора (снэкбар / bottom-sheet).
+  'auth.guest_migration_uploading': {
+    'en': 'Saving your offline data…',
+    'ru': 'Сохраняем офлайн-данные…',
+    'de': 'Offline-Daten werden gespeichert…',
+    'fr': 'Enregistrement des données hors ligne…',
+    'it': 'Salvataggio dei dati offline…',
+    'pt': 'Salvando dados offline…',
+    'es': 'Guardando datos sin conexión…',
+    'id': 'Menyimpan data offline…',
+    'hi': 'ऑफ़लाइन डेटा सहेजा जा रहा है…',
+    'ja': 'オフラインデータを保存中…',
+    'ko': '오프라인 데이터 저장 중…',
+  },
+  'auth.guest_migration_done': {
+    'en': 'Your offline data is now in your account',
+    'ru': 'Офлайн-данные сохранены в аккаунт',
+    'de': 'Deine Offline-Daten sind jetzt in deinem Konto',
+    'fr': 'Vos données hors ligne sont maintenant dans votre compte',
+    'it': 'I tuoi dati offline sono ora nel tuo account',
+    'pt': 'Seus dados offline estão agora na sua conta',
+    'es': 'Tus datos sin conexión están ahora en tu cuenta',
+    'id': 'Data offline kamu sudah ada di akunmu',
+    'hi': 'तुम्हारा ऑफ़लाइन डेटा अब अकाउंट में है',
+    'ja': 'オフラインデータがアカウントに保存されました',
+    'ko': '오프라인 데이터가 계정에 저장되었어요',
+  },
 };
