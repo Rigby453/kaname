@@ -72,6 +72,10 @@ dependencies:
   # Поддерживает iOS, Android, web (Web Share API с clipboard-fallback).
   share_plus: ^10.0.0
 
+  # E3: нативный запрос оценки приложения (App Store / Google Play).
+  # На web и desktop isAvailable() возвращает false → тихий no-op.
+  in_app_review: ^2.0.9
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

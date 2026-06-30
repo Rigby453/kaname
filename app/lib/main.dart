@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/database/database_providers.dart';
 import 'core/l10n/locale_provider.dart';
 import 'core/router/app_router.dart';
+import 'core/settings/app_usage.dart'; // E3/G2: счётчик запусков
 import 'core/settings/text_scale_provider.dart';
 import 'core/theme/theme_provider.dart';
 import 'features/auth/auth_controller.dart';
@@ -26,6 +27,10 @@ Future<void> main() async {
   // Загружаем SharedPreferences до запуска приложения
   // чтобы ThemeNotifier мог синхронно прочитать сохранённый ключ
   final prefs = await SharedPreferences.getInstance();
+
+  // E3/G2: инкрементируем счётчик запусков ОДИН РАЗ за холодный старт.
+  // При первом запуске также записывает first_launch_at.
+  await incrementLaunchCount(prefs);
 
   // Инициализируем таблицы дат intl для сохранённой локали до первого кадра.
   // Это гарантирует, что DateFormat.yMMMMEEEEd() и другие без явной локали

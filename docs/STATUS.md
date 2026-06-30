@@ -4,6 +4,13 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Feature G2 Stage 2 — напоминание о резервном копировании (2026-06-30)
+
+- **[x] `app/lib/features/today/widgets/backup_reminder_card.dart`** — NEW. Тихая закрываемая карточка-напоминание для гостей (офлайн-режим). Чистая функция `shouldShowBackupReminder({isGuest, launchCount, isDismissed}) → bool`. Провайдеры: `isGuestModeProvider` (guest=true когда authController=true + api.token=null), `backupReminderDismissedProvider` (StateProvider←prefs ключ `backup_reminder_dismissed`), `showBackupReminderProvider` (объединённое условие). Виджет: Phosphor `cloudArrowUp`, текст через l10n, кнопка «Войти» → `/auth`, крестик → dismissed=true+prefs. Overflow-safe: `Expanded`+`ellipsis`+`maxLines`. TODO-заглушка для будущего export через share_plus.
+- **[x] `app/lib/features/today/today_screen.dart`** — `const BackupReminderCard()` добавлена первым элементом в ListView (`_TodayBody`), до `_QuietHeader`. При conditions=false → `SizedBox.shrink()`, вёрстка Today не ломается.
+- **[x] `app/lib/core/l10n/strings/profile_paywall.dart`** — 5 новых ключей, все 11 языков: `backup.reminder_title`, `backup.reminder_text`, `backup.sign_in`, `backup.export` (stub), `backup.dismiss`.
+- **[x] `app/test/backup_reminder_test.dart`** — 13 тестов: 7 unit-тестов чистой функции (все комбинации guest/launchCount/dismissed) + 4 widget-теста показа/скрытия (`isGuestModeProvider.overrideWithValue`) + 1 dismiss-тест (крестик → prefs флаг + карточка скрыта) + 2 overflow-теста (320px×textScale 2.0 и 1.5). Без pumpAndSettle; prefs через setMockInitialValues.
+
 ## Feature G1 — шер-карточка стрика (2026-06-30)
 
 - **[x] `app/lib/features/today/widgets/streak_share_card.dart`** — NEW. `StreakShareCard` (квадратная 1:1 карточка: Phosphor `fire(fill)` ember + крупное число accent + подпись через `streak.share_text` + бренд-ватермарк; `FittedBox(scaleDown)` защита от overflow при textScale 2.0). `StreakShareModal` (нижний шит: предпросмотр карточки + кнопка «Поделиться»; логика: `RepaintBoundary→PNG→Share.shareXFiles` → при ошибке clipboard fallback + снэкбар). `captureCardAsPng(GlobalKey)` (рендер boundary в Uint8List, pixelRatio 3.0, тихий try/catch).

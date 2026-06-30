@@ -34,11 +34,13 @@ import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/timeline/timeline_entry.dart';
 import '../../features/mascot/kai_mascot.dart';
 import '../../services/notifications/notification_service.dart';
+import '../../services/rating/rating_service.dart'; // E3: оценка приложения
 import '../../services/streak/streak_service.dart';
 import '../../services/widget/widget_service.dart';
 import '../plan/widgets/recurrence_providers.dart';
 import 'undo_provider.dart';
 import 'widgets/add_task_sheet.dart';
+import 'widgets/backup_reminder_card.dart';
 import 'widgets/celebration_overlay.dart';
 import 'widgets/morning_review_card.dart'
     show overduePendingProvider, showMorningReviewSheet;
@@ -184,6 +186,9 @@ class _TodayBody extends StatelessWidget {
       // lg=24 горизонтальные отступы экрана; 96dp снизу — под FAB
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
       children: [
+        // 0. G2: тихое напоминание о резервном копировании (только для гостей).
+        //    Возвращает SizedBox.shrink() если условия не выполнены.
+        const BackupReminderCard(),
         // 1. Тихая шапка
         _QuietHeader(now: now),
         // 2. Строка Kai-разбора (только если есть что переносить)
@@ -892,6 +897,10 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
       await dao.markDone(item.id);
       await ref.read(notificationServiceProvider).cancelTaskReminder(item.id);
     }
+
+    // E3: мягко просим оценку после «момента ценности» — fire-and-forget,
+    // ошибки внутри сервиса поглощаются, UI не затрагивается.
+    ref.read(ratingServiceProvider).maybeRequestReview().ignore();
 
     if (context.mounted && targetId != null) {
       final undoId = targetId;

@@ -3632,4 +3632,81 @@ const Map<String, Map<String, String>> profilePaywallStrings = {
     'ja': 'クリップボードにコピーしました',
     'ko': '클립보드에 복사됨',
   },
+
+  // ---- G2: Напоминание о резервном копировании (только для гостей) ----
+
+  /// Заголовок тихой карточки-напоминания в Today (guest-only, launchCount >= 3).
+  'backup.reminder_title': {
+    'en': 'Your data is local only',
+    'ru': 'Данные хранятся только на устройстве',
+    'de': 'Deine Daten sind nur lokal',
+    'fr': 'Tes données sont locales uniquement',
+    'it': 'I tuoi dati sono solo locali',
+    'pt': 'Seus dados são apenas locais',
+    'es': 'Tus datos son solo locales',
+    'id': 'Data kamu hanya tersimpan lokal',
+    'hi': 'तुम्हारा डेटा केवल डिवाइस पर है',
+    'ja': 'データはこの端末にのみ保存されています',
+    'ko': '데이터가 기기에만 저장되어 있습니다',
+  },
+
+  /// Подзаголовок: описание риска и призыв к действию.
+  'backup.reminder_text': {
+    'en': 'Sign in to sync your tasks across devices and prevent data loss.',
+    'ru': 'Войди, чтобы синхронизировать задачи и не потерять данные при смене устройства.',
+    'de': 'Melde dich an, um Aufgaben geräteübergreifend zu synchronisieren und Datenverlust zu vermeiden.',
+    'fr': 'Connecte-toi pour synchroniser tes tâches et éviter toute perte de données.',
+    'it': 'Accedi per sincronizzare le attività su tutti i dispositivi e non perdere i dati.',
+    'pt': 'Faça login para sincronizar tarefas em todos os dispositivos e evitar perda de dados.',
+    'es': 'Inicia sesión para sincronizar tareas entre dispositivos y evitar pérdida de datos.',
+    'id': 'Masuk untuk menyinkronkan tugas di semua perangkat dan mencegah kehilangan data.',
+    'hi': 'सभी डिवाइसों पर टास्क सिंक करने और डेटा खोने से बचाने के लिए साइन इन करो।',
+    'ja': 'デバイス間でタスクを同期しデータを保護するにはサインインしてください。',
+    'ko': '기기 간 작업 동기화 및 데이터 손실 방지를 위해 로그인하세요.',
+  },
+
+  /// Кнопка основного действия: переход на экран входа.
+  'backup.sign_in': {
+    'en': 'Sign in / enable sync',
+    'ru': 'Войти / включить синхронизацию',
+    'de': 'Anmelden / Sync aktivieren',
+    'fr': 'Se connecter / activer la synchro',
+    'it': 'Accedi / attiva la sincronizzazione',
+    'pt': 'Entrar / ativar sincronização',
+    'es': 'Iniciar sesión / activar sincronización',
+    'id': 'Masuk / aktifkan sinkronisasi',
+    'hi': 'साइन इन / सिंक चालू करो',
+    'ja': 'サインイン / 同期を有効にする',
+    'ko': '로그인 / 동기화 활성화',
+  },
+
+  /// Кнопка экспорта резервной копии (опциональная; stub — TODO реализация).
+  'backup.export': {
+    'en': 'Export a backup copy',
+    'ru': 'Экспортировать копию',
+    'de': 'Sicherungskopie exportieren',
+    'fr': 'Exporter une copie',
+    'it': 'Esporta una copia di backup',
+    'pt': 'Exportar uma cópia de backup',
+    'es': 'Exportar una copia de seguridad',
+    'id': 'Ekspor salinan cadangan',
+    'hi': 'बैकअप कॉपी एक्सपोर्ट करो',
+    'ja': 'バックアップをエクスポート',
+    'ko': '백업 복사본 내보내기',
+  },
+
+  /// Tooltip/текст кнопки закрытия (крестик).
+  'backup.dismiss': {
+    'en': 'Dismiss',
+    'ru': 'Закрыть',
+    'de': 'Schließen',
+    'fr': 'Fermer',
+    'it': 'Chiudi',
+    'pt': 'Fechar',
+    'es': 'Cerrar',
+    'id': 'Tutup',
+    'hi': 'बंद करो',
+    'ja': '閉じる',
+    'ko': '닫기',
+  },
 };
