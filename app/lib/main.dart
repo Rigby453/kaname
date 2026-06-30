@@ -15,6 +15,7 @@ import 'core/settings/text_scale_provider.dart';
 import 'core/theme/theme_provider.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/onboarding/setup_flow.dart';
+import 'core/settings/posture_reminder_provider.dart' show kPostureRemindersKey;
 import 'services/api/api_client.dart';
 import 'services/notifications/notification_service.dart';
 import 'services/sync/sync_service.dart';
@@ -95,14 +96,17 @@ class _KaizenAppState extends ConsumerState<KaizenApp> {
       },
     );
 
-    // Перепланируем ежедневные напоминания при запуске (если включены) —
-    // расписание может сброситься после обновления приложения. Fire-and-forget.
-    // Часы разборов — из настройки онбординга (setup_flow), дефолт 8/20.
-    if (ref.read(notificationsEnabledProvider)) {
+    // Пере-планируем все статические уведомления при старте (D1: reboot/обновление
+    // пакета сбрасывают AlarmManager). Fire-and-forget — ошибки гасятся внутри.
+    // Task/habit-напоминания пере-планируются из слоя фичей при открытии задачи.
+    {
       final prefs = ref.read(sharedPreferencesProvider);
-      ref.read(notificationServiceProvider).scheduleDailyReviews(
+      ref.read(notificationServiceProvider).rescheduleAllReminders(
+            reviewsEnabled: ref.read(notificationsEnabledProvider),
             morningHour: prefs.getInt(reviewMorningHourKey) ?? kMorningHour,
             eveningHour: prefs.getInt(reviewEveningHourKey) ?? kEveningHour,
+            postureEnabled:
+                prefs.getBool(kPostureRemindersKey) ?? false,
           );
     }
   }

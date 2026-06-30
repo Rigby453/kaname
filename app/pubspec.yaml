@@ -76,6 +76,9 @@ dependencies:
   # На web и desktop isAvailable() возвращает false → тихий no-op.
   in_app_review: ^2.0.9
 
+  # #25: открытие mailto: при обращении в поддержку; fallback — буфер обмена.
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

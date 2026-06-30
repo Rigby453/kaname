@@ -2,6 +2,15 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Локальные уведомления (напоминания о разборе). Android 13+ требует runtime-разрешение. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Точные будильники (Android 12+/API 31+): нужны для пробивания Doze-режима.
+         На Android 14+ требует явного согласия пользователя через системные настройки
+         (requestExactAlarmsPermission). Без этого разрешения сервис откатывается на
+         inexactAllowWhileIdle — уведомления приходят, но с опозданием. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Перепланирование уведомлений после перезагрузки устройства.
+         Receiver (ScheduledNotificationBootReceiver) ниже получает BOOT_COMPLETED
+         и вызывает rescheduleNotifications() из плагина. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Доступ к статистике использования (Screen Time, реальный трекинг). Спец-разрешение,
          выдаётся пользователем в системных настройках «Доступ к данным об использовании». -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions"/>
@@ -40,6 +49,31 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- flutter_local_notifications: receiver для срабатывания отложенных уведомлений.
+             Без него zonedSchedule не отобразит уведомление на Android. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <!-- flutter_local_notifications: перепланирование уведомлений ТОЛЬКО после reboot.
+             Получает BOOT_COMPLETED/QUICKBOOT и вызывает FlutterLocalNotificationsPlugin.rescheduleNotifications().
+             ВАЖНО: MY_PACKAGE_REPLACED намеренно НЕ слушаем — при переустановке/обновлении плагин
+             проигрывал бы кэш просроченных сегодня слотов (залп уведомлений сразу после установки).
+             Приложение и так перепланирует все напоминания при старте (rescheduleAllReminders + вода + привычки),
+             поэтому реплей при обновлении пакета избыточен и вреден. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+        <!-- flutter_local_notifications: обработчик кнопок-действий в уведомлениях. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
 
         <!-- Домашний виджет Kaizen — task-focused (phase 2) -->
         <receiver

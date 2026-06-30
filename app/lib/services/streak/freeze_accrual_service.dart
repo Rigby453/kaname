@@ -55,6 +55,10 @@ const kFreezeRewardClaimedKey = 'freeze_reward_claimed_thresholds';
 /// isPremiumProvider проверяет это значение наравне с серверным tier.
 const kLocalPremiumUntilKey = 'local_premium_until';
 
+/// Флаг идемпотентности стартового гранта заморозок.
+/// true = грант уже выдан; повторно не выдаётся никогда (даже при смене тира).
+const kStarterFreezeGrantedKey = 'starter_freeze_granted';
+
 // ---------------------------------------------------------------------------
 // Пороги наград
 // ---------------------------------------------------------------------------
@@ -159,6 +163,23 @@ AccrualResult computeAccrual({
 }
 
 // ---------------------------------------------------------------------------
+// Чистая логика стартового гранта (тестируемая без Flutter/Riverpod)
+// ---------------------------------------------------------------------------
+
+/// Вычислить стартовый грант заморозок без сайд-эффектов.
+///
+/// Free → 1, Premium → 3.
+/// Если грант уже был выдан ([alreadyGranted] == true) — возвращает 0.
+/// Позднейшая смена тира не даёт доначисления: бонус один раз за жизнь.
+int computeStarterGrant({
+  required bool isPremium,
+  required bool alreadyGranted,
+}) {
+  if (alreadyGranted) return 0;
+  return isPremium ? 3 : 1;
+}
+
+// ---------------------------------------------------------------------------
 // Сервис (сайд-эффекты: Drift + SharedPreferences)
 // ---------------------------------------------------------------------------
 
@@ -207,9 +228,40 @@ class FreezeAccrualService {
 
   // ---- Начисление заморозок ----
 
+  /// Выдать стартовый грант при первом запуске (идемпотентно).
+  ///
+  /// Free → +1, Premium → +3.
+  /// Флаг [kStarterFreezeGrantedKey] в prefs предотвращает повторный грант
+  /// даже при смене тира в будущем.
+  Future<void> _applyStarterGrant({required bool isPremium}) async {
+    final alreadyGranted = _prefs.getBool(kStarterFreezeGrantedKey) ?? false;
+    final grant = computeStarterGrant(
+      isPremium: isPremium,
+      alreadyGranted: alreadyGranted,
+    );
+    if (grant == 0) return;
+
+    // Помечаем ДО записи в Drift: даже если Drift-запись упадёт,
+    // лучше не выдать повторно, чем начислить дважды.
+    await _prefs.setBool(kStarterFreezeGrantedKey, true);
+
+    final streak = await _streakDao.getOrCreate();
+    final newCount = streak.freezeCount + grant;
+    await _streakDao.updateStreak(
+      StreakTableCompanion(freezeCount: Value(newCount)),
+    );
+    debugPrint(
+      '[FreezeAccrual] стартовый грант: +$grant заморозок → $newCount '
+      '(isPremium=$isPremium)',
+    );
+  }
+
   /// Главный метод: начислить все «созревшие» заморозки, применить пороги наград.
   /// Возвращает результат для уведомления UI.
   Future<AccrualResult> accrueIfNeeded({required bool isPremium}) async {
+    // Стартовый грант при первом вызове (идемпотентно, флаг в prefs).
+    await _applyStarterGrant(isPremium: isPremium);
+
     final streak = await _streakDao.getOrCreate();
     final now = DateTime.now().toUtc();
 

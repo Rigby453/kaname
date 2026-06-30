@@ -286,4 +286,47 @@ void main() {
           [7, 30, 90]);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // computeStarterGrant — стартовый грант заморозок (#24)
+  // ---------------------------------------------------------------------------
+
+  group('computeStarterGrant', () {
+    test('первый запуск, Premium → 3 заморозки', () {
+      expect(
+        computeStarterGrant(isPremium: true, alreadyGranted: false),
+        3,
+      );
+    });
+
+    test('первый запуск, Free → 1 заморозка', () {
+      expect(
+        computeStarterGrant(isPremium: false, alreadyGranted: false),
+        1,
+      );
+    });
+
+    test('грант уже выдан, Premium → 0 (не повторяется)', () {
+      expect(
+        computeStarterGrant(isPremium: true, alreadyGranted: true),
+        0,
+      );
+    });
+
+    test('грант уже выдан, Free → 0 (не повторяется)', () {
+      expect(
+        computeStarterGrant(isPremium: false, alreadyGranted: true),
+        0,
+      );
+    });
+
+    test('был free (грант=1), стал premium позже → 0 (бонус не доначисляется)', () {
+      // Симулируем: грант выдан (alreadyGranted=true) ещё когда был Free,
+      // теперь isPremium=true, но повторного гранта нет.
+      expect(
+        computeStarterGrant(isPremium: true, alreadyGranted: true),
+        0,
+      );
+    });
+  });
 }

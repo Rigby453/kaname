@@ -233,5 +233,47 @@ void main() {
       expect(plans.first.label, 'AI plan'); // дефолтная подпись
       expect(plans.first.assign.keys, ['x']);
     });
+
+    // Null-safety: поля title/priority отсутствуют (старый бэкенд / AI упал).
+    // Ранее при пустом assign план фильтровался — проверяем, что нет краша и
+    // возвращается пустой список вместо исключения.
+    test('null-safe: item with null id skipped, plan with empty assign dropped', () {
+      final raw = [
+        {
+          'label': 'AI plan',
+          'reason': 'AI could not redistribute',
+          'items': [
+            {'id': null, 'scheduled_at': '2026-06-10T09:00:00Z'},
+            {'id': 'abc', 'scheduled_at': null},
+          ],
+        },
+      ];
+      // Оба item пропущены → assign пуст → план отброшен → результат пуст.
+      // Без null-guard в mapAiPlans это молча краша не вызывало, но тест
+      // фиксирует ожидаемое поведение (пустой список) как регрессионную защиту.
+      expect(mapAiPlans(raw), isEmpty);
+    });
+
+    test('null-safe: title and priority absent (old backend) → empty strings', () {
+      final raw = [
+        {
+          'label': 'Plan A',
+          'reason': 'good',
+          'items': [
+            {'id': 'z', 'scheduled_at': '2026-06-10T10:00:00Z'},
+          ],
+        },
+      ];
+      final plans = mapAiPlans(raw);
+      expect(plans.length, 1);
+      // moves содержит PlanMove с пустыми title/priority (не null).
+      expect(plans.first.moves, isNotNull);
+      expect(plans.first.moves!.first.title, '');
+      expect(plans.first.moves!.first.priority, '');
+    });
+
+    test('null-safe: empty input returns empty list without crash', () {
+      expect(mapAiPlans([]), isEmpty);
+    });
   });
 }

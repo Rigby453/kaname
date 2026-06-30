@@ -4876,6 +4876,35 @@ const Map<String, Map<String, String>> healthBStrings = {
     'ko': '물 기록',
   },
 
+  // Подсказка на стакане: нажми чтобы раскрыть пресеты / нажми чтобы свернуть.
+  'water.hint_tap_to_add': {
+    'en': 'Tap glass to add water',
+    'ru': 'Нажмите на стакан, чтобы добавить',
+    'de': 'Glas tippen zum Hinzufügen',
+    'fr': 'Toucher le verre pour ajouter',
+    'it': 'Tocca il bicchiere per aggiungere',
+    'pt': 'Toque no copo para adicionar',
+    'es': 'Toca el vaso para añadir',
+    'id': 'Ketuk gelas untuk menambahkan',
+    'hi': 'जोड़ने के लिए गिलास को टैप करें',
+    'ja': 'グラスをタップして追加',
+    'ko': '잔을 탭하여 추가',
+  },
+
+  'water.hint_collapse': {
+    'en': 'Tap to close',
+    'ru': 'Нажмите, чтобы свернуть',
+    'de': 'Tippen zum Schließen',
+    'fr': 'Toucher pour fermer',
+    'it': 'Tocca per chiudere',
+    'pt': 'Toque para fechar',
+    'es': 'Toca para cerrar',
+    'id': 'Ketuk untuk menutup',
+    'hi': 'बंद करने के लिए टैप करें',
+    'ja': 'タップして閉じる',
+    'ko': '탭하여 닫기',
+  },
+
   // ---------------------------------------------------------------------------
   // workout.ai_* (Feature A) — анкета + лист «AI / шаблонная программа»
   // (ai_workout_sheet.dart). EN/RU; остальные языки откатываются на EN.

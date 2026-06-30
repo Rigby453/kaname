@@ -2745,4 +2745,34 @@ const Map<String, Map<String, String>> todayStrings = {
     'ja': 'すべてのイベント',
     'ko': '모든 일정',
   },
+
+  // #31а: тултип/семантическая метка индикатора напоминания (bell fill).
+  'today.reminder_indicator_tooltip': {
+    'en': 'Reminder set',
+    'ru': 'Напоминание',
+    'de': 'Erinnerung aktiv',
+    'fr': 'Rappel actif',
+    'it': 'Promemoria attivo',
+    'pt': 'Lembrete ativo',
+    'es': 'Recordatorio activo',
+    'id': 'Pengingat aktif',
+    'hi': 'अनुस्मारक सेट',
+    'ja': 'リマインダーあり',
+    'ko': '알림 설정됨',
+  },
+
+  // #21: семантическая метка узла хребта (тап = отметить выполненным).
+  'today.mark_done_tap_tooltip': {
+    'en': 'Mark as done',
+    'ru': 'Отметить выполненным',
+    'de': 'Als erledigt markieren',
+    'fr': 'Marquer comme fait',
+    'it': 'Segna come fatto',
+    'pt': 'Marcar como feito',
+    'es': 'Marcar como hecho',
+    'id': 'Tandai sebagai selesai',
+    'hi': 'पूर्ण के रूप में चिह्नित करें',
+    'ja': '完了にする',
+    'ko': '완료로 표시',
+  },
 };

@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -169,6 +170,25 @@ class _NavRow extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// #25: Открытие почтового клиента для обращения в поддержку.
+// При отсутствии клиента — копирует адрес в буфер + показывает SnackBar.
+// ---------------------------------------------------------------------------
+
+Future<void> _launchSupportEmail(BuildContext context) async {
+  const email = 'support.kaname@gmail.com';
+  final subject = Uri.encodeComponent('Kaizen Feedback');
+  final uri = Uri.parse('mailto:$email?subject=$subject');
+  if (!await launchUrl(uri)) {
+    await Clipboard.setData(const ClipboardData(text: email));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.s('profile.support_copied'))),
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Главный экран профиля (хаб-меню)
 // ---------------------------------------------------------------------------
 
@@ -234,8 +254,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final userAsync = ref.watch(currentUserProvider);
     final isAuthenticated =
@@ -326,13 +344,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: Icon(PhosphorIcons.chatText(), size: 20, color: ext.textMuted),
             title: context.s('profile.send_feedback'),
             subtitle: context.s('profile.feedback_subtitle'),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.s('profile.feedback_email')),
-                ),
-              );
-            },
+            onTap: () => _launchSupportEmail(context),
           ),
           const _Hairline(),
           _NavRow(
@@ -2438,8 +2450,8 @@ class ProfileBehaviorScreen extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Подстраница «Аккаунт»
-// Показывает имя/email и кнопку выхода (бизнес-логика входа/выхода здесь).
-// Геймификация, подписка и шеринг перенесены в главный ProfileScreen.
+// Показывает имя/email пользователя.
+// Поддержка, Terms/Privacy и Выйти — в главном ProfileScreen (не дублируем).
 // ---------------------------------------------------------------------------
 
 class ProfileAccountScreen extends ConsumerWidget {
@@ -2450,127 +2462,58 @@ class ProfileAccountScreen extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
     final userAsync = ref.watch(currentUserProvider);
-    final isAuthenticated =
-        ref.read(authControllerProvider.notifier).isAuthenticated;
 
     return Scaffold(
       appBar: AppBar(title: Text(context.s('profile.section_account'))),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(top: 16, bottom: 24),
-                children: [
-                  // Имя / email
-                  userAsync.when(
-                    loading: () => Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: KaiLoader(label: context.s('loading.generic')),
-                      ),
-                    ),
-                    error: (_, _) => const SizedBox.shrink(),
-                    data: (user) {
-                      if (user == null) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              context.s('profile.offline_mode'),
-                              style: textTheme.headlineSmall,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              context.s('profile.offline_subtitle'),
-                              style: textTheme.bodyMedium
-                                  ?.copyWith(color: ext.textMuted),
-                            ),
-                          ],
-                        );
-                      }
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            (user['name'] as String?) ??
-                                context.s('profile.you'),
-                            style: textTheme.headlineSmall,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            (user['email'] as String?) ?? '',
-                            style: textTheme.bodyMedium
-                                ?.copyWith(color: ext.textMuted),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 32),
-                  Divider(color: ext.border, height: 1, thickness: 0.5),
-
-                  // Навигация по аккаунту (placeholder — функционал не реализован)
-                  _NavRow(
-                    icon: Icon(PhosphorIcons.envelope(), size: 20, color: ext.textMuted),
-                    title: context.s('profile.send_feedback'),
-                    subtitle: context.s('profile.feedback_subtitle'),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(context.s('profile.feedback_email')),
-                        ),
-                      );
-                    },
-                  ),
-                  Divider(color: ext.border, height: 1, thickness: 0.5),
-                  _NavRow(
-                    icon: Icon(PhosphorIcons.shieldCheck(), size: 20, color: ext.textMuted),
-                    title: context.s('profile.terms_privacy'),
-                    onTap: () => context.push('/terms'),
-                  ),
-                  Divider(color: ext.border, height: 1, thickness: 0.5),
-                ],
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        children: [
+          // Имя / email
+          userAsync.when(
+            loading: () => Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: KaiLoader(label: context.s('loading.generic')),
               ),
             ),
-
-            const SizedBox(height: 12),
-            // Выход / вход
-            isAuthenticated
-                ? OutlinedButton.icon(
-                    icon: Icon(PhosphorIcons.signOut(), size: 18),
-                    label: Text(context.s('btn.sign_out')),
-                    onPressed: () async {
-                      await ref
-                          .read(authControllerProvider.notifier)
-                          .logout();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: ext.danger,
-                      side: BorderSide(color: ext.danger),
-                      minimumSize: const Size.fromHeight(48),
+            error: (_, _) => const SizedBox.shrink(),
+            data: (user) {
+              if (user == null) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.s('profile.offline_mode'),
+                      style: textTheme.headlineSmall,
                     ),
-                  )
-                : FilledButton.icon(
-                    icon: Icon(PhosphorIcons.signIn(), size: 18),
-                    label: Text(context.s('btn.sign_in')),
-                    onPressed: () async {
-                      await ref
-                          .read(authControllerProvider.notifier)
-                          .logout();
-                    },
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
+                    const SizedBox(height: 4),
+                    Text(
+                      context.s('profile.offline_subtitle'),
+                      style: textTheme.bodyMedium
+                          ?.copyWith(color: ext.textMuted),
                     ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (user['name'] as String?) ?? context.s('profile.you'),
+                    style: textTheme.headlineSmall,
                   ),
-            const SizedBox(height: 12),
-            const Center(child: _AppVersionLabel()),
-            const SizedBox(height: 8),
-          ],
-        ),
+                  const SizedBox(height: 4),
+                  Text(
+                    (user['email'] as String?) ?? '',
+                    style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }

@@ -2342,4 +2342,36 @@ const Map<String, Map<String, String>> miscStrings = {
     'ja': '素早くチェック：肩の力を抜いて、背筋を伸ばして。',
     'ko': '빠른 확인: 어깨 긴장 풀고, 등 곧게 세워요.',
   },
+
+  // ---------------------------------------------------------------------------
+  // Напоминания задач (scheduleTaskReminder).
+  // Тело — показывается при каждом task-напоминании.
+  // Запасной заголовок — если имя задачи не задано (пустая строка).
+  // ---------------------------------------------------------------------------
+  'notif.task_body': {
+    'en': 'Starts soon — get ready.',
+    'ru': 'Скоро начинается — приготовься.',
+    'de': 'Beginnt bald — mach dich bereit.',
+    'fr': 'Ça commence bientôt — prépare-toi.',
+    'it': 'Inizia presto — preparati.',
+    'pt': 'Começa em breve — prepare-se.',
+    'es': 'Empieza pronto — prepárate.',
+    'id': 'Segera dimulai — bersiaplah.',
+    'hi': 'जल्दी शुरू होगा — तैयार हो जाओ।',
+    'ja': 'もうすぐ始まります — 準備して。',
+    'ko': '곧 시작합니다 — 준비하세요.',
+  },
+  'notif.task_title_fallback': {
+    'en': 'Reminder',
+    'ru': 'Напоминание',
+    'de': 'Erinnerung',
+    'fr': 'Rappel',
+    'it': 'Promemoria',
+    'pt': 'Lembrete',
+    'es': 'Recordatorio',
+    'id': 'Pengingat',
+    'hi': 'अनुस्मारक',
+    'ja': 'リマインダー',
+    'ko': '알림',
+  },
 };

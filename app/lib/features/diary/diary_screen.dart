@@ -150,7 +150,12 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(ctx.s('diary.insight_dialog_title')),
-          content: Text(insight),
+          // Обёртка в SingleChildScrollView: AI-инсайт может быть длинным
+          // (несколько абзацев); без скролла AlertDialog обрезает контент
+          // по высоте окна (~70 % экрана). Scroll позволяет прочитать всё.
+          content: SingleChildScrollView(
+            child: Text(insight),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),

@@ -1,8 +1,14 @@
-// Локальные уведомления Kaizen: напоминания об утреннем и вечернем разборе
-// (SPEC C3 — «по расписанию (вечером)»). Только клиент, без бэкенда.
-// Inexact-планирование (без разрешения SCHEDULE_EXACT_ALARM); время — ежедневно
-// в фиксированные часы (matchDateTimeComponents: time). Перепланируется при
-// каждом запуске приложения (если включено).
+// Локальные уведомления Kaizen: напоминания об утреннем/вечернем разборе,
+// осанке, задачах и привычках. Только клиент, без бэкенда.
+//
+// Надёжность на Android (D1):
+//  - SCHEDULE_EXACT_ALARM + RECEIVE_BOOT_COMPLETED объявлены в AndroidManifest.
+//  - При каждом планировании проверяется canScheduleExactNotifications():
+//    true  → exactAllowWhileIdle  (пробивает Doze, точное время);
+//    false → inexactAllowWhileIdle (деградация, не крашит).
+//  - ScheduledNotificationBootReceiver перепланирует из кэша плагина после reboot.
+//  - rescheduleAllReminders() пере-планирует статику (разборы + осанка) при
+//    холодном старте приложения — покрывает reboot + обновление пакета.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -22,6 +28,44 @@ const int _kMorningId = 1001;
 const int _kEveningId = 1002;
 const int kMorningHour = 8;
 const int kEveningHour = 20;
+
+/// Преобразует флаг разрешения exact alarm в наилучший [AndroidScheduleMode].
+///
+/// [canExact] == null означает «нет ограничений» (Android < 12 или ответ
+/// платформы недоступен) → используем exactAllowWhileIdle.
+/// [canExact] == false → пользователь не выдал разрешение SCHEDULE_EXACT_ALARM
+/// → деградируем до inexactAllowWhileIdle (уведомление придёт, но с опозданием).
+///
+/// Вынесено в top-level для тестирования без мока плагина.
+AndroidScheduleMode resolveScheduleMode(bool? canExact) {
+  return (canExact ?? true)
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
+}
+
+/// Вычисляет строго будущий момент [hour]:[minute] относительно [now]
+/// в той же временной зоне, что и [now].
+///
+/// Если [hour]:[minute] на день [now] ещё не прошло — возвращает сегодняшнее
+/// вхождение. Если уже прошло (включая ровно [now], т.к. [isAfter] строгое) —
+/// добавляет один день и возвращает завтрашнее вхождение.
+///
+/// Гарантирует: результат всегда строго после [now], т.е.
+/// `nextInstanceAfterNow(..., now).isAfter(now) == true`.
+///
+/// Единая точка расчёта для всех ежедневных уведомлений (разборы, осанка,
+/// привычки). Вынесена в top-level для тестирования без мока плагина и
+/// без инициализации tz.local.
+tz.TZDateTime nextInstanceAfterNow(int hour, int minute, tz.TZDateTime now) {
+  var scheduled = tz.TZDateTime(
+    now.location, now.year, now.month, now.day, hour, minute,
+  );
+  // !isAfter охватывает и «прошло», и «ровно сейчас» → +1 день.
+  if (!scheduled.isAfter(now)) {
+    scheduled = scheduled.add(const Duration(days: 1));
+  }
+  return scheduled;
+}
 
 class NotificationService {
   /// [overrideTzGetter] возвращает выбранный пользователем IANA-таймзон
@@ -154,6 +198,76 @@ class NotificationService {
     return true;
   }
 
+  /// Возвращает наилучший [AndroidScheduleMode] с учётом разрешения на точные
+  /// будильники (SCHEDULE_EXACT_ALARM). На платформах без Android или при любой
+  /// ошибке деградирует до inexactAllowWhileIdle — не крашит никогда.
+  Future<AndroidScheduleMode> _chooseScheduleMode() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return AndroidScheduleMode.inexactAllowWhileIdle;
+    try {
+      return resolveScheduleMode(await android.canScheduleExactNotifications());
+    } catch (_) {
+      // Безопасный откат при любой ошибке канала.
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+  }
+
+  /// Открывает системный экран настройки точных будильников (Android 12+/API 31+).
+  ///
+  /// На Android < 12 — no-op (разрешение не требуется, возвращает true).
+  /// На не-Android — no-op, возвращает true.
+  /// После возврата пользователя из системных настроек повторно проверяет
+  /// через [canScheduleExactNotifications] и возвращает актуальный флаг.
+  /// Вызов безопасен в любой момент: если разрешение уже выдано — просто
+  /// возвращает true без навигации в настройки.
+  Future<bool> requestExactAlarmsPermission() async {
+    if (kIsWeb) return false;
+    await init();
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true; // не Android
+    try {
+      final alreadyGranted =
+          await android.canScheduleExactNotifications() ?? false;
+      if (alreadyGranted) return true;
+      // Открывает экран «Alarm & reminders» в системных настройках.
+      // Метод возвращает null/bool — после навигации проверяем снова.
+      await android.requestExactAlarmsPermission();
+      return await android.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Пере-планирует все «статические» уведомления (без данных из БД):
+  /// ежедневные разборы (если [reviewsEnabled]) и напоминания об осанке
+  /// (если [postureEnabled]). Task/habit-напоминания требуют данных БД —
+  /// они пере-планируются отдельно через [scheduleTaskReminder] /
+  /// [scheduleHabitReminders] из слоя фичей.
+  ///
+  /// Вызывается при холодном старте приложения — покрывает reboot и
+  /// обновление пакета (оба события отменяют будильники AlarmManager).
+  /// Fire-and-forget: ошибки гасятся внутри каждого метода.
+  Future<void> rescheduleAllReminders({
+    required bool reviewsEnabled,
+    int morningHour = kMorningHour,
+    int eveningHour = kEveningHour,
+    bool postureEnabled = false,
+  }) async {
+    if (kIsWeb) return;
+    await init();
+    if (reviewsEnabled) {
+      await scheduleDailyReviews(
+        morningHour: morningHour,
+        eveningHour: eveningHour,
+      );
+    }
+    if (postureEnabled) {
+      await schedulePostureReminders();
+    }
+  }
+
   static const _details = NotificationDetails(
     android: AndroidNotificationDetails(
       'kaizen_reviews',
@@ -166,6 +280,8 @@ class NotificationService {
   );
 
   /// Планирует ежедневные напоминания (утро/вечер). Сначала отменяет старые.
+  /// Использует exactAllowWhileIdle (пробивает Doze) если разрешение выдано,
+  /// иначе — inexactAllowWhileIdle (мягкий fallback, не крашит).
   Future<void> scheduleDailyReviews({
     int morningHour = kMorningHour,
     int eveningHour = kEveningHour,
@@ -173,13 +289,14 @@ class NotificationService {
     if (kIsWeb) return;
     await init();
     await cancelAll();
+    final mode = await _chooseScheduleMode();
     await _plugin.zonedSchedule(
       id: _kMorningId,
       title: _ls('notif.morning_title'),
       body: _ls('notif.morning_body'),
       scheduledDate: _nextInstanceOf(morningHour),
       notificationDetails: _details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: mode,
       matchDateTimeComponents: DateTimeComponents.time,
     );
     await _plugin.zonedSchedule(
@@ -188,19 +305,14 @@ class NotificationService {
       body: _ls('notif.evening_body'),
       scheduledDate: _nextInstanceOf(eveningHour),
       notificationDetails: _details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: mode,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 
-  tz.TZDateTime _nextInstanceOf(int hour) {
-    final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
-    if (!scheduled.isAfter(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
-    }
-    return scheduled;
-  }
+  // Делегирует единой top-level функции nextInstanceAfterNow.
+  tz.TZDateTime _nextInstanceOf(int hour) =>
+      nextInstanceAfterNow(hour, 0, tz.TZDateTime.now(tz.local));
 
   Future<void> cancelAll() async {
     if (kIsWeb) return;
@@ -234,6 +346,7 @@ class NotificationService {
     if (kIsWeb) return;
     await init();
     await cancelPostureReminders();
+    final mode = await _chooseScheduleMode();
     for (var i = 0; i < _kPostureHours.length; i++) {
       await _plugin.zonedSchedule(
         id: _kPostureIds[i],
@@ -241,7 +354,7 @@ class NotificationService {
         body: _ls('notif.posture_body'),
         scheduledDate: _nextInstanceOf(_kPostureHours[i]),
         notificationDetails: _postureDetails,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: mode,
         matchDateTimeComponents: DateTimeComponents.time,
       );
     }
@@ -305,13 +418,14 @@ class NotificationService {
     final nowTz = tz.TZDateTime.now(tz.local);
     if (!scheduled.isAfter(nowTz)) return; // в прошлом — не планируем
 
+    final mode = await _chooseScheduleMode();
     await _plugin.zonedSchedule(
       id: id,
-      title: title.isEmpty ? 'Reminder' : title,
-      body: 'Starts soon — get ready.',
+      title: title.isEmpty ? _ls('notif.task_title_fallback') : title,
+      body: _ls('notif.task_body'),
       scheduledDate: scheduled,
       notificationDetails: _taskDetails,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: mode,
     );
   }
 
@@ -364,16 +478,18 @@ class NotificationService {
       frequencyType: frequencyType,
       weekdayMask: weekdayMask,
     );
+    if (reminders.isEmpty) return;
+    final mode = await _chooseScheduleMode();
     for (final HabitReminder r in reminders) {
       await _plugin.zonedSchedule(
         id: r.notificationId,
-        title: title.isEmpty ? 'Reminder' : title,
+        title: title.isEmpty ? _ls('notif.task_title_fallback') : title,
         body: body,
         scheduledDate: r.weekday == null
             ? _nextInstanceOfTime(r.hour, r.minute)
             : _nextInstanceOfWeekdayTime(r.weekday!, r.hour, r.minute),
         notificationDetails: _habitDetails,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: mode,
         matchDateTimeComponents: r.weekday == null
             ? DateTimeComponents.time
             : DateTimeComponents.dayOfWeekAndTime,
@@ -392,15 +508,9 @@ class NotificationService {
   }
 
   /// Следующее наступление времени [hour]:[minute] (сегодня или завтра).
-  tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
-    final now = tz.TZDateTime.now(tz.local);
-    var scheduled =
-        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (!scheduled.isAfter(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
-    }
-    return scheduled;
-  }
+  // Делегирует единой top-level функции nextInstanceAfterNow.
+  tz.TZDateTime _nextInstanceOfTime(int hour, int minute) =>
+      nextInstanceAfterNow(hour, minute, tz.TZDateTime.now(tz.local));
 
   /// Следующее наступление [hour]:[minute] в день недели [weekday] (Пн=1..Вс=7).
   tz.TZDateTime _nextInstanceOfWeekdayTime(int weekday, int hour, int minute) {

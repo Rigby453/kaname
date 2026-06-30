@@ -14,7 +14,6 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -238,70 +237,26 @@ class _QuietHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ext = theme.extension<FocusThemeExtension>()!;
-    final scheme = theme.colorScheme;
+    // Null-guard: FocusThemeExtension отсутствует вне AppTheme (тест/error-recovery).
+    final ext = theme.extension<FocusThemeExtension>();
+    if (ext == null) return const SizedBox.shrink();
 
-    return Row(
+    // #2/#6: правая аватарка и шестерёнка убраны.
+    // Профиль открывается из leading-кнопки AppBar (ScaffoldWithNavBar §2 UX-LAYOUT.md).
+    // Внешний вид доступен из Профиля → «Оформление» (profile.section_appearance).
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Левая: дата + приветствие
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                DateFormat.yMMMMEEEEd().format(now),
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(color: ext.textMuted),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _greeting(context),
-                style: theme.textTheme.headlineSmall,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ],
-          ),
+        Text(
+          DateFormat.yMMMMEEEEd().format(now),
+          style: theme.textTheme.labelMedium?.copyWith(color: ext.textMuted),
         ),
-        const SizedBox(width: 12),
-        // Правая: настройки + профиль
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: context.s('today.header_settings_tooltip'),
-              visualDensity: VisualDensity.compact,
-              onPressed: () => context.go('/profile/appearance'),
-              icon: PhosphorIcon(
-                PhosphorIcons.gearSix(PhosphorIconsStyle.regular),
-                size: 22,
-                color: ext.textMuted,
-              ),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: () => context.go('/profile'),
-              child: Tooltip(
-                message: context.s('today.header_profile_tooltip'),
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: ext.accentTint,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: PhosphorIcon(
-                      PhosphorIcons.user(PhosphorIconsStyle.regular),
-                      size: 18,
-                      color: scheme.primary,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
+        const SizedBox(height: 2),
+        Text(
+          _greeting(context),
+          style: theme.textTheme.headlineSmall,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
       ],
     );
@@ -343,7 +298,11 @@ class _KaiReviewRowState extends ConsumerState<_KaiReviewRow> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ext = theme.extension<FocusThemeExtension>()!;
+    // Null-guard: FocusThemeExtension отсутствует вне AppTheme (тест/error-recovery).
+    // Без guard: при dispose Today-таба в фоне (StatefulShellRoute) может упасть с
+    // "Null check operator used on a null value" пока пользователь смотрит на Plan.
+    final ext = theme.extension<FocusThemeExtension>();
+    if (ext == null) return const SizedBox.shrink();
     final scheme = theme.colorScheme;
     final count = widget.overdueItems.length;
     final reduce = reduceMotionOf(context);
@@ -451,7 +410,9 @@ class _KaiReviewCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final ext = theme.extension<FocusThemeExtension>()!;
+    // Null-guard: FocusThemeExtension отсутствует вне AppTheme (тест/error-recovery).
+    final ext = theme.extension<FocusThemeExtension>();
+    if (ext == null) return const SizedBox.shrink();
     final scheme = theme.colorScheme;
     // Задачи сегодня нужны moveAllToDay для расчёта слотов
     final todayItems =
@@ -491,7 +452,11 @@ class _KaiReviewCard extends ConsumerWidget {
                       : () async {
                           await moveAllToDay(
                               ref, overdueItems, DateTime.now(), todayItems);
-                          onDismiss();
+                          // mounted-guard: _KaiReviewRowState может быть dispose'd пока
+                          // moveAllToDay работает — после записи в Drift поток обновляется,
+                          // showKaiRow=false, виджет удаляется из дерева до resume await.
+                          // Без этой проверки: "setState() called after dispose()".
+                          if (context.mounted) onDismiss();
                         },
                   child: Text(context.s('today.morning_review_accept')),
                 ),
@@ -531,7 +496,9 @@ class _MainCounter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ext = theme.extension<FocusThemeExtension>()!;
+    // Null-guard: FocusThemeExtension отсутствует вне AppTheme (тест/error-recovery).
+    final ext = theme.extension<FocusThemeExtension>();
+    if (ext == null) return const SizedBox.shrink();
     final scheme = theme.colorScheme;
 
     final total = mainItems.length;
@@ -588,7 +555,6 @@ class _TodayTimeline extends ConsumerStatefulWidget {
   const _TodayTimeline({
     required this.items,
     required this.day,
-    super.key,
   });
 
   final List<ItemsTableData> items;
@@ -619,7 +585,11 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ext = theme.extension<FocusThemeExtension>()!;
+    // Null-guard: FocusThemeExtension отсутствует вне AppTheme (тест/error-recovery).
+    // После guard Dart продвигает тип до FocusThemeExtension (non-null) — _buildRow
+    // и _TimelineRow принимают non-null и менять их сигнатуру не нужно.
+    final ext = theme.extension<FocusThemeExtension>();
+    if (ext == null) return const SizedBox.shrink();
     final scheme = theme.colorScheme;
     final categoriesEnabled = ref.watch(categoriesEnabledProvider);
 
@@ -791,6 +761,9 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
     final isPending = item.status == 'pending';
     final config = ref.read(swipeActionsProvider);
 
+    // #21: тап по кружку хребта = отметить выполненным (_doDone уже
+    // обрабатывает виртуальные вхождения повторов через materializeOccurrence).
+    // Для уже выполненных/пропущенных — null (тап отключён).
     final rowWidget = _TimelineRow(
       item: item,
       day: widget.day,
@@ -798,6 +771,7 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
       scheme: scheme,
       theme: theme,
       categoriesEnabled: categoriesEnabled,
+      onNodeTap: isPending ? () => _doDone(context, item) : null,
     );
 
     if (!isPending) {
@@ -1045,6 +1019,7 @@ class _TimelineRow extends StatelessWidget {
     required this.scheme,
     required this.theme,
     required this.categoriesEnabled,
+    this.onNodeTap,
   });
 
   final ItemsTableData item;
@@ -1053,6 +1028,9 @@ class _TimelineRow extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
   final bool categoriesEnabled;
+  // #21: тап по узлу хребта = переключить «выполнено».
+  // null для уже выполненных/пропущенных задач.
+  final VoidCallback? onNodeTap;
 
   TimelineNodeKind get _kind {
     if (item.status == 'done' || item.status == 'skipped') {
@@ -1077,12 +1055,16 @@ class _TimelineRow extends StatelessWidget {
     final categoryTag =
         (categoriesEnabled && parsed.tags.isNotEmpty) ? parsed.tags.first : null;
 
-    // Иконка типа (показывается только если НЕ main-pending)
+    // Иконка типа (показывается только если НЕ main-pending).
+    // #31б: deadline → flag (чтобы не путать с alarm = напоминание),
+    //        exam   → graduationCap (единообразно с Plan/pinned_exam_card),
+    //        event  → calendar (без изменений).
     IconData? typeIcon;
     if (!isMain) {
       typeIcon = switch (item.type) {
         'event' => PhosphorIcons.calendar(PhosphorIconsStyle.regular),
-        'deadline' || 'exam' => PhosphorIcons.alarm(PhosphorIconsStyle.regular),
+        'deadline' => PhosphorIcons.flag(PhosphorIconsStyle.regular),
+        'exam' => PhosphorIcons.graduationCap(PhosphorIconsStyle.regular),
         _ => null,
       };
     }
@@ -1133,25 +1115,37 @@ class _TimelineRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // ── Хребет (28dp) ───────────────────────────────────────────────
-          SizedBox(
-            width: 28,
-            child: Stack(
-              children: [
-                // Вертикальная линия — растягивается по IntrinsicHeight
-                Positioned(
-                  left: 13,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(width: 2, color: ext.border),
+          // ── Хребет (28dp) — тап = отметить выполненным (#21) ──────────
+          // Semantics обеспечивает доступность для screen-reader
+          // (кнопка «Mark as done»), не конфликтует с Dismissible-свайпами.
+          Semantics(
+            label: onNodeTap != null
+                ? context.s('today.mark_done_tap_tooltip')
+                : null,
+            button: onNodeTap != null,
+            child: GestureDetector(
+              onTap: onNodeTap,
+              behavior: HitTestBehavior.translucent,
+              child: SizedBox(
+                width: 28,
+                child: Stack(
+                  children: [
+                    // Вертикальная линия — растягивается по IntrinsicHeight
+                    Positioned(
+                      left: 13,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(width: 2, color: ext.border),
+                    ),
+                    // Узел на позиции Y=4 от верха
+                    Positioned(
+                      top: 4,
+                      left: _nodeLeftOffset(kind),
+                      child: _buildNode(kind),
+                    ),
+                  ],
                 ),
-                // Узел на позиции Y=4 от верха
-                Positioned(
-                  top: 4,
-                  left: _nodeLeftOffset(kind),
-                  child: _buildNode(kind),
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -1189,7 +1183,7 @@ class _TimelineRow extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Иконка справа: shield (main) или typeIcon
+                        // Иконка справа: shield (main) или typeIcon (#31б)
                         if (isMain) ...[
                           const SizedBox(width: 6),
                           PhosphorIcon(
@@ -1200,6 +1194,23 @@ class _TimelineRow extends StatelessWidget {
                         ] else if (typeIcon != null) ...[
                           const SizedBox(width: 6),
                           PhosphorIcon(typeIcon, size: 16, color: ext.textMuted),
+                        ],
+                        // #31а: колокольчик-индикатор напоминания.
+                        // Показываем только когда задача pending И напоминание задано
+                        // (reminderMinutesBefore != null). Bell fill = визуально
+                        // отличается от alarm-иконки типа; малый размер (12dp)
+                        // не нарушает overflow на 320px (title в Expanded).
+                        if (!isDone && item.reminderMinutesBefore != null) ...[
+                          const SizedBox(width: 4),
+                          Tooltip(
+                            message: context
+                                .s('today.reminder_indicator_tooltip'),
+                            child: PhosphorIcon(
+                              PhosphorIcons.bell(PhosphorIconsStyle.fill),
+                              size: 12,
+                              color: ext.textMuted,
+                            ),
+                          ),
                         ],
                         // Trailing (done/skipped индикатор)
                         if (trailing != null) ...[

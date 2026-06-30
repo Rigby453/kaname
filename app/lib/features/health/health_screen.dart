@@ -12,6 +12,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../../core/animations/app_toast.dart';
+import '../../core/animations/constants.dart';
+import '../../services/notifications/notification_service.dart'
+    show nextInstanceAfterNow;
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart'; // S.all — для локализации уведомлений без context
@@ -153,12 +156,10 @@ class WaterReminderNotifier extends StateNotifier<bool> {
     }
   }
 
-  tz.TZDateTime _nextInstance(int hour) {
-    final now = tz.TZDateTime.now(tz.local);
-    var t = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour);
-    if (t.isBefore(now)) t = t.add(const Duration(days: 1));
-    return t;
-  }
+  // Делегирует единой функции nextInstanceAfterNow: гарантирует строгое
+  // будущее (включая кейс t == now, который isBefore пропускал).
+  tz.TZDateTime _nextInstance(int hour) =>
+      nextInstanceAfterNow(hour, 0, tz.TZDateTime.now(tz.local));
 }
 
 // ---------------------------------------------------------------------------
@@ -390,7 +391,7 @@ class HealthScreen extends ConsumerWidget {
     );
   }
 
-  /// Карточка трекера воды — §4.2 стиль, Phosphor icons.
+  /// Карточка трекера воды — делегирует в _WaterCard (StatefulWidget для expand-логики).
   Widget _buildWaterCard(
     BuildContext context,
     WidgetRef ref,
@@ -400,13 +401,51 @@ class HealthScreen extends ConsumerWidget {
     double progress,
     dynamic dao,
   ) {
+    return _WaterCard(
+      total: total,
+      waterGoalMl: waterGoalMl,
+      progress: progress,
+      dao: dao,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _WaterCard — §4.2 карточка трекера воды со сворачиваемыми пресетами.
+// Тап по зоне стакана/прогресса — toggle пресетов объёма.
+// Кнопки-пресеты добавляют воду, не сворачивают панель.
+// ---------------------------------------------------------------------------
+
+class _WaterCard extends ConsumerStatefulWidget {
+  const _WaterCard({
+    required this.total,
+    required this.waterGoalMl,
+    required this.progress,
+    required this.dao,
+  });
+
+  final int total;
+  final int waterGoalMl;
+  final double progress;
+  final dynamic dao;
+
+  @override
+  ConsumerState<_WaterCard> createState() => _WaterCardState();
+}
+
+class _WaterCardState extends ConsumerState<_WaterCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
 
     return _KaCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Заголовок: Phosphor drop icon + метрика + кнопка полного экрана
+          // Заголовок: drop icon + метрика + кнопка полного экрана
           Row(
             children: [
               Icon(PhosphorIcons.drop(), color: ext.textMuted, size: 20),
@@ -415,7 +454,7 @@ class HealthScreen extends ConsumerWidget {
               const Spacer(),
               Flexible(
                 child: Text(
-                  '$total / $waterGoalMl ml',
+                  '${widget.total} / ${widget.waterGoalMl} ml',
                   style: textTheme.bodyMedium?.copyWith(color: ext.textMuted),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -434,58 +473,85 @@ class HealthScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
 
-          // Анимированный стакан + метрика прогресса
-          Row(
-            children: [
-              _AnimatedWaterGlass(progress: progress),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$total ml',
-                      style: textTheme.headlineSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
+          // Тап-зона: стакан + прогресс → toggle пресетов.
+          // GestureDetector + HitTestBehavior.opaque чтобы тап по пустому пространству тоже срабатывал.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Row(
+              children: [
+                _AnimatedWaterGlass(progress: widget.progress),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.total} ml',
+                        style: textTheme.headlineSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
-                    ),
-                    Text(
-                      context.s('health.water_goal_of')
-                          .replaceFirst('{goal}', '$waterGoalMl'),
-                      style: textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 6),
-                    LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 4,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Кнопки лога: Outlined — повторяемые действия; Wrap предотвращает overflow
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ...kWaterQuickMl.map(
-                (ml) => OutlinedButton(
-                  onPressed: () => dao.addWater(ml),
-                  child: Text(
-                    context.s('water.add_ml_fmt').replaceFirst('{ml}', '$ml'),
+                      Text(
+                        context.s('health.water_goal_of')
+                            .replaceFirst('{goal}', '${widget.waterGoalMl}'),
+                        style: textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 6),
+                      LinearProgressIndicator(
+                        value: widget.progress,
+                        minHeight: 4,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      const SizedBox(height: 4),
+                      // Мелкая подсказка о тап-зоне
+                      Text(
+                        context.s(_expanded
+                            ? 'water.hint_collapse'
+                            : 'water.hint_tap_to_add'),
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: ext.textMuted),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              OutlinedButton.icon(
-                icon: Icon(PhosphorIcons.pencilSimple(), size: 16),
-                label: Text(context.s('water.custom_btn')),
-                onPressed: () => showCustomWaterDialog(context, dao),
-              ),
-            ],
+              ],
+            ),
+          ),
+
+          // Анимированно раскрывающиеся пресеты объёма.
+          // AnimatedSize обеспечивает плавное появление/скрытие (kDurationNormal).
+          // Кнопки пресетов добавляют воду — НЕ сворачивают панель.
+          AnimatedSize(
+            duration: effectiveDuration(context, kDurationNormal),
+            curve: kCurveLift,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ...kWaterQuickMl.map(
+                          (ml) => OutlinedButton(
+                            onPressed: () => widget.dao.addWater(ml),
+                            child: Text(
+                              context
+                                  .s('water.add_ml_fmt')
+                                  .replaceFirst('{ml}', '$ml'),
+                            ),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          icon: Icon(PhosphorIcons.pencilSimple(), size: 16),
+                          label: Text(context.s('water.custom_btn')),
+                          onPressed: () =>
+                              showCustomWaterDialog(context, widget.dao),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
 
           // Undo — справа
@@ -497,7 +563,7 @@ class HealthScreen extends ConsumerWidget {
                 PhosphorIcons.arrowCounterClockwise(),
                 color: ext.textMuted,
               ),
-              onPressed: () => dao.undoLast(DateTime.now()),
+              onPressed: () => widget.dao.undoLast(DateTime.now()),
             ),
           ),
           const SizedBox(height: 4),
@@ -530,7 +596,7 @@ class HealthScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Expanded(child: _WeekWaterChart(goalMl: waterGoalMl)),
+                  Expanded(child: _WeekWaterChart(goalMl: widget.waterGoalMl)),
                   Icon(
                     PhosphorIcons.caretRight(),
                     size: 18,
@@ -963,7 +1029,7 @@ class _SleepCard extends ConsumerWidget {
                 child: KaiLoader(label: context.s('loading.sleep')),
               ),
             ),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
             data: (open) {
               if (open != null) {
                 final timeStr =

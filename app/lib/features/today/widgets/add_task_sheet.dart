@@ -753,6 +753,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_scheduledAt),
+      // Циферблат по умолчанию; пользователь может переключиться на клавиатуру.
+      initialEntryMode: TimePickerEntryMode.dial,
     );
     if (picked != null) {
       setState(() {
@@ -773,6 +775,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       initialTime: TimeOfDay.fromDateTime(
         _scheduledAt.add(Duration(minutes: _durationMinutes)),
       ),
+      // Циферблат по умолчанию; пользователь может переключиться на клавиатуру.
+      initialEntryMode: TimePickerEntryMode.dial,
     );
     if (picked == null) return;
 
@@ -1664,14 +1668,6 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
                 ),
               ),
             const SizedBox(height: 12),
-
-            // 4b. «Main»-тогл с иконкой щита (§4.4 REDESIGN-KANAME.md).
-            // Показывается как отдельная заметная строка, а не просто чип.
-            _MainToggle(
-              isMain: _priority == 'main',
-              canSelect: _mainCount < _maxMainPerDay || _priority == 'main',
-              onChanged: (val) => _onPriorityTap(val ? 'main' : 'medium'),
-            ),
 
             // 4c. Категория-точка (первый тег) — только когда категории включены.
             if (_tags.isNotEmpty)
@@ -2946,78 +2942,3 @@ class _StepButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// _MainToggle — выделенный тогл «Главная задача» со щитом (§4.4 REDESIGN-KANAME.md).
-//
-// Показывается между строкой приоритетов и секцией даты.
-// isMain: текущее состояние (priority == 'main').
-// canSelect: false когда лимит 3 already reached и это не main — тогл disabled.
-// ---------------------------------------------------------------------------
-
-class _MainToggle extends StatelessWidget {
-  const _MainToggle({
-    required this.isMain,
-    required this.canSelect,
-    required this.onChanged,
-  });
-
-  final bool isMain;
-  final bool canSelect;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ext = theme.extension<FocusThemeExtension>();
-    final scheme = theme.colorScheme;
-
-    final activeColor = scheme.primary;
-    final inactiveColor = ext?.textMuted ?? scheme.onSurface.withValues(alpha: 0.5);
-
-    return GestureDetector(
-      onTap: canSelect ? () => onChanged(!isMain) : null,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMain ? ext?.accentTint : null,
-          border: Border.all(
-            color: isMain
-                ? activeColor.withValues(alpha: 0.4)
-                : ext?.border ?? scheme.outline,
-            width: isMain ? 1.5 : 1.0,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            PhosphorIcon(
-              isMain
-                  ? PhosphorIcons.shield(PhosphorIconsStyle.fill)
-                  : PhosphorIcons.shield(PhosphorIconsStyle.regular),
-              size: 18,
-              color: isMain ? activeColor : inactiveColor,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                context.s('today.main_toggle_label'),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: isMain ? ext?.accentInk ?? activeColor : null,
-                  fontWeight: isMain ? FontWeight.w500 : null,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Switch.adaptive(
-              value: isMain,
-              onChanged: canSelect ? onChanged : null,
-              activeColor: activeColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
