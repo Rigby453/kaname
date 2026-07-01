@@ -132,6 +132,25 @@ class ItemsDao extends DatabaseAccessor<AppDatabase> with _$ItemsDaoMixin {
         .get();
   }
 
+  /// ВСЕ задачи/события на день (любой priority), Future-вариант.
+  /// Решение владельца #2 (2026-07-01): предикат «день завершён» для серии
+  /// теперь смотрит на ВСЁ запланированное на день, а не только priority=main
+  /// (используется StreakService.recomputeForDay). mainItemsForDay остаётся
+  /// для UI-счётчика «Главное · X/Y» — это отдельная, независимая метрика.
+  Future<List<ItemsTableData>> itemsForDay(DateTime date) {
+    final dayStart = localDayStart(date);
+    final dayEnd = localDayEnd(date);
+
+    return (select(itemsTable)
+          ..where(
+            (t) =>
+                t.scheduledAt.isBiggerOrEqualValue(dayStart) &
+                t.scheduledAt.isSmallerThanValue(dayEnd) &
+                t.recurrenceRule.isNull(),
+          ))
+        .get();
+  }
+
   /// Задачи в диапазоне [from, to) реактивно — для месячного вида Plan.
   /// Границы передаёт вызывающий (обычно локальная полночь, как в watchTodayItems).
   Stream<List<ItemsTableData>> watchItemsInRange(DateTime from, DateTime to) {

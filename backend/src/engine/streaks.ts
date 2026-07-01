@@ -2,20 +2,34 @@ import prisma from "../models/prisma.js";
 
 /**
  * STREAK-02: Внутренний хелпер — обновляет серию за конкретный день.
- * Вызывается из PATCH /items/:id когда статус меняется на 'done'.
+ * Вызывается из PATCH /items/:id и из /sync, когда статус задачи меняется на 'done'.
  * Правила только rule-based, без AI.
  *
- * Логика:
- * 1. Получаем все items с priority=main за этот день.
- * 2. Если нет ни одного → выходим (нет главных задач — серия не меняется).
- * 3. Если не все выполнены → выходим.
- * 4. Загружаем или создаём Streak.
- * 5. Сравниваем lastCompletedDate с today/yesterday:
+ * Решение владельца #2 (2026-07-01): день засчитывается, если выполнено ВСЁ
+ * запланированное на день, а не только priority=main. Предикат «день завершён»:
+ * 1. Берём ВСЕ items (любой priority) за этот день.
+ * 2. Нет ни одного item за день → день НЕЙТРАЛЬНЫЙ: не растит и не сбрасывает
+ *    серию, выходим без изменений (в отличие от «несделанного дня» — просто
+ *    отсутствие плана не должно карать пользователя).
+ * 3. status='skipped' «не мешает»: skipped-задачи исключаются из требования
+ *    «все done». НО если после исключения skipped ничего не остаётся (то есть
+ *    ВСЕ задачи дня были skipped, ни одна не done) — день тоже считается
+ *    нейтральным, а не засчитанным: иначе можно было бы «накрутить» серию,
+ *    просто пропуская все задачи, ничего не сделав. Это намеренная трактовка
+ *    формулировки «skipped не мешает» — не путать с «skipped даёт зачёт».
+ * 4. Иначе день завершён, если оставшиеся (не-skipped) задачи ВСЕ done.
+ *    Если хоть одна не-skipped задача не done (включая pending) — день НЕ
+ *    завершён, выходим без изменений (пересчёт сработает позже, на следующем
+ *    завершённом дне — freeze/грейс ниже не меняются).
+ *
+ * Далее (без изменений):
+ * 5. Загружаем или создаём Streak.
+ * 6. Сравниваем lastCompletedDate с today/yesterday:
  *    - Если уже today → idempotent, выходим.
  *    - Если yesterday → current += 1.
  *    - Если старше/null + freezeCount > 0 → freezeCount -= 1, current без изменений.
  *    - Иначе → current = 1.
- * 6. longest = max(longest, current). lastCompletedDate = today. Сохраняем.
+ * 7. longest = max(longest, current). lastCompletedDate = today. Сохраняем.
  */
 export async function checkAndUpdateStreak(
   userId: string,
@@ -29,11 +43,11 @@ export async function checkAndUpdateStreak(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999)
   );
 
-  // Получаем все главные задачи за этот день
-  const mainItems = await prisma.item.findMany({
+  // Получаем ВСЕ задачи/события за этот день (любой priority) — решение #2:
+  // «день завершён» = выполнено всё запланированное, а не только главное.
+  const dayItems = await prisma.item.findMany({
     where: {
       userId,
-      priority: "main",
       scheduledAt: {
         gte: startOfDay,
         lte: endOfDay,
@@ -42,11 +56,17 @@ export async function checkAndUpdateStreak(
     select: { id: true, status: true },
   });
 
-  // Нет главных задач — серия не обновляется
-  if (mainItems.length === 0) return;
+  // Нет запланированного на этот день — нейтральный день, серия не меняется.
+  if (dayItems.length === 0) return;
 
-  // Если не все главные задачи выполнены — выходим
-  const allDone = mainItems.every((item) => item.status === "done");
+  // skipped «не мешает»: исключаем из требования, но если ПОСЛЕ исключения
+  // ничего не осталось (все задачи были skipped) — тоже нейтральный день, а
+  // не засчитанный (см. комментарий выше, п.3).
+  const countedItems = dayItems.filter((item) => item.status !== "skipped");
+  if (countedItems.length === 0) return;
+
+  // Если хоть одна из оставшихся не выполнена — день не завершён, выходим.
+  const allDone = countedItems.every((item) => item.status === "done");
   if (!allDone) return;
 
   // Нормализуем дату (только день, без времени) для сравнения

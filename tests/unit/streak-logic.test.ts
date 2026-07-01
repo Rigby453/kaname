@@ -39,6 +39,29 @@ async function createMainItem(
   });
 }
 
+/**
+ * Решение владельца #2 (2026-07-01): «день завершён» смотрит на ВСЕ items,
+ * не только priority=main. Универсальный хелпер для тестов ниже —
+ * произвольный priority/status на дату 2026-06-10 (переменная `today`).
+ */
+async function createItem(
+  userId: string,
+  priority: 'low' | 'medium' | 'high' | 'main',
+  status: 'pending' | 'done' | 'skipped'
+): Promise<void> {
+  await prisma.item.create({
+    data: {
+      userId,
+      title: `${priority} task`,
+      type: 'task',
+      priority,
+      status,
+      scheduledAt: new Date(Date.UTC(2026, 5, 10, 9, 0, 0)),
+      isProtected: priority === 'main',
+    },
+  });
+}
+
 describe('checkAndUpdateStreak', () => {
   const users: string[] = [];
 
@@ -146,5 +169,61 @@ describe('checkAndUpdateStreak', () => {
     const streak = await prisma.streak.findUnique({ where: { userId } });
     expect(streak?.current).toBe(1);
     expect(streak?.longest).toBe(5); // рекорд не уменьшается
+  });
+
+  // ---------------------------------------------------------------------------
+  // Решение владельца #2 (2026-07-01): предикат «день завершён» смотрит на
+  // ВСЕ задачи дня (любой priority), не только priority=main. Skipped «не
+  // мешает» (исключается из требования), но день, где ВСЕ задачи skipped —
+  // нейтральный (не засчитан), как и день без задач вовсе.
+  // ---------------------------------------------------------------------------
+  describe('checkAndUpdateStreak — предикат "день завершён" (решение #2)', () => {
+    test('все НЕ-main задачи done → серия засчитывается', async () => {
+      const userId = await createUserDirect();
+      users.push(userId);
+      await createItem(userId, 'low', 'done');
+      await createItem(userId, 'medium', 'done');
+
+      await checkAndUpdateStreak(userId, today);
+
+      const streak = await prisma.streak.findUnique({ where: { userId } });
+      expect(streak?.current).toBe(1);
+    });
+
+    test('хотя бы одна незавершённая задача любого priority → НЕ засчитано', async () => {
+      const userId = await createUserDirect();
+      users.push(userId);
+      await createItem(userId, 'main', 'done');
+      await createItem(userId, 'low', 'pending'); // блокирует, хотя не main
+
+      await checkAndUpdateStreak(userId, today);
+
+      const streak = await prisma.streak.findUnique({ where: { userId } });
+      expect(streak).toBeNull();
+    });
+
+    test('skipped "не мешает": done + skipped → засчитано', async () => {
+      const userId = await createUserDirect();
+      users.push(userId);
+      await createItem(userId, 'medium', 'done');
+      await createItem(userId, 'low', 'skipped');
+
+      await checkAndUpdateStreak(userId, today);
+
+      const streak = await prisma.streak.findUnique({ where: { userId } });
+      expect(streak?.current).toBe(1);
+    });
+
+    test('ВСЕ задачи дня skipped (ни одной done) → нейтральный день, НЕ засчитано', async () => {
+      const userId = await createUserDirect();
+      users.push(userId);
+      await createItem(userId, 'medium', 'skipped');
+      await createItem(userId, 'low', 'skipped');
+
+      await checkAndUpdateStreak(userId, today);
+
+      const streak = await prisma.streak.findUnique({ where: { userId } });
+      expect(streak).toBeNull();
+    });
   });
 });

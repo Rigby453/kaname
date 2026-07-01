@@ -19,10 +19,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/database/daos/day_logs_dao.dart';
+import '../../core/database/daos/items_dao.dart';
 import '../../core/database/daos/streak_dao.dart';
 import '../../core/theme/theme_provider.dart' show sharedPreferencesProvider;
 import '../api/api_client.dart';
 import '../streak/freeze_accrual_service.dart' show kLastFreezeAccrualKey;
+import '../streak/streak_service.dart';
 
 class SyncService {
   SyncService({
@@ -275,29 +277,25 @@ class SyncService {
             '[SyncService] Server streak.last_freeze_accrual_at=null — local values preserved',
           );
         }
+      }
 
-        // Дополнительно: синхронизируем current/longest/last_completed_date стрика,
-        // если сервер вернул их в том же объекте streak.
-        final serverCurrent = (serverStreak['current'] as num?)?.toInt();
-        final serverLongest = (serverStreak['longest'] as num?)?.toInt();
-        final serverLastDateStr = serverStreak['last_completed_date'] as String?;
-        final serverLastDate = serverLastDateStr != null
-            ? DateTime.tryParse(serverLastDateStr)
-            : null;
-
-        if (serverCurrent != null || serverLongest != null || serverLastDate != null) {
-          final companion = StreakTableCompanion(
-            current: serverCurrent != null ? Value(serverCurrent) : const Value.absent(),
-            longest: serverLongest != null ? Value(serverLongest) : const Value.absent(),
-            lastCompletedDate:
-                serverLastDate != null ? Value(serverLastDate) : const Value.absent(),
-          );
-          await _streakDao.updateStreak(companion);
-          debugPrint(
-            '[SyncService] Adopted server streak: current=$serverCurrent '
-            'longest=$serverLongest last_completed_date=$serverLastDateStr',
-          );
-        }
+      // РЕШЕНИЕ ВЛАДЕЛЬЦА #14, подход B (2026-07-01): current/longest/
+      // last_completed_date БОЛЬШЕ НЕ принимаются "как есть" от сервера.
+      // Раньше здесь стояло слепое присваивание serverStreak['current']/
+      // ['longest']/['last_completed_date'] в Drift — на новом устройстве
+      // (или после переустановки) сервер мог не знать локальную историю или
+      // прислать 0, и честно накопленная серия обнулялась.
+      // Вместо этого — ПОСЛЕ того как входящие items уже смержены в Drift
+      // (Шаг 5 выше, до этой точки) — пересчитываем current/longest локально
+      // из истории завершённых дней (StreakService.recomputeFromHistory).
+      // freeze_count/last_freeze_accrual_at выше — НЕ трогаем, синкаются как
+      // и раньше (ADR-044); их контракт этой правкой не меняется.
+      try {
+        await StreakService(itemsDao: ItemsDao(_db), streakDao: _streakDao)
+            .recomputeFromHistory();
+        debugPrint('[SyncService] Streak recomputed from local history (post-sync)');
+      } catch (e) {
+        debugPrint('[SyncService] recomputeFromHistory failed: $e');
       }
 
       // Шаг 6: сохраняем метку успешной синхронизации
