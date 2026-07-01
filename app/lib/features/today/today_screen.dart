@@ -78,8 +78,12 @@ class TodayScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Пересчёт стрика и виджета при изменении main-задач.
-    ref.listen(todayMainItemsProvider, (_, _) async {
+    // Пересчёт стрика и виджета при изменении ЛЮБЫХ задач дня — решение
+    // владельца #2 (2026-07-01): «день завершён» теперь смотрит на все задачи
+    // дня, не только priority=main, поэтому триггер слушает todayItemsProvider
+    // (все задачи), а не только todayMainItemsProvider (иначе завершение дня
+    // последней НЕ-main задачей не запустило бы пересчёт).
+    ref.listen(todayItemsProvider, (_, _) async {
       await ref.read(streakServiceProvider).recomputeForDay(DateTime.now());
       await refreshHomeWidget(
         itemsDao: ref.read(itemsDaoProvider),

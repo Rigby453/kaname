@@ -128,9 +128,14 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: "Invalid last_sync_at" });
       }
 
-      // Дни (по дате scheduledAt), в которые main-задача перешла в 'done' в этом
+      // Дни (по дате scheduledAt), в которые ЛЮБАЯ задача перешла в 'done' в этом
       // sync. После коммита по ним пересчитаем серию (rule-based, как в PATCH).
-      const completedMainDays: Date[] = [];
+      // Решение #2 (2026-07-01): предикат «день завершён» теперь смотрит на ВСЕ
+      // задачи дня, не только priority=main — поэтому триггерим пересчёт на
+      // done-переходе любой задачи (раньше фильтровали по priority==='main',
+      // что при новом предикате пропускало бы завершение дня, где последней
+      // done-задачей была не-main).
+      const completedDays: Date[] = [];
 
       // Обрабатываем каждый incoming item в транзакции
       await prisma.$transaction(async (tx) => {
@@ -200,15 +205,10 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                   await syncSubtasks(tx, incoming.id, incoming.subtasks);
                 }
 
-                // Переход main-задачи в 'done' → запоминаем день для пересчёта серии.
-                // Эффективные значения: если поле не пришло — берём серверное.
-                const effPriority = incoming.priority ?? existing.priority;
-                if (
-                  incoming.status === "done" &&
-                  existing.status !== "done" &&
-                  effPriority === "main"
-                ) {
-                  completedMainDays.push(
+                // Переход ЛЮБОЙ задачи в 'done' → запоминаем день для пересчёта
+                // серии (решение #2 — предикат больше не смотрит на priority).
+                if (incoming.status === "done" && existing.status !== "done") {
+                  completedDays.push(
                     incoming.scheduled_at !== undefined
                       ? new Date(incoming.scheduled_at)
                       : existing.scheduledAt
@@ -251,9 +251,9 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
                 await syncSubtasks(tx, incoming.id, incoming.subtasks);
               }
 
-              // Новая main-задача, созданная сразу как 'done' → день для пересчёта серии.
-              if (incoming.status === "done" && incoming.priority === "main") {
-                completedMainDays.push(new Date(incoming.scheduled_at));
+              // Новая задача, созданная сразу как 'done' → день для пересчёта серии.
+              if (incoming.status === "done") {
+                completedDays.push(new Date(incoming.scheduled_at));
               }
             }
             // Если нет обязательных полей — пропускаем некорректный item
@@ -264,9 +264,9 @@ const syncRoutes: FastifyPluginAsync = async (fastify) => {
       // После коммита пересчитываем серию по затронутым дням (rule-based, без AI).
       // Дедуплицируем по UTC-дню и идём по возрастанию, чтобы backlog (вчера→сегодня)
       // считался в правильном порядке. Ошибка пересчёта не должна ронять sync.
-      if (completedMainDays.length > 0) {
+      if (completedDays.length > 0) {
         const uniqueDays = new Map<string, Date>();
-        for (const d of completedMainDays) {
+        for (const d of completedDays) {
           if (isNaN(d.getTime())) continue;
           const key = d.toISOString().slice(0, 10);
           if (!uniqueDays.has(key)) uniqueDays.set(key, d);

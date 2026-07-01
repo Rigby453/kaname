@@ -2,19 +2,37 @@
 //
 // Серия — заявленная фишка продукта ("всё главное закрыто N дней подряд").
 // Приложение работает offline-first и без аккаунта, поэтому серия считается
-// ЛОКАЛЬНО по данным Drift. Правила полностью совпадают с backend
+// ЛОКАЛЬНО по данным Drift. Правила синхронизированы с backend
 // `checkAndUpdateStreak` (rule-based, без AI), чтобы локальное и серверное
-// значения сходились к одному числу:
-//   1. Берём все main-задачи за день. Нет ни одной → серия не меняется.
-//   2. Не все выполнены (status='done') → серия не меняется.
-//   3. lastCompletedDate == сегодня → идемпотентно, выходим.
-//   4. lastCompletedDate == вчера → current += 1.
-//   5. Пропуск + freezeCount > 0 → расходуем заморозку, current без изменений.
-//   6. Иначе → current = 1.
-//   7. longest = max(longest, current); lastCompletedDate = сегодня.
+// значения сходились к одному числу.
 //
-// Пропущенные (status='skipped') главные задачи НЕ считаются закрытыми —
-// так же, как на бэкенде (строгое сравнение со 'done').
+// РЕШЕНИЕ ВЛАДЕЛЬЦА #2 (2026-07-01) — предикат «день завершён»:
+//   1. Берём ВСЕ задачи дня (любой priority, не только main).
+//   2. Нет ни одной задачи за день → день НЕЙТРАЛЬНЫЙ: не растит и не
+//      обнуляет серию (пустой день — не наказание).
+//   3. status='skipped' «не мешает»: такие задачи исключаются из требования
+//      «все done». НО если после исключения skipped ничего не остаётся (то
+//      есть буквально ВСЕ задачи дня были пропущены, ни одна не done) — день
+//      тоже нейтральный, а не засчитанный. Иначе можно было бы накрутить
+//      серию, ничего реально не сделав — это трактовка формулировки «skipped
+//      не мешает», а не «skipped даёт зачёт».
+//   4. Иначе день завершён, если ВСЕ оставшиеся (не-skipped) задачи done.
+//      Любая другая (включая pending) — день НЕ завершён.
+// См. _DayStatus/_dayStatus ниже — общий предикат для recomputeForDay и
+// recomputeFromHistory.
+//
+// РЕШЕНИЕ ВЛАДЕЛЬЦА #14, подход B (2026-07-01) — стрик как функция от истории:
+//   Раньше SyncService при каждой синхронизации ЗАПИСЫВАЛ current/longest,
+//   пришедшие в ответе /sync, "как есть". На новом устройстве/после
+//   переустановки сервер мог не знать локальную историю (или прислать 0) —
+//   и честно накопленная серия обнулялась. Теперь current/longest — функция
+//   от ЛОКАЛЬНОЙ истории завершённых дней (см. [recomputeFromHistory]),
+//   вызываемая после каждого синка ВМЕСТО слепого доверия серверному числу.
+//   freeze_count/last_freeze_accrual_at — отдельный контракт (ADR-044),
+//   продолжают синкаться как раньше, эта правка их не трогает.
+//
+// Пропущенные (status='skipped') задачи НЕ считаются закрытыми — так же, как
+// и раньше (строгое сравнение со 'done' для оставшихся после фильтра).
 
 // Именованные параметры конструктора не могут начинаться с "_", поэтому поля
 // присваиваются через список инициализации (а не initializing formals).
@@ -29,6 +47,27 @@ import '../../core/database/daos/items_dao.dart';
 import '../../core/database/daos/streak_dao.dart';
 import '../../core/database/database_providers.dart';
 
+/// Итог предиката «день завершён» для одного календарного дня.
+enum _DayStatus {
+  /// Нет задач (или все задачи skipped) — день не участвует в расчёте серии.
+  neutral,
+
+  /// Есть хотя бы одна не-skipped задача, и не все они done.
+  incomplete,
+
+  /// Все не-skipped задачи done (и хотя бы одна такая задача есть).
+  complete,
+}
+
+/// Общий предикат «день завершён» — решение владельца #2 (см. заголовок файла).
+_DayStatus _dayStatus(List<ItemsTableData> dayItems) {
+  if (dayItems.isEmpty) return _DayStatus.neutral;
+  final counted = dayItems.where((i) => i.status != 'skipped').toList();
+  if (counted.isEmpty) return _DayStatus.neutral; // все задачи были skipped
+  final allDone = counted.every((i) => i.status == 'done');
+  return allDone ? _DayStatus.complete : _DayStatus.incomplete;
+}
+
 class StreakService {
   StreakService({required ItemsDao itemsDao, required StreakDao streakDao})
       : _itemsDao = itemsDao,
@@ -39,29 +78,25 @@ class StreakService {
 
   /// Пересчитывает серию за указанный день (обычно `DateTime.now()`).
   ///
-  /// Идемпотентно: безопасно вызывать при каждом изменении main-задач —
-  /// если день уже засчитан или не все задачи закрыты, метод ничего не делает.
+  /// Идемпотентно: безопасно вызывать при каждом изменении задач дня — если
+  /// день уже засчитан или не завершён (см. [_dayStatus]), метод ничего не
+  /// делает. Это единственное место, которое РЕАЛЬНО тратит freeze_count —
+  /// в отличие от [recomputeFromHistory] (см. её doc-комментарий).
   Future<void> recomputeForDay(DateTime day) async {
-    final dayStart = DateTime.utc(day.year, day.month, day.day);
+    final dayItems = await _itemsDao.itemsForDay(day);
+    if (_dayStatus(dayItems) != _DayStatus.complete) return;
 
-    final mainItems = await _itemsDao.mainItemsForDay(day);
-    // Нет главных задач — серия не обновляется (так же, как на бэкенде).
-    if (mainItems.isEmpty) return;
-
-    // Все ли главные задачи именно выполнены (skipped не считается).
-    final allDone = mainItems.every((i) => i.status == 'done');
-    if (!allDone) return;
-
+    final dayMarker = _dayMarker(day);
     final streak = await _streakDao.getOrCreate();
 
-    final todayKey = _key(dayStart);
+    final todayKey = _key(dayMarker);
     final last = streak.lastCompletedDate;
     final lastKey = last == null ? null : _key(last.toUtc());
 
     // Этот день уже засчитан — повторно не считаем.
     if (lastKey == todayKey) return;
 
-    final yesterdayKey = _key(dayStart.subtract(const Duration(days: 1)));
+    final yesterdayKey = _key(dayMarker.subtract(const Duration(days: 1)));
 
     var newCurrent = streak.current;
     var newFreeze = streak.freezeCount;
@@ -77,14 +112,15 @@ class StreakService {
       newCurrent = 1;
     }
 
-    final newLongest = newCurrent > streak.longest ? newCurrent : streak.longest;
+    final newLongest =
+        newCurrent > streak.longest ? newCurrent : streak.longest;
 
     await _streakDao.updateStreak(
       StreakTableCompanion(
         current: Value(newCurrent),
         longest: Value(newLongest),
         freezeCount: Value(newFreeze),
-        lastCompletedDate: Value(dayStart),
+        lastCompletedDate: Value(dayMarker),
       ),
     );
 
@@ -93,6 +129,123 @@ class StreakService {
       'freeze=$newFreeze day=$todayKey',
     );
   }
+
+  /// Полный пересчёт current/longest/lastCompletedDate из ЛОКАЛЬНОЙ истории
+  /// задач — решение владельца #14 (подход B, 2026-07-01). См. заголовок файла
+  /// для контекста бага, который это чинит.
+  ///
+  /// Сканирует календарные дни от `asOf` (по умолчанию — сегодня) назад на
+  /// [maxLookbackDays] дней, применяет тот же предикат «день завершён»
+  /// ([_dayStatus]) и тот же алгоритм грейса/заморозки, что [recomputeForDay]
+  /// и серверный `checkAndUpdateStreak`.
+  ///
+  /// ВАЖНЫЕ отличия от [recomputeForDay] (не путать друг с другом):
+  ///  - freeze_count здесь ТОЛЬКО читается один раз как «бюджет» на весь скан
+  ///    и НИКОГДА не сохраняется обратно. Реальные списания заморозок по мере
+  ///    того, как дни РЕАЛЬНО закрываются, происходят только в
+  ///    [recomputeForDay] (и на бэкенде). Повторное списание здесь задвоило
+  ///    бы уже случившиеся в реальном времени траты.
+  ///  - longest никогда не УМЕНЬШАЕТСЯ относительно уже сохранённого значения:
+  ///    итоговый longest = max(посчитанный по истории, ранее сохранённый).
+  ///    Защищает личный рекорд от урезанного окна скана ([maxLookbackDays])
+  ///    или неполной локальной истории (например, сразу после установки на
+  ///    новом устройстве, если вызвать до того, как элементы домержились).
+  ///  - current, наоборот, ВСЕГДА берётся как есть из скана — это и есть цель
+  ///    решения #14: не доверять транзитному числу (в том числе серверному
+  ///    0 на новом устройстве), а вывести его из фактической истории задач.
+  ///
+  /// Идемпотентно: если история не изменилась — результат не изменится.
+  /// Предполагаемая точка вызова — ПОСЛЕ того, как входящие items уже
+  /// смержены в Drift (иначе сканировать нечего).
+  Future<void> recomputeFromHistory({
+    DateTime? asOf,
+    int maxLookbackDays = 1500,
+  }) async {
+    final now = asOf ?? DateTime.now();
+    final todayMarker = _dayMarker(DateTime(now.year, now.month, now.day));
+
+    final rangeStart = todayMarker.subtract(Duration(days: maxLookbackDays));
+    // Верхняя граница — начало следующего дня (полуоткрытый интервал), как и
+    // у остальных DAO-запросов диапазона (itemsInRange/watchItemsInRange).
+    final rangeEndExclusive = todayMarker.add(const Duration(days: 1));
+
+    final items = await _itemsDao.itemsInRange(rangeStart, rangeEndExclusive);
+
+    // Группируем по календарному дню — маркер строим тем же "UTC-релейбл"
+    // трюком, что и lastCompletedDate (см. _dayMarker), чтобы ключи совпадали
+    // при последующем сравнении.
+    final byDay = <DateTime, List<ItemsTableData>>{};
+    for (final item in items) {
+      final marker = _dayMarker(item.scheduledAt);
+      byDay.putIfAbsent(marker, () => <ItemsTableData>[]).add(item);
+    }
+
+    final sortedDays = byDay.keys.toList()..sort();
+
+    final priorStreak = await _streakDao.getOrCreate();
+    // "Бюджет" заморозок на весь скан — см. doc-комментарий метода: только
+    // читаем текущий остаток, никогда не пишем обратно.
+    var freezeBudget = priorStreak.freezeCount;
+
+    var current = 0;
+    var longest = 0;
+    DateTime? lastCompleted;
+
+    for (final day in sortedDays) {
+      final status = _dayStatus(byDay[day]!);
+      if (status != _DayStatus.complete) {
+        // neutral — прозрачно пропускаем (как будто дня не было).
+        // incomplete (в т.ч. сегодня, если день ещё не закончен) — молча
+        // пропускаем: разрыв обнаружится (и будет прощён заморозкой, если
+        // есть) на СЛЕДУЮЩЕМ завершённом дне — так же, как в живом
+        // recomputeForDay/checkAndUpdateStreak, которые реагируют только на
+        // событие завершения, а не на сам факт "день не закрыт".
+        continue;
+      }
+
+      final yesterday = day.subtract(const Duration(days: 1));
+      if (lastCompleted != null && lastCompleted.isAtSameMomentAs(yesterday)) {
+        current += 1;
+      } else if (lastCompleted != null && freezeBudget > 0) {
+        // Разрыв (любого размера), но в бюджете есть заморозка — прощаем его
+        // за 1 "токен" (так же щедро, как и живой алгоритм); current не растёт.
+        freezeBudget -= 1;
+      } else {
+        // Первый когда-либо завершённый день в окне скана, либо разрыв без
+        // заморозки — серия начинается заново.
+        current = 1;
+      }
+      longest = current > longest ? current : longest;
+      lastCompleted = day;
+    }
+
+    final finalLongest =
+        longest > priorStreak.longest ? longest : priorStreak.longest;
+
+    await _streakDao.updateStreak(
+      StreakTableCompanion(
+        current: Value(current),
+        longest: Value(finalLongest),
+        lastCompletedDate: Value(lastCompleted),
+      ),
+    );
+
+    debugPrint(
+      '[StreakService] recomputeFromHistory: current=$current '
+      'longest=$finalLongest '
+      'lastCompleted=${lastCompleted == null ? null : _key(lastCompleted)} '
+      'scannedDays=${sortedDays.length}',
+    );
+  }
+
+  /// "UTC-релейбл" маркер календарного дня: берёт ЛОКАЛЬНЫЕ Y/M/D компоненты
+  /// [d] (независимо от того, локальный это DateTime или UTC) и строит из них
+  /// DateTime.utc(...) с нулевым временем. Это НЕ настоящая конвертация в UTC —
+  /// это стабильный "ключ дня", которым исторически помечается
+  /// lastCompletedDate (см. старую реализацию), поэтому здесь и в
+  /// [recomputeFromHistory] используется тот же трюк, чтобы значения совпадали
+  /// при сравнении.
+  DateTime _dayMarker(DateTime d) => DateTime.utc(d.year, d.month, d.day);
 
   /// Ключ дня вида YYYY-MM-DD из UTC-полуночи (для сравнения дней).
   String _key(DateTime utcMidnight) {
