@@ -36,6 +36,7 @@ import '../task_shape.dart';
 import 'day_timeline.dart' show dayItemsProvider;
 import 'plan_providers.dart';
 import 'recurrence_providers.dart';
+import 'recurrence_scope_dialog.dart';
 import 'task_detail_card.dart';
 import 'week_strip.dart' show selectedDayProvider;
 
@@ -1944,22 +1945,43 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
     // (или пока коммит явно не провалится — см. catch ниже).
     _pendingScheduledAt = newStart;
     try {
-      // Виртуальный повтор серии: материализуем этот день с новым временем
-      // (анкер получает EXDATE на дату), иначе updateItem по синтетическому id
-      // был бы no-op и перенос потерялся бы.
-      //
-      // TODO(B4): drag-перенос виртуального повтора сейчас всегда применяет
-      // «onlyThis» (materializeOccurrence). Добавить showRecurrenceScopeDialog
-      // здесь после того, как drag-конвейер станет async-safe (сейчас _commitDrag
-      // вызывается из _DragGestureHandler без await и без BuildContext для диалога).
-      // Корректный путь выбора области уже реализован в add_task_sheet._save().
+      // Виртуальный повтор серии: перенос времени всегда спрашивает область
+      // применения (as Google Calendar: «только это» / «это и далее» / «весь
+      // ряд») — тихая materializeOccurrence («onlyThis» без вопроса) теряет
+      // выбор пользователя. Тот же диалог и та же маршрутизация, что и в
+      // add_task_sheet._save() (B4).
       if (isVirtualOccurrenceId(widget.item.id)) {
-        await dao.materializeOccurrence(
-          anchorIdFromVirtual(widget.item.id),
-          dateFromVirtual(widget.item.id) ?? widget.day,
-          status: widget.item.status,
-          scheduledAt: newStart,
-        );
+        if (!mounted) {
+          _pendingScheduledAt = null;
+          return;
+        }
+        final scope = await showRecurrenceScopeDialog(context);
+        if (!mounted) return;
+        if (scope == null) {
+          // Отмена — реальный item не менялся, откатываем эфемерную позицию
+          // блока обратно на исходное (снятие settling вернёт baseTop/baseHeight).
+          _pendingScheduledAt = null;
+          _maybeClearSettling();
+          return;
+        }
+        final anchorId = anchorIdFromVirtual(widget.item.id);
+        final occDate = dateFromVirtual(widget.item.id) ?? widget.day;
+        switch (scope) {
+          case RecurrenceEditScope.onlyThis:
+            await dao.materializeOccurrence(
+              anchorId,
+              occDate,
+              status: widget.item.status,
+              scheduledAt: newStart,
+            );
+            break;
+          case RecurrenceEditScope.thisAndFuture:
+            await dao.rescheduleThisAndFuture(anchorId, occDate, newStart);
+            break;
+          case RecurrenceEditScope.wholeSeries:
+            await dao.rescheduleWholeSeries(anchorId, newStart);
+            break;
+        }
       } else {
         await dao.updateItem(
           widget.item.id,
@@ -2011,7 +2033,12 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
     // механизм, что и в _commitMove (_pendingDurationMinutes/_maybeClearSettling).
     _pendingDurationMinutes = newDuration;
     try {
-      // Виртуальный повтор серии: материализуем этот день с новой длительностью.
+      // Виртуальный повтор серии: материализуем этот день с новой
+      // длительностью. В отличие от _commitMove (перенос времени суток —
+      // всегда спрашивает область через showRecurrenceScopeDialog), ресайз
+      // остаётся «только этот день»: длительность блока — атрибут одного
+      // конкретного дня, а не время-суток всей серии, поэтому у
+      // rescheduleThisAndFuture/rescheduleWholeSeries нет для неё смысла.
       if (isVirtualOccurrenceId(widget.item.id)) {
         await dao.materializeOccurrence(
           anchorIdFromVirtual(widget.item.id),

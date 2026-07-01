@@ -214,6 +214,13 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
   /// Запрашивает использование за сегодня (с локальной полуночи до «сейчас»),
   /// конвертирует мс → минуты и агрегирует по категориям.
   ///
+  /// ВАЖНО: используем queryEvents() + реконструкцию из сырых событий, а НЕ
+  /// queryAndAggregateUsageStats() — последний отдаёт ВЕСЬ totalTimeInForeground
+  /// дневного бакета для любого пакета, чей бакет пересекается с окном
+  /// [midnight, now), без клиппинга. Сразу после полуночи это даёт утечку
+  /// вчерашнего использования в «сегодня» (баг ~8ч при реальном ~0). См.
+  /// [computeForegroundMinutesFromEvents] в screen_time_categories.dart.
+  ///
   /// Пользовательские оверрайды из [screenTimeOverridesProvider] применяются
   /// с наивысшим приоритетом (выше whitelist и android-категорий).
   ///
@@ -227,20 +234,26 @@ class ScreenTimeUsageNotifier extends StateNotifier<ScreenTimeUsageState> {
     final now = DateTime.now();
     final midnight = DateTime(now.year, now.month, now.day);
 
-    final perPackageStats =
-        await UsageStats.queryAndAggregateUsageStats(midnight, now);
+    final rawEvents = await UsageStats.queryEvents(midnight, now);
 
-    // packageName → минуты в foreground за сегодня.
-    // Используем округление вверх (ceiling): 1–59 сек = 1 мин, чтобы короткие сессии
-    // (например, игра 30 сек ночью) не терялись при floor-делении на 60000.
-    final rawPerPackageMinutes = <String, int>{};
-    perPackageStats.forEach((package, info) {
-      final ms = info.totalTimeInForegroundMs ?? 0;
-      if (ms <= 0) return;
-      // ceil: 1..59 999 мс → 1 мин; 60 000 мс → 1 мин; 60 001 мс → 2 мин.
-      final minutes = (ms / 60000).ceil();
-      rawPerPackageMinutes[package] = minutes;
-    });
+    // Конвертируем плагинные события (строковые поля) в плоские записи для
+    // чистой функции — она ничего не знает о плагине и легко тестируется.
+    final eventRecords = <UsageEventRecord>[];
+    for (final event in rawEvents) {
+      final package = event.packageName;
+      final type = event.eventTypeValue;
+      final tsMs = event.timeStampDate?.millisecondsSinceEpoch;
+      if (package == null || type == null || tsMs == null) continue;
+      eventRecords.add(
+        UsageEventRecord(package: package, type: type, timestampMs: tsMs),
+      );
+    }
+
+    // packageName → минуты в foreground за сегодня, уже клипованные к
+    // [midnight, now] (ceil: 1–59 сек = 1 мин, чтобы короткие сессии,
+    // например игра 30 сек ночью, не терялись при floor-делении на 60000).
+    final rawPerPackageMinutes =
+        computeForegroundMinutesFromEvents(eventRecords, midnight, now);
 
     // Убираем лаунчер/системный UI (#8) — Android считает их «в фокусе»
     // почти весь день, что без фильтрации завышает «Всего сегодня» в разы,

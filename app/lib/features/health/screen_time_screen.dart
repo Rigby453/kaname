@@ -241,6 +241,57 @@ class _HairlineCard extends StatelessWidget {
   }
 }
 
+/// Заметная «таблетка» с лимитом категории (#2b — регрессия: лимит терялся
+/// среди приглушённого inline-текста). Единый визуальный язык для лимита в
+/// Section 1 (настройка лимитов, до данных использования) и Section 2
+/// (использование, с прогресс-баром): border + лёгкая заливка вместо голого
+/// текста, ember при превышении лимита.
+class _LimitBadge extends StatelessWidget {
+  const _LimitBadge({required this.label, this.isOver = false});
+
+  final String label;
+  final bool isOver;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>()!;
+    final color = isOver ? ext.ember : ext.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: (isOver ? ext.ember : ext.border)
+            .withValues(alpha: isOver ? 0.14 : 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isOver ? ext.ember : ext.border, width: 0.5),
+      ),
+      // Row(mainAxisSize.min) + Flexible: делает таблетку shrink-safe саму по
+      // себе (не только полагаясь на внешний Flexible родителя) — на 320dp /
+      // textScale 2.0 длинная подпись («90 / 60 min/day») обрезается
+      // многоточием вместо overflow ("BOTTOM/RIGHT OVERFLOWED BY N PIXELS").
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              style: textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              maxLines: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Строка лимита категории
 // ---------------------------------------------------------------------------
@@ -262,10 +313,7 @@ class _CategoryLimitRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-
-    final subtitle = currentMinutes == 0
-        ? context.s('screentime.no_limit')
-        : _fmtDuration(context, currentMinutes);
+    final hasLimit = currentMinutes > 0;
 
     return InkWell(
       onTap: () => _showLimitSheet(context),
@@ -285,17 +333,21 @@ class _CategoryLimitRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            // Flexible + ellipsis: защита от overflow на 320dp / textScale 1.5
+            // Флексируемая обёртка: защита от overflow на 320dp / textScale 1.5.
+            // Лимит > 0 → заметная таблетка (badge), а не приглушённый текст
+            // (регрессия #2b — раньше лимит визуально терялся среди текста).
             Flexible(
-              child: Text(
-                subtitle,
-                style: textTheme.bodySmall?.copyWith(
-                  color: currentMinutes == 0 ? ext.textFaint : ext.textMuted,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
+              child: hasLimit
+                  ? _LimitBadge(label: _fmtDuration(context, currentMinutes))
+                  : Text(
+                      context.s('screentime.no_limit'),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: ext.textFaint,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
             ),
             const SizedBox(width: 8),
             Icon(PhosphorIcons.caretRight(), size: 16, color: ext.textFaint),
@@ -501,13 +553,26 @@ class _TotalTodayRow extends StatelessWidget {
             child: Text(
               context.s('screentime.total_today'),
               style: textTheme.bodyLarge,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
-          Text(
-            _fmtDuration(context, totalMinutes),
-            style: textTheme.bodySmall?.copyWith(
-              color: ext.textMuted,
-              fontFeatures: const [FontFeature.tabularFigures()],
+          const SizedBox(width: 8),
+          // Flexible: без него неограниченная natural-ширина этого текста при
+          // 320dp/textScale 2.0 сжимает Expanded(label) почти до нуля, и та
+          // не может перенестись у́же самого широкого слова — Row переполняется
+          // на доли пикселя (см. screen_time_usage_overflow_test.dart).
+          Flexible(
+            child: Text(
+              _fmtDuration(context, totalMinutes),
+              style: textTheme.bodySmall?.copyWith(
+                color: ext.textMuted,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              maxLines: 1,
+              textAlign: TextAlign.right,
             ),
           ),
         ],
@@ -597,20 +662,15 @@ class _UsageTile extends ConsumerWidget {
                   maxLines: 1,
                 ),
               ),
-              // Короткая подпись «used / limit» — только когда лимит задан.
+              // Заметная таблетка «used / limit» — только когда лимит задан.
+              // #2b: раньше это был приглушённый inline-текст, визуально
+              // сливавшийся с остальной строкой — теперь всегда отдельная,
+              // явно видимая badge (ember при превышении).
               if (compactSubtitle != null) ...[
                 const SizedBox(width: 8),
                 // Flexible + ellipsis: защита от overflow на 320dp / textScale 1.5
                 Flexible(
-                  child: Text(
-                    compactSubtitle,
-                    style: textTheme.bodySmall?.copyWith(
-                      color: isOver ? ext.ember : ext.textMuted,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
+                  child: _LimitBadge(label: compactSubtitle, isOver: isOver),
                 ),
               ],
             ],

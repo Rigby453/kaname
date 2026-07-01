@@ -216,4 +216,175 @@ void main() {
       expect(androidCategoryToOurCategory(99), isNull);
     });
   });
+
+  group(
+      'computeForegroundMinutesFromEvents (fix «~8ч сразу после полуночи»)',
+      () {
+    test('пустой список событий → пустая карта', () {
+      final start = DateTime(2026, 7, 2, 0, 0);
+      final end = DateTime(2026, 7, 2, 12, 0);
+      expect(computeForegroundMinutesFromEvents([], start, end), isEmpty);
+    });
+
+    test('(a) foreground 09:00–09:30 внутри дня → 30 мин', () {
+      final start = DateTime(2026, 7, 2, 0, 0);
+      final end = DateTime(2026, 7, 2, 23, 0);
+      final events = [
+        UsageEventRecord(
+          package: 'com.instagram.android',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 2, 9, 0).millisecondsSinceEpoch,
+        ),
+        UsageEventRecord(
+          package: 'com.instagram.android',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 9, 30).millisecondsSinceEpoch,
+        ),
+      ];
+      final result = computeForegroundMinutesFromEvents(events, start, end);
+      expect(result['com.instagram.android'], 30);
+    });
+
+    test(
+        '(b) пара событий, охватывающая полночь — до [start] время не '
+        'учитывается (репро бага ~8ч)', () {
+      final midnight = DateTime(2026, 7, 2, 0, 0);
+      final now = DateTime(2026, 7, 2, 1, 0);
+      final events = [
+        // Foreground начался ВЧЕРА в 23:00 — до границы окна.
+        UsageEventRecord(
+          package: 'com.google.android.youtube',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 1, 23, 0).millisecondsSinceEpoch,
+        ),
+        // Background — сегодня в 00:30, внутри окна.
+        UsageEventRecord(
+          package: 'com.google.android.youtube',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 0, 30).millisecondsSinceEpoch,
+        ),
+      ];
+      final result =
+          computeForegroundMinutesFromEvents(events, midnight, now);
+      // Должно быть только midnight..00:30 = 30 мин, а НЕ 23:00..00:30 = 90 мин.
+      expect(result['com.google.android.youtube'], 30);
+    });
+
+    test(
+        '(b2) одиночное background-событие без парного foreground — сессия '
+        'считается с [start], а не теряется целиком', () {
+      final midnight = DateTime(2026, 7, 2, 0, 0);
+      final now = DateTime(2026, 7, 2, 1, 0);
+      final events = [
+        UsageEventRecord(
+          package: 'com.whatsapp',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 0, 20).millisecondsSinceEpoch,
+        ),
+      ];
+      final result =
+          computeForegroundMinutesFromEvents(events, midnight, now);
+      expect(result['com.whatsapp'], 20);
+    });
+
+    test('(c) незакрытый foreground (пакет всё ещё открыт) клипуется к now',
+        () {
+      final midnight = DateTime(2026, 7, 2, 0, 0);
+      final now = DateTime(2026, 7, 2, 10, 15);
+      final events = [
+        UsageEventRecord(
+          package: 'org.telegram.messenger',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 2, 10, 0).millisecondsSinceEpoch,
+        ),
+      ];
+      final result =
+          computeForegroundMinutesFromEvents(events, midnight, now);
+      expect(result['org.telegram.messenger'], 15);
+    });
+
+    test('несколько сессий одного пакета за день суммируются', () {
+      final midnight = DateTime(2026, 7, 2, 0, 0);
+      final now = DateTime(2026, 7, 2, 23, 0);
+      final events = [
+        UsageEventRecord(
+          package: 'com.discord',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 2, 8, 0).millisecondsSinceEpoch,
+        ),
+        UsageEventRecord(
+          package: 'com.discord',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 8, 10).millisecondsSinceEpoch,
+        ),
+        UsageEventRecord(
+          package: 'com.discord',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 2, 20, 0).millisecondsSinceEpoch,
+        ),
+        UsageEventRecord(
+          package: 'com.discord',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 20, 5).millisecondsSinceEpoch,
+        ),
+      ];
+      final result =
+          computeForegroundMinutesFromEvents(events, midnight, now);
+      expect(result['com.discord'], 15); // 10 + 5 мин
+    });
+
+    test('короткая сессия <60с всё равно округляется вверх до 1 мин', () {
+      final midnight = DateTime(2026, 7, 2, 0, 0);
+      final now = DateTime(2026, 7, 2, 23, 0);
+      final events = [
+        UsageEventRecord(
+          package: 'com.king.candycrushsaga',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 2, 3, 0, 0).millisecondsSinceEpoch,
+        ),
+        UsageEventRecord(
+          package: 'com.king.candycrushsaga',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 3, 0, 30).millisecondsSinceEpoch,
+        ),
+      ];
+      final result =
+          computeForegroundMinutesFromEvents(events, midnight, now);
+      expect(result['com.king.candycrushsaga'], 1);
+    });
+
+    test('несортированные события обрабатываются корректно (сортируются внутри)',
+        () {
+      final midnight = DateTime(2026, 7, 2, 0, 0);
+      final now = DateTime(2026, 7, 2, 23, 0);
+      // BACKGROUND раньше FOREGROUND в списке — но по времени наоборот.
+      final events = [
+        UsageEventRecord(
+          package: 'com.viber.voip',
+          type: kEventTypeBackground,
+          timestampMs: DateTime(2026, 7, 2, 14, 20).millisecondsSinceEpoch,
+        ),
+        UsageEventRecord(
+          package: 'com.viber.voip',
+          type: kEventTypeForeground,
+          timestampMs: DateTime(2026, 7, 2, 14, 0).millisecondsSinceEpoch,
+        ),
+      ];
+      final result =
+          computeForegroundMinutesFromEvents(events, midnight, now);
+      expect(result['com.viber.voip'], 20);
+    });
+
+    test('end <= start → пустая карта (защита от невалидного окна)', () {
+      final t = DateTime(2026, 7, 2, 10, 0);
+      final events = [
+        UsageEventRecord(
+          package: 'com.instagram.android',
+          type: kEventTypeForeground,
+          timestampMs: t.millisecondsSinceEpoch,
+        ),
+      ];
+      expect(computeForegroundMinutesFromEvents(events, t, t), isEmpty);
+    });
+  });
 }

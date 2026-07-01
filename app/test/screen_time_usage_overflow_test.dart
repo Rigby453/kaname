@@ -1,16 +1,23 @@
 // Виджет-тест ScreenTimeScreen — регрессия overflow в карточке использования
-// БЕЗ установленного лимита (#7).
+// БЕЗ установленного лимита (#7) И с установленным лимитом / limit-badge (#2b).
 //
-// До фикса: в _UsageTile (screen_time_screen.dart) подпись «Used today:
+// До фикса #7: в _UsageTile (screen_time_screen.dart) подпись «Used today:
 // N min/day» (длиннее, чем компактный формат «N / M min/day» для категорий
 // С лимитом) делила строку с Expanded(categoryName) 50/50 по flex и
 // обрезалась многоточием посередине слова («Использовано сего…ю»), хотя у
 // карточки в целом было достаточно ширины. Фикс: без лимита подпись
 // переносится на отдельную полноширинную строку под названием категории.
 //
+// #2b: лимит должен быть виден отдельной заметной таблеткой (_LimitBadge) и
+// в Section 1 (настройка лимитов), и в Section 2 (использование) — в т.ч. при
+// превышении лимита (ember). Проверяем, что таблетка не переполняет строку
+// на 320px / textScale 2.0.
+//
 // #8 (неверный «Всего сегодня») покрыт юнит-тестами агрегации
 // (filterTrackedPackages) в screen_time_categories_test.dart — не дублируется
 // здесь, так как требует только чистых функций без виджетов.
+
+import 'dart:convert';
 
 import 'package:app/core/theme/app_theme.dart';
 import 'package:app/core/theme/theme_provider.dart'
@@ -58,12 +65,41 @@ const _grantedNoLimitState = ScreenTimeUsageState(
   },
 );
 
+/// Использование с лимитами по всем категориям: 'social' — над лимитом
+/// (ember badge), 'video' — под лимитом (обычная badge), остальные тоже с
+/// лимитом, чтобы проверить badge во всех плитках сразу.
+const _grantedWithLimitState = ScreenTimeUsageState(
+  permission: UsagePermissionStatus.granted,
+  usedMinutes: {
+    'social': 90, // over limit (лимит 60 ниже)
+    'video': 20,
+    'games': 12,
+    'browsing': 8,
+    'messaging': 5,
+    'other': 3,
+  },
+  perPackageMinutes: {
+    'com.instagram.android': 90,
+    'com.google.android.youtube': 20,
+  },
+  perPackageCategories: {
+    'com.instagram.android': 'social',
+    'com.google.android.youtube': 'video',
+  },
+);
+
 Future<void> _pump(
   WidgetTester tester, {
   required double width,
   required double textScale,
+  Map<String, int>? limits,
+  ScreenTimeUsageState usageState = _grantedNoLimitState,
 }) async {
-  SharedPreferences.setMockInitialValues({}); // нет сохранённых лимитов → 0 = no limit
+  SharedPreferences.setMockInitialValues(
+    limits == null
+        ? {} // нет сохранённых лимитов → 0 = no limit
+        : {'screen_time_limits': jsonEncode(limits)},
+  );
   final prefs = await SharedPreferences.getInstance();
 
   await tester.binding.setSurfaceSize(Size(width, 900));
@@ -74,7 +110,7 @@ Future<void> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         screenTimeUsageProvider
-            .overrideWith((ref) => _FakeUsageNotifier(_grantedNoLimitState)),
+            .overrideWith((ref) => _FakeUsageNotifier(usageState)),
       ],
       child: MaterialApp(
         theme: AppTheme.focusTheme(),
@@ -117,6 +153,58 @@ void main() {
       // НЕ "Used today: 65 min/d…" / "Used today: сего…ю" и т.п.
       expect(find.text('Used today: 65 min/day'), findsOneWidget);
       expect(find.text('Used today: 40 min/day'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('ScreenTimeScreen — limit badge visible (#2b regression)', () {
+    final limits = {
+      'social': 60,
+      'video': 45,
+      'games': 30,
+      'browsing': 30,
+      'messaging': 30,
+    };
+
+    testWidgets('320px, textScale 1.0: лимит-badge виден, нет overflow',
+        (tester) async {
+      await _pump(
+        tester,
+        width: 320,
+        textScale: 1.0,
+        limits: limits,
+        usageState: _grantedWithLimitState,
+      );
+      // Section 2 (Usage data): «used / limit min/day» видна для over-limit
+      // (social) и под-лимитом (video) категорий.
+      expect(find.text('90 / 60 min/day'), findsOneWidget);
+      expect(find.text('20 / 45 min/day'), findsOneWidget);
+      // Section 1 (Set daily limits): лимит виден до данных использования —
+      // используем тот же локализованный формат длительности, что и badge.
+      expect(find.text('1h'), findsOneWidget); // 60 min → social limit (fmt_h_only)
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('320px, textScale 2.0 (максимум по §A): нет overflow',
+        (tester) async {
+      await _pump(
+        tester,
+        width: 320,
+        textScale: 2.0,
+        limits: limits,
+        usageState: _grantedWithLimitState,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('360px, textScale 1.5: нет overflow', (tester) async {
+      await _pump(
+        tester,
+        width: 360,
+        textScale: 1.5,
+        limits: limits,
+        usageState: _grantedWithLimitState,
+      );
       expect(tester.takeException(), isNull);
     });
   });

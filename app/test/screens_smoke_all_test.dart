@@ -24,6 +24,8 @@ import 'package:app/core/theme/app_theme.dart';
 import 'package:app/core/branding.dart' show kAppWordmark;
 import 'package:app/core/theme/theme_provider.dart'
     show sharedPreferencesProvider;
+import 'package:app/core/settings/feature_modes_provider.dart'
+    show waterModeProvider, WaterModeNotifier;
 import 'package:app/services/api/api_client.dart'
     show ApiClient, apiClientProvider;
 import 'package:app/services/notifications/notification_service.dart'
@@ -165,6 +167,20 @@ class _NoopNotificationService extends NotificationService {
 
   @override
   Future<void> refreshTimezone() async {}
+}
+
+// ---------------------------------------------------------------------------
+// Water mode форсированно включён (HealthScreen-тест): waterModeProvider
+// (core/settings/feature_modes_provider.dart, kWaterModeKey) по умолчанию
+// false — карточка воды (и её Phosphor drop() иконка) опциональный модуль
+// и полностью скрыта, пока пользователь не включит его в Profile → Behavior.
+// build() тут переопределён напрямую (а не через prefs-ключ), чтобы состояние
+// было true с самого первого чтения провайдера, независимо от мок-prefs.
+// ---------------------------------------------------------------------------
+
+class _WaterModeOnNotifier extends WaterModeNotifier {
+  @override
+  bool build() => true;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,7 +379,15 @@ void main() {
 
   group('HealthScreen', () {
     testWidgets('renders hub without crashing', (tester) async {
-      await tester.pumpWidget(harness(const HealthScreen()));
+      await tester.pumpWidget(harness(
+        const HealthScreen(),
+        // Water — опциональный модуль (дефолт false, см. §Optional modules
+        // в app/CLAUDE.md); форсируем его включённым только для этого теста,
+        // иначе карточка воды (и проверяемая ниже иконка) не рендерится.
+        extraOverrides: [
+          waterModeProvider.overrideWith(() => _WaterModeOnNotifier()),
+        ],
+      ));
       await settle(tester);
 
       expect(find.byType(HealthScreen), findsOneWidget);

@@ -18,6 +18,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:intl/intl.dart';
 
 import '../../core/branding.dart';
+import '../../core/config/app_flags.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../mascot/kai_mascot.dart';
@@ -345,18 +346,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           // ── Поддержка ────────────────────────────────────────────────────
           _SectionLabel(context.s('profile.section_support')),
-          _NavRow(
-            icon: Icon(PhosphorIcons.star(), size: 20, color: ext.textMuted),
-            title: context.s('profile.rate_app'),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.s('profile.rate_coming_soon')),
-                ),
-              );
-            },
-          ),
-          const _Hairline(),
+          // Store-only feature — скрыто до публикации (kAppPublished).
+          if (kAppPublished) ...[
+            _NavRow(
+              icon: Icon(PhosphorIcons.star(), size: 20, color: ext.textMuted),
+              title: context.s('profile.rate_app'),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(context.s('profile.rate_coming_soon')),
+                  ),
+                );
+              },
+            ),
+            const _Hairline(),
+          ],
           _NavRow(
             icon: Icon(PhosphorIcons.chatText(), size: 20, color: ext.textMuted),
             title: context.s('profile.send_feedback'),

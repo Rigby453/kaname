@@ -1120,6 +1120,20 @@ const Map<String, Map<String, String>> planDiaryStrings = {
     'ja': 'インサイト',
     'ko': '인사이트',
   },
+  // Diary — имя фичи для premium-upsell toast (showPremiumUpsell)
+  'diary.ai_insights_feature_name': {
+    'en': 'AI insights',
+    'ru': 'ИИ-инсайты',
+    'de': 'KI-Einblicke',
+    'fr': 'Aperçus IA',
+    'it': 'Insight IA',
+    'pt': 'Insights IA',
+    'es': 'Insights IA',
+    'id': 'Wawasan AI',
+    'hi': 'AI इनसाइट्स',
+    'ja': 'AIインサイト',
+    'ko': 'AI 인사이트',
+  },
 
   // Diary — карточка «план vs факт»
   'diary.pvf_title': {

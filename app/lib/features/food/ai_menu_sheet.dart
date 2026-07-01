@@ -31,7 +31,7 @@ Future<void> showAiMenuSheet(BuildContext context, WidgetRef ref) async {
   final premium = await ref.read(isPremiumProvider.future);
   if (!context.mounted) return;
   if (!premium) {
-    showPremiumUpsell(context, 'AI menu builder');
+    showPremiumUpsell(context, context.s('food.ai_menu_feature_name'));
     return;
   }
 

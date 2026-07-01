@@ -212,7 +212,7 @@ class _MorningReviewSheetState extends ConsumerState<_MorningReviewSheet> {
     final premium = await ref.read(isPremiumProvider.future);
     if (!mounted) return;
     if (!premium) {
-      showPremiumUpsell(context, 'AI plans');
+      showPremiumUpsell(context, context.s('today.ai_plans'));
       return;
     }
     setState(() => _aiLoading = true);

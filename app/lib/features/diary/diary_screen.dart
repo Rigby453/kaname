@@ -138,7 +138,7 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
     final premium = await ref.read(isPremiumProvider.future);
     if (!mounted) return;
     if (!premium) {
-      showPremiumUpsell(context, 'AI insights');
+      showPremiumUpsell(context, context.s('diary.ai_insights_feature_name'));
       return;
     }
     setState(() => _insightLoading = true);

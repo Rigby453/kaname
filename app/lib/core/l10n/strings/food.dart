@@ -1266,6 +1266,20 @@ const Map<String, Map<String, String>> foodStrings = {
     'ja': '今日のAIメニュー',
     'ko': '오늘의 AI 메뉴',
   },
+  // Имя фичи для premium-upsell toast (showPremiumUpsell) в showAiMenuSheet
+  'food.ai_menu_feature_name': {
+    'en': 'AI menu builder',
+    'ru': 'ИИ-конструктор меню',
+    'de': 'KI-Menü-Ersteller',
+    'fr': 'Générateur de menu IA',
+    'it': 'Generatore di menu IA',
+    'pt': 'Montador de cardápio IA',
+    'es': 'Generador de menú IA',
+    'id': 'Penyusun menu AI',
+    'hi': 'AI मेन्यू बिल्डर',
+    'ja': 'AIメニュービルダー',
+    'ko': 'AI 메뉴 빌더',
+  },
   'food.ai_menu_btn': {
     'en': 'Build my day with AI (Premium)',
     'ru': 'Собрать день с ИИ (Премиум)',

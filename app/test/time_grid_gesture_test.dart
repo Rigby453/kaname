@@ -10,11 +10,16 @@
 // внутри тела/ручки). DAO-результат читаем через runAsync после settle, как в
 // interaction_smoke_test.dart.
 
+import 'package:app/core/database/daos/items_dao.dart';
 import 'package:app/core/database/database.dart';
 import 'package:app/core/database/database_providers.dart';
 import 'package:app/core/theme/app_theme.dart';
 import 'package:app/core/theme/theme_provider.dart'
     show sharedPreferencesProvider;
+import 'package:app/features/plan/recurrence.dart'
+    show RecurrenceRule, RecurFreq;
+import 'package:app/features/plan/widgets/recurrence_providers.dart'
+    show virtualDateKey;
 import 'package:app/features/plan/widgets/task_detail_card.dart'
     show TaskDetailCard;
 import 'package:app/features/plan/widgets/time_grid.dart';
@@ -95,6 +100,34 @@ void main() {
     return (db.select(db.itemsTable)..where((t) => t.id.equals(id))).getSingle();
   }
 
+  // Вставляет якорь повторяющейся серии (recurrenceRule != null) на день [day]
+  // в [hour]:[minute] — для тестов B4 (диалог выбора области при drag).
+  Future<void> insertSeriesAnchor({
+    required String id,
+    required int hour,
+    required int minute,
+    required int durationMinutes,
+    String rule = 'FREQ=DAILY',
+  }) async {
+    final at = DateTime(day.year, day.month, day.day, hour, minute);
+    await db.into(db.itemsTable).insert(
+          ItemsTableCompanion(
+            id: Value(id),
+            userId: const Value('local'),
+            title: const Value('Recurring task'),
+            type: const Value('task'),
+            priority: const Value('medium'),
+            status: const Value('pending'),
+            scheduledAt: Value(at),
+            durationMinutes: Value(durationMinutes),
+            isProtected: const Value(false),
+            recurrenceRule: Value(rule),
+            createdAt: Value(at),
+            updatedAt: Value(at),
+          ),
+        );
+  }
+
   Widget harness() => ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
@@ -103,6 +136,9 @@ void main() {
         ],
         child: MaterialApp(
           theme: _testTheme(),
+          // Локаль фиксируем en — детерминированные строки диалога выбора
+          // области (showRecurrenceScopeDialog) для B4-тестов ниже.
+          locale: const Locale('en'),
           // disableAnimations: лифт-анимация блока (AnimatedScale 1.0↔1.03) через
           // effectiveDuration становится мгновенной (Duration.zero) — без неё в
           // тесте оставался pending Timer при dispose. Жесты (tap/long-press/
@@ -186,6 +222,12 @@ void main() {
       // Длительность не тронута переносом.
       expect(after.durationMinutes, 180);
 
+      // Дренируем 800мс подстраховочный Future.delayed из _commitMove — иначе
+      // «A Timer is still pending» на teardown (см. комментарий у него в
+      // time_grid.dart).
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
       await unmountAndFlush(tester);
     },
   );
@@ -252,6 +294,10 @@ void main() {
       expect(after.scheduledAt.hour, 9);
       expect(after.scheduledAt.minute, 0);
 
+      // Дренируем 800мс подстраховочный Future.delayed из _commitResize.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
       await unmountAndFlush(tester);
     },
   );
@@ -283,6 +329,10 @@ void main() {
       expect(after.durationMinutes, 120,
           reason: 'верхний край теперь тело — перенос, длительность цела');
       expect(after.scheduledAt.hour, 10, reason: 'блок переехал на час вниз');
+
+      // Дренируем 800мс подстраховочный Future.delayed из _commitMove.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
 
       await unmountAndFlush(tester);
     },
@@ -372,6 +422,10 @@ void main() {
             'мышиный drag без удержания сдвинул блок минимум на час вниз',
       );
       expect(after.durationMinutes, 180);
+
+      // Дренируем 800мс подстраховочный Future.delayed из _commitMove.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
 
       await unmountAndFlush(tester);
     },
@@ -493,6 +547,10 @@ void main() {
       expect(after.scheduledAt.hour, 8, reason: 'начало не тронуто (нет верхней ручки)');
       expect(after.scheduledAt.minute, 0);
 
+      // Дренируем 800мс подстраховочный Future.delayed из _commitResize.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
       await unmountAndFlush(tester);
     },
   );
@@ -533,6 +591,208 @@ void main() {
           reason:
               'мышиный ресайз короткого блока сработал с первого касания, '
               'без предварительного выбора');
+
+      // Дренируем 800мс подстраховочный Future.delayed из _commitResize.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // B4 — drag виртуального повтора серии ВСЕГДА спрашивает область применения
+  // (showRecurrenceScopeDialog), а не тихо материализует «только этот день».
+  // ---------------------------------------------------------------------------
+
+  // Тянет блок [id] вниз на один час тач-жестом (long-press-подхват + перенос,
+  // как в первом тесте файла) и отдаёт управление тестеру ПОСЛЕ up(), давая
+  // showRecurrenceScopeDialog (bottom sheet) успеть построиться.
+  Future<void> dragBlockDownOneHour(WidgetTester tester, String blockId) async {
+    final blockBox = tester.getRect(find.byKey(ValueKey(blockId)));
+    final grabCenter = blockBox.center;
+    final gesture = await tester.startGesture(grabCenter);
+    await tester.pump(_kBlockPickupDelay + const Duration(milliseconds: 50));
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(0, hourHeight / 4));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  // Дожидается завершения async-коммита DAO после выбора опции в листе.
+  //
+  // ВАЖНО: onlyThis/thisAndFuture/wholeSeries коммитят через DAO, после чего
+  // _commitMove безусловно взводит 800мс подстраховочный Future.delayed (см.
+  // комментарий у него в time_grid.dart) — для материализованных/расщеплённых
+  // строк это НОВЫЙ id, поэтому didUpdateWidget старого блока никогда не
+  // увидит совпадающее scheduledAt и не снимет ожидание раньше. Дожидаемся
+  // (пампим) эти 800мс здесь же, иначе таймер остаётся pending на teardown
+  // виджет-дерева («A Timer is still pending…») — это НЕ регрессия наших
+  // изменений, а тот же паттерн, что и в обычных (нерекуррентных) тестах
+  // переноса/ресайза выше по файлу.
+  Future<void> settleAfterScopeChoice(WidgetTester tester) async {
+    await tester.pump();
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'drag виртуального повтора серии показывает диалог выбора области '
+    '(only this / this+future / whole series)',
+    (tester) async {
+      await insertSeriesAnchor(
+          id: 'series-a', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final virtualId = 'series-a@${virtualDateKey(day)}';
+      await dragBlockDownOneHour(tester, virtualId);
+
+      expect(find.text('Only this event'), findsOneWidget);
+      expect(find.text('This and following events'), findsOneWidget);
+      expect(find.text('All events'), findsOneWidget);
+
+      // Закрываем лист отменой, чтобы не оставлять pending-состояние теста.
+      await tester.tap(find.text('Cancel'));
+      await settleAfterScopeChoice(tester);
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'выбор «Only this event» материализует ТОЛЬКО этот день (anchor остаётся '
+    'серией, дата уходит в EXDATE)',
+    (tester) async {
+      await insertSeriesAnchor(
+          id: 'series-only', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final virtualId = 'series-only@${virtualDateKey(day)}';
+      await dragBlockDownOneHour(tester, virtualId);
+
+      await tester.tap(find.text('Only this event'));
+      await settleAfterScopeChoice(tester);
+
+      // Anchor остаётся серией (recurrenceRule не тронут кроме EXDATE).
+      final anchor = await readTask('series-only');
+      final rule = RecurrenceRule.parse(anchor.recurrenceRule)!;
+      expect(rule.exDates.contains(DateTime(day.year, day.month, day.day)),
+          isTrue,
+          reason: 'день материализации уходит в EXDATE якоря');
+      expect(anchor.scheduledAt.hour, 9,
+          reason: 'время якоря (шаблона серии) не меняется при onlyThis');
+
+      // Новая concrete-строка на [day] с перенесённым временем (10:00).
+      final dao = ItemsDao(db);
+      final rows = await dao.itemsInRange(
+        day,
+        day.add(const Duration(days: 1)),
+      );
+      final concrete =
+          rows.where((r) => r.recurrenceRule == null).toList();
+      expect(concrete, hasLength(1));
+      expect(concrete.single.scheduledAt.hour, 10,
+          reason: 'onlyThis переносит время НОВОЙ concrete-строки');
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'выбор «This and following events» расщепляет серию: старый anchor '
+    'получает UNTIL, новый anchor несёт перенесённое время',
+    (tester) async {
+      await insertSeriesAnchor(
+          id: 'series-future', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final virtualId = 'series-future@${virtualDateKey(day)}';
+      await dragBlockDownOneHour(tester, virtualId);
+
+      await tester.tap(find.text('This and following events'));
+      await settleAfterScopeChoice(tester);
+
+      // Старый якорь: UNTIL = day − 1 (серия остановлена ДО дня переноса).
+      final oldAnchor = await readTask('series-future');
+      final oldRule = RecurrenceRule.parse(oldAnchor.recurrenceRule)!;
+      expect(oldRule.until, DateTime(day.year, day.month, day.day - 1));
+
+      // Новый якорь (другой id, тоже recurrenceRule != null) — время суток
+      // перенесено на 10:00, дата совпадает с днём разреза.
+      final allAnchors = await (db.select(db.itemsTable)
+            ..where((t) => t.recurrenceRule.isNotNull()))
+          .get();
+      final newAnchors =
+          allAnchors.where((a) => a.id != 'series-future').toList();
+      expect(newAnchors, hasLength(1));
+      expect(newAnchors.single.scheduledAt.hour, 10);
+      expect(newAnchors.single.scheduledAt.day, day.day);
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'выбор «All events» переносит время СУТОК всей серии (тот же anchor id)',
+    (tester) async {
+      await insertSeriesAnchor(
+          id: 'series-whole', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final virtualId = 'series-whole@${virtualDateKey(day)}';
+      await dragBlockDownOneHour(tester, virtualId);
+
+      await tester.tap(find.text('All events'));
+      await settleAfterScopeChoice(tester);
+
+      // Тот же anchor id — только время суток поменялось.
+      final anchor = await readTask('series-whole');
+      expect(anchor.scheduledAt.hour, 10);
+      expect(anchor.scheduledAt.minute, 0);
+      final rule = RecurrenceRule.parse(anchor.recurrenceRule)!;
+      expect(rule.freq, RecurFreq.daily);
+
+      await unmountAndFlush(tester);
+    },
+  );
+
+  testWidgets(
+    'Cancel в диалоге НЕ сохраняет перенос — anchor и БД не тронуты',
+    (tester) async {
+      await insertSeriesAnchor(
+          id: 'series-cancel', hour: 9, minute: 0, durationMinutes: 60);
+      await pumpGrid(tester);
+
+      final virtualId = 'series-cancel@${virtualDateKey(day)}';
+      await dragBlockDownOneHour(tester, virtualId);
+
+      await tester.tap(find.text('Cancel'));
+      await settleAfterScopeChoice(tester);
+
+      // Anchor полностью не тронут: то же время, нет EXDATE, нет UNTIL.
+      final anchor = await readTask('series-cancel');
+      expect(anchor.scheduledAt.hour, 9);
+      expect(anchor.scheduledAt.minute, 0);
+      final rule = RecurrenceRule.parse(anchor.recurrenceRule)!;
+      expect(rule.exDates, isEmpty);
+      expect(rule.until, isNull);
+
+      // Никакая concrete-строка/новый anchor не созданы.
+      final dao = ItemsDao(db);
+      final rows = await dao.itemsInRange(
+        day,
+        day.add(const Duration(days: 1)),
+      );
+      expect(rows.where((r) => r.recurrenceRule == null), isEmpty);
+      final allAnchors = await (db.select(db.itemsTable)
+            ..where((t) => t.recurrenceRule.isNotNull()))
+          .get();
+      expect(allAnchors, hasLength(1),
+          reason: 'отмена не создаёт новый якорь (this+future)');
 
       await unmountAndFlush(tester);
     },

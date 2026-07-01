@@ -248,3 +248,123 @@ String resolvePackageCategory(
       androidCategoryOverrides[packageName] ??
       'other';
 }
+
+// ---------------------------------------------------------------------------
+// Реконструкция foreground-времени из сырых событий (fix «~8ч сразу после
+// полуночи»)
+// ---------------------------------------------------------------------------
+//
+// UsageStats.queryAndAggregateUsageStats(midnight, now) возвращает ЦЕЛИКОМ
+// totalTimeInForeground дневного (INTERVAL_DAILY) бакета для ЛЮБОГО пакета,
+// чей бакет пересекается с окном [midnight, now) — БЕЗ клиппинга к границам
+// запроса. Сразу после полуночи всё ещё «текущий» дневной бакет хранит
+// вчерашнее использование, и оно целиком утекает в «сегодня» (баг ~8ч сразу
+// после полуночи при реальном использовании ~0). Чиним, реконструируя
+// foreground-интервалы из сырых событий UsageStats.queryEvents(), пары
+// FOREGROUND→BACKGROUND, с явным клиппингом к [start, end].
+
+/// Android `UsageEvents.Event` FOREGROUND (`MOVE_TO_FOREGROUND` /
+/// `ACTIVITY_RESUMED`).
+const int kEventTypeForeground = 1;
+
+/// Android `UsageEvents.Event` BACKGROUND (`MOVE_TO_BACKGROUND` /
+/// `ACTIVITY_PAUSED`).
+const int kEventTypeBackground = 2;
+
+/// Плоское (без зависимости от плагина) представление одного usage-события —
+/// нужно, чтобы логика склейки/клиппинга ниже была чистой функцией и легко
+/// тестировалась без usage_stats и платформенных каналов.
+///
+/// [type] — см. [kEventTypeForeground] / [kEventTypeBackground]. Другие типы
+/// событий [computeForegroundMinutesFromEvents] игнорирует.
+class UsageEventRecord {
+  const UsageEventRecord({
+    required this.package,
+    required this.type,
+    required this.timestampMs,
+  });
+
+  /// Имя пакета (packageName).
+  final String package;
+
+  /// Тип события — Android `UsageEvents.Event` integer constant.
+  final int type;
+
+  /// Момент события, epoch-миллисекунды.
+  final int timestampMs;
+}
+
+/// Реконструирует минуты в foreground по пакетам за интервал [start, end) из
+/// сырых событий (см. блок выше — зачем это нужно вместо агрегированных
+/// дневных бакетов).
+///
+/// Логика: сортируем события по времени, пары FOREGROUND→BACKGROUND
+/// суммируем как длительность сессии, КЛИПОВАННУЮ к [start, end]:
+///  - сессия целиком внутри окна — считается полностью;
+///  - сессия, начавшаяся ДО [start] (FOREGROUND до границы, включая случай,
+///    когда в списке событий вообще нет FOREGROUND — сессия открылась ещё
+///    раньше окна выборки), считается только с [start] — время ДО start не
+///    утекает;
+///  - пакет, всё ещё в foreground на момент [end] (незакрытый FOREGROUND без
+///    парного BACKGROUND), считается до [end] (обычно «сейчас»).
+///
+/// Возвращает `packageName → minutes` (ceiling мс/60000 — короткая сессия
+/// <60с всё равно считается за 1 мин, как и раньше при работе с бакетами).
+/// Чистая функция: без I/O, легко тестируется.
+Map<String, int> computeForegroundMinutesFromEvents(
+  List<UsageEventRecord> events,
+  DateTime start,
+  DateTime end,
+) {
+  final startMs = start.millisecondsSinceEpoch;
+  final endMs = end.millisecondsSinceEpoch;
+  if (endMs <= startMs || events.isEmpty) return const <String, int>{};
+
+  // Сортируем по времени — источник обычно уже упорядочен, но не полагаемся.
+  final sorted = [...events]
+    ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+
+  final openedAtMs = <String, int>{}; // package → момент открытия foreground
+  final totalMsByPackage = <String, int>{};
+
+  void addClippedDuration(String package, int fromMs, int toMs) {
+    final clippedFrom = fromMs < startMs ? startMs : fromMs;
+    final clippedTo = toMs > endMs ? endMs : toMs;
+    if (clippedTo <= clippedFrom) return;
+    totalMsByPackage[package] =
+        (totalMsByPackage[package] ?? 0) + (clippedTo - clippedFrom);
+  }
+
+  for (final event in sorted) {
+    if (event.type == kEventTypeForeground) {
+      // Если для пакета уже есть открытая сессия (дубль FOREGROUND без
+      // промежуточного BACKGROUND) — не перезаписываем момент открытия,
+      // защитная мера от двойного счёта.
+      openedAtMs.putIfAbsent(event.package, () => event.timestampMs);
+    } else if (event.type == kEventTypeBackground) {
+      final openedAt = openedAtMs.remove(event.package);
+      if (openedAt != null) {
+        addClippedDuration(event.package, openedAt, event.timestampMs);
+      } else {
+        // Нет парного FOREGROUND в списке — сессия началась ДО этого списка
+        // событий (обычно: до границы окна выборки). Считаем пакет открытым
+        // с [start] до этого BACKGROUND — так реальное «сегодняшнее»
+        // использование после полуночи засчитывается, а часть ДО [start]
+        // не утекает (граница клипуется в addClippedDuration).
+        addClippedDuration(event.package, startMs, event.timestampMs);
+      }
+    }
+  }
+
+  // Пакеты, всё ещё в foreground на момент end ("сейчас") — клипуем до end.
+  openedAtMs.forEach((package, openedAt) {
+    addClippedDuration(package, openedAt, endMs);
+  });
+
+  final result = <String, int>{};
+  totalMsByPackage.forEach((package, ms) {
+    if (ms <= 0) return;
+    result[package] = (ms / 60000).ceil();
+  });
+  return result;
+}

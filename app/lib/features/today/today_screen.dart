@@ -26,6 +26,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/animations/app_toast.dart';
 import '../../core/animations/constants.dart';
+import '../../core/config/app_flags.dart';
 import '../../core/categories/categories_enabled_provider.dart';
 import '../../core/categories/category_dot.dart';
 import '../../core/database/database.dart';
@@ -876,7 +877,10 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
 
     // E3: мягко просим оценку после «момента ценности» — fire-and-forget,
     // ошибки внутри сервиса поглощаются, UI не затрагивается.
-    ref.read(ratingServiceProvider).maybeRequestReview().ignore();
+    // Скрыто до публикации в сторах (kAppPublished) — флаг в core/config/app_flags.dart.
+    if (kAppPublished) {
+      ref.read(ratingServiceProvider).maybeRequestReview().ignore();
+    }
 
     if (context.mounted && targetId != null) {
       final undoId = targetId;
