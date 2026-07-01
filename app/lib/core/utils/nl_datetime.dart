@@ -622,7 +622,11 @@ NlDateTimeResult? _tryRelativeHours(String text, DateTime now) {
   ).firstMatch(text);
   if (m == null) return null;
 
-  final hours = int.parse(m.group(1)!);
+  // \d+ не ограничен по длине — очень длинная цифровая строка (случайно
+  // вставленный текст) может переполнить int.parse и бросить FormatException
+  // (красный экран). tryParse + разумный потолок (10 лет в часах) страхуют.
+  final hours = int.tryParse(m.group(1)!);
+  if (hours == null || hours < 0 || hours > 87600) return null;
   final dt = now.add(Duration(hours: hours));
   final cleaned = _eraseSpans(text, [_Span(m.start, m.end)]);
   return NlDateTimeResult(when: dt, cleanedTitle: cleaned);

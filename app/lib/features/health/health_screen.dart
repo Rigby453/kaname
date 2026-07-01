@@ -24,47 +24,34 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../core/utils/breakpoints.dart';
 import '../../core/widgets/kai_loader.dart';
+import '../../core/widgets/number_input_dialog.dart';
 import 'sleep_stats.dart';
 
 /// Единый набор быстрых объёмов воды (мл) — карточка Здоровья и полный экран.
 const kWaterQuickMl = [150, 250, 350, 500];
 
 /// Диалог «Своё количество» — ввод произвольного объёма воды.
+///
+/// Делегирует на [NumberInputDialog] вместо самодельного AlertDialog+
+/// TextEditingController: раньше контроллер создавался вручную и
+/// диспозился сразу после `await showDialog(...)`, что бросало
+/// "A TextEditingController was used after being disposed" на кадре
+/// закрывающей анимации диалога (красный экран даже при ВАЛИДНОМ вводе —
+/// см. комментарий в number_input_dialog.dart). NumberInputDialog уже
+/// решает и жизненный цикл контроллера, и безопасный парсинг (tryParse).
 Future<void> showCustomWaterDialog(BuildContext context, dynamic dao) async {
-  final ctrl = TextEditingController();
   final result = await showDialog<int>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(ctx.s('water.custom_amount_title')),
-      content: TextField(
-        controller: ctrl,
-        keyboardType: TextInputType.number,
-        autofocus: true,
-        decoration: InputDecoration(
-          hintText: ctx.s('water.custom_amount_hint'),
-          suffixText: 'ml',
-        ),
-        onSubmitted: (_) {
-          final v = int.tryParse(ctrl.text.trim());
-          if (v != null && v > 0 && v <= 5000) Navigator.pop(ctx, v);
-        },
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: Text(ctx.s('btn.cancel')),
-        ),
-        FilledButton(
-          onPressed: () {
-            final v = int.tryParse(ctrl.text.trim());
-            if (v != null && v > 0 && v <= 5000) Navigator.pop(ctx, v);
-          },
-          child: Text(ctx.s('btn.ok')),
-        ),
-      ],
+    builder: (ctx) => NumberInputDialog(
+      title: ctx.s('water.custom_amount_title'),
+      labelText: ctx.s('water.custom_amount_hint'),
+      suffixText: 'ml',
+      minValue: 1,
+      maxValue: 5000,
+      maxDigits: 4,
+      confirmLabel: ctx.s('btn.ok'),
     ),
   );
-  ctrl.dispose();
   if (result != null) await dao.addWater(result);
 }
 

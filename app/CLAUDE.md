@@ -190,3 +190,30 @@ finish a UI task until both gates below pass. No exceptions, including "content"
 - After a fix is verified (`flutter analyze` = 0 + the gates above), **commit and push it**
   on the working branch — do not leave verified work uncommitted across sessions. An
   uncommitted fix that "we discussed before" but reappears = it was never committed.
+
+### D. Parsing — never crash on user/external input
+- Never call `int.parse` / `double.parse` / `num.parse` / `jsonDecode` on user input or
+  external/persisted data (controller.text, TextField values, SharedPreferences strings,
+  API/JSON payloads, deep-link params, imported files like CSV/ICS) without `tryParse`
+  (or try/catch + a type check) **and a fallback**. Bare `.parse` on a bad/garbage/empty
+  value throws `FormatException` → red screen. This is the #2 recurring crash class after
+  overflow (2026-07: custom water-amount dialog).
+  - `int.tryParse(x.trim()) ?? <default>`, or validate `!= null` and show a message /
+    early-return — never let the exception propagate.
+  - `jsonDecode` on persisted/external data goes in `try { ... } catch (_) { <fallback> }`
+    with an `is List`/`is Map` check on the decoded value before using it.
+  - A regex-captured digit group (`\d{1,2}`, `\d{2}`, `\d{3,4}` — length-bounded) cannot
+    overflow and is safe to `int.parse` directly. An **unbounded** group (`\d+`) on user
+    or external text CAN overflow `int.parse` on a long-enough digit string — use
+    `tryParse` for those too, even though the characters are guaranteed numeric.
+  - Also watch the sibling bug next to a raw dialog's `TextEditingController`: don't
+    create it ad hoc and `dispose()` it synchronously right after `await showDialog(...)`
+    returns — the closing animation frame can still touch it (`A TextEditingController
+    was used after being disposed`). Prefer the existing `NumberInputDialog`
+    (`core/widgets/number_input_dialog.dart`) for any "enter a number" prompt instead of
+    a bespoke `AlertDialog` + controller.
+- **Gate (run before finishing, fix or justify every hit):**
+  ```bash
+  rg -n "(int|double|num)\.parse\(" app/lib   # every hit must be on a constant/known-valid string, else use tryParse
+  rg -n "jsonDecode\(" app/lib                 # every hit on persisted/external data must be in try/catch + `is List/Map` check
+  ```

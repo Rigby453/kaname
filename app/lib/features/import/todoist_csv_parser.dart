@@ -152,6 +152,10 @@ class TodoistCsvParser {
 
   /// Парсит строку даты из Todoist в DateTime или null.
   /// Форматы: "2024-06-17", "Jun 17 2024", "June 17 2024 @ 09:00"
+  ///
+  /// [dateStr] приходит из внешнего CSV-файла (недоверенные данные) — регэксп
+  /// группы здесь ограничены по длине (4/2 цифры), но всё равно используем
+  /// tryParse: битая строка не должна ронять импорт FormatException'ом.
   static DateTime? parseDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return null;
 
@@ -159,9 +163,10 @@ class TodoistCsvParser {
     final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})');
     final isoMatch = iso.firstMatch(dateStr);
     if (isoMatch != null) {
-      final year = int.parse(isoMatch.group(1)!);
-      final month = int.parse(isoMatch.group(2)!);
-      final day = int.parse(isoMatch.group(3)!);
+      final year = int.tryParse(isoMatch.group(1)!);
+      final month = int.tryParse(isoMatch.group(2)!);
+      final day = int.tryParse(isoMatch.group(3)!);
+      if (year == null || month == null || day == null) return null;
       return DateTime(year, month, day, 9, 0);
     }
 
@@ -175,10 +180,12 @@ class TodoistCsvParser {
     final namedMatch = named.firstMatch(dateStr);
     if (namedMatch != null) {
       final monthName = namedMatch.group(1)!.toLowerCase();
-      final day = int.parse(namedMatch.group(2)!);
-      final year = int.parse(namedMatch.group(3)!);
+      final day = int.tryParse(namedMatch.group(2)!);
+      final year = int.tryParse(namedMatch.group(3)!);
       final month = _monthFromName(monthName);
-      if (month > 0) return DateTime(year, month, day, 9, 0);
+      if (month > 0 && day != null && year != null) {
+        return DateTime(year, month, day, 9, 0);
+      }
     }
 
     return null;

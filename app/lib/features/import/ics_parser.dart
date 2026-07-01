@@ -215,25 +215,30 @@ class IcsParser {
 
   /// Парсит DURATION строку (RFC 5545): PT1H30M → 90, PT45M → 45
   /// Поддерживает: P1D, PT1H, PT30M, PT1H30M
+  ///
+  /// [value] приходит из внешнего .ics-файла (недоверенные данные) — цифровые
+  /// группы `\d+` не ограничены по длине, поэтому используем tryParse: битый
+  /// файл с аномально длинным числом не должен ронять импорт FormatException'ом
+  /// (красный экран).
   static int _parseDuration(String value) {
     int minutes = 0;
 
     // Дни: P1D
     final days = RegExp(r'(\d+)D').firstMatch(value);
     if (days != null) {
-      minutes += int.parse(days.group(1)!) * 24 * 60;
+      minutes += (int.tryParse(days.group(1)!) ?? 0) * 24 * 60;
     }
 
     // Часы: PT1H
     final hours = RegExp(r'(\d+)H').firstMatch(value);
     if (hours != null) {
-      minutes += int.parse(hours.group(1)!) * 60;
+      minutes += (int.tryParse(hours.group(1)!) ?? 0) * 60;
     }
 
     // Минуты: PT30M
     final mins = RegExp(r'(\d+)M').firstMatch(value);
     if (mins != null) {
-      minutes += int.parse(mins.group(1)!);
+      minutes += int.tryParse(mins.group(1)!) ?? 0;
     }
 
     return minutes > 0 ? minutes : 60;
