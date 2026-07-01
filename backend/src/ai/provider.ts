@@ -141,6 +141,16 @@ async function geminiGenerate({
         generationConfig: {
           maxOutputTokens: maxTokens,
           temperature: 0.7,
+          // Отключаем «thinking» у Gemini 2.5 (flash/flash-lite): по умолчанию
+          // модель тратит СОТНИ-ТЫСЯЧИ токенов на внутренние «мысли», которые
+          // засчитываются в maxOutputTokens → на реальный ответ бюджета не
+          // остаётся → finishReason=MAX_TOKENS → обрезанный/невалидный JSON.
+          // Это ломало menu-build (сборку меню) и делало ИИ-итоги нестабильными
+          // (живой вызов: thoughtsTokenCount≈3837, candidates≈148 → обрыв).
+          // Наши фичи не требуют chain-of-thought (числа КБЖУ берём из food DB,
+          // не из модели), поэтому thinkingBudget:0 — весь бюджет на вывод,
+          // ответ стабилен, быстрее и дешевле. Поддерживается flash/flash-lite.
+          thinkingConfig: { thinkingBudget: 0 },
           ...(json ? { responseMimeType: "application/json" } : {}),
         },
       }),
