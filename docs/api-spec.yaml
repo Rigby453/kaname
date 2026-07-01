@@ -560,6 +560,12 @@ paths:
                       type: object
                       properties:
                         meal: { type: string }
+                        dish_name:
+                          type: string
+                          description: >
+                            Composed, human-readable dish name in the user's
+                            language (e.g. "Chicken breast with buckwheat"),
+                            distinct from the meal-slot name. Optional.
                         items:
                           type: array
                           items:

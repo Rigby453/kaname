@@ -10,6 +10,7 @@
 import { generateText } from "./provider.js";
 import { unwrapMaybeJson } from "./textResponse.js";
 import { withAiRetry } from "./retry.js";
+import { languageDirective } from "./langDirective.js";
 
 export interface WrappedStats {
   periodDays: number;
@@ -23,6 +24,8 @@ export interface WrappedStats {
   tone: "gentle" | "harsh";
   /** язык сводки (напр. "Russian"), по умолчанию "English" */
   language?: string;
+  /** ISO-код языка (напр. "ru"), опционально — усиливает языковую инструкцию */
+  languageCode?: string;
 }
 
 export async function generateWrappedSummary(
@@ -31,8 +34,13 @@ export async function generateWrappedSummary(
   const periodLabel = stats.periodDays >= 28 ? "month" : "week";
   const language = stats.language ?? "English";
 
+  // Жёсткая языковая инструкция дублируется в начале (primacy) И в конце
+  // (recency) — см. langDirective.ts.
+  const langLine = languageDirective(language, stats.languageCode);
+
   // Запрещаем перечисление входных чисел; требуем паттерн/сильную сторону/зону роста + совет.
   const system =
+    `${langLine}\n\n` +
     (stats.tone === "harsh"
       ? "You write candid, sharp (not cruel) weekly recaps for a student planner. " +
         "Never shame food, body or weight. "
@@ -42,7 +50,7 @@ export async function generateWrappedSummary(
     "and give ONE specific recommendation for the next week. " +
     "One paragraph, 3-4 sentences, plain text only, no emoji. " +
     "Complete every sentence fully — never stop mid-thought. " +
-    `\n\nIMPORTANT: Write all human-readable text in ${language}. Always finish every sentence completely.`;
+    `\n\nIMPORTANT: ${langLine} Always finish every sentence completely.`;
 
   // Данные передаём как контекст для вывода, а не как список для пересказа.
   const completionRate =

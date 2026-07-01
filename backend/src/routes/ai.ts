@@ -357,6 +357,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           topIssue: parsed.data.top_issue ?? null,
           tone: parsed.data.tone,
           language: langName(request.headers["accept-language"]),
+          languageCode: parseLangCode(request.headers["accept-language"]),
         });
         return reply.status(200).send({ summary });
       } catch (err) {
@@ -390,6 +391,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           meals: parsed.data.meals,
           tone: parsed.data.tone,
           language: langName(request.headers["accept-language"]),
+          languageCode: parseLangCode(request.headers["accept-language"]),
           ...(parsed.data.fat_goal_g !== undefined ? { fatGoalG: parsed.data.fat_goal_g } : {}),
           ...(parsed.data.carbs_goal_g !== undefined ? { carbsGoalG: parsed.data.carbs_goal_g } : {}),
           ...(parsed.data.sugar_max_g !== undefined ? { sugarMaxG: parsed.data.sugar_max_g } : {}),
@@ -410,7 +412,14 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
             : {}),
         });
         return reply.status(200).send({
-          meals: result.meals,
+          // dish_name (snake_case, Bug fix 2026-07): composed meal name for
+          // display, e.g. "Chicken breast with buckwheat and vegetables" —
+          // NOT the raw item list. Numbers stay code-computed (below).
+          meals: result.meals.map((m) => ({
+            meal: m.meal,
+            dish_name: m.dishName,
+            items: m.items,
+          })),
           note: result.note,
           off_target: result.offTarget,
           totals: result.totals,
@@ -445,6 +454,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           minutesPerSession: parsed.data.minutes_per_session,
           tone: parsed.data.tone,
           language: langName(request.headers["accept-language"]),
+          languageCode: parseLangCode(request.headers["accept-language"]),
           ...(parsed.data.focus !== undefined ? { focus: parsed.data.focus } : {}),
           ...(parsed.data.limitations !== undefined
             ? { limitations: parsed.data.limitations }
@@ -509,6 +519,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
             ? { userName: parsed.data.user_name }
             : {}),
           language: langName(request.headers["accept-language"]),
+          languageCode: parseLangCode(request.headers["accept-language"]),
         });
         return reply.status(200).send({ message: result.message });
       } catch (err) {
@@ -553,6 +564,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
           occupiedTimes,
           targetDate: parsed.data.target_date,
           language: langName(request.headers["accept-language"]),
+          languageCode: parseLangCode(request.headers["accept-language"]),
         });
         return reply.status(200).send({
           plans: plans.map((p) => ({
@@ -601,6 +613,7 @@ const aiRoutes: FastifyPluginAsync = async (fastify) => {
             note: l.note,
           })),
           language: langName(request.headers["accept-language"]),
+          languageCode: parseLangCode(request.headers["accept-language"]),
         });
         return reply.status(200).send({
           insight,

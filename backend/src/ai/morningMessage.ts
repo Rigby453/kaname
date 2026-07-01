@@ -9,6 +9,7 @@
 import { generateText } from "./provider.js";
 import { unwrapMaybeJson } from "./textResponse.js";
 import { withAiRetry } from "./retry.js";
+import { languageDirective } from "./langDirective.js";
 
 export type Tone = "gentle" | "harsh";
 
@@ -18,22 +19,31 @@ export type Tone = "gentle" | "harsh";
  * @param tone - gentle (мягкий) / harsh (жёсткий)
  * @param userName - имя пользователя (опционально)
  * @param language - язык сообщения (напр. "Russian"), по умолчанию "English"
+ * @param languageCode - ISO-код языка (напр. "ru"), опционально — усиливает
+ *   языковую инструкцию (модели лучше держат код рядом с названием)
  */
 export async function generateMorningMessage(params: {
   pendingCount: number;
   tone: Tone;
   userName?: string;
   language?: string;
+  languageCode?: string;
 }): Promise<{ message: string }> {
-  const { pendingCount, tone, userName, language = "English" } = params;
+  const { pendingCount, tone, userName, language = "English", languageCode } = params;
 
   const toneHint =
     tone === "harsh"
       ? "Be blunt, no-nonsense and a little provocative, but never insulting."
       : "Be warm, purposeful and forward-looking.";
 
+  // Жёсткая языковая инструкция дублируется в начале (primacy) И в конце
+  // (recency) промпта — дешёвые dev-модели (Groq llama-3.1-8b-instant) хуже
+  // держат единственную инструкцию, зарытую в конце длинного system-промпта.
+  const langLine = languageDirective(language, languageCode);
+
   // Запрещаем пустые ободрялки; требуем конкретный фокус-акцент на начало дня.
   const system =
+    `${langLine}\n\n` +
     "You write the morning nudge for a student planner. " +
     "Output ONE or TWO short sentences, plain text, no emoji, no quotes. " +
     "DO NOT use empty phrases like 'you can do it', 'have a great day', or 'don't worry'. " +
@@ -42,7 +52,7 @@ export async function generateMorningMessage(params: {
     "e.g. tackle the hardest task first, batch quick tasks before 10am, protect a focused block, etc. " +
     "Be specific and action-oriented. " +
     toneHint +
-    `\n\nIMPORTANT: Write all human-readable text in ${language}.`;
+    `\n\nIMPORTANT: ${langLine}`;
 
   const who = userName ? `The user's name is ${userName}. ` : "";
   const taskSituation =

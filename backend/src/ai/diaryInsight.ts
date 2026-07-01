@@ -9,6 +9,7 @@
 import { generateText } from "./provider.js";
 import { unwrapMaybeJson } from "./textResponse.js";
 import { withAiRetry } from "./retry.js";
+import { languageDirective } from "./langDirective.js";
 
 export type Tone = "gentle" | "harsh";
 
@@ -45,13 +46,16 @@ export interface DiaryInsightResult {
  * @param logs - последние записи (дата, настроение, заметка)
  * @param tone - gentle / harsh
  * @param language - язык инсайта (напр. "Russian"), по умолчанию "English"
+ * @param languageCode - ISO-код языка (напр. "ru"), опционально — усиливает
+ *   языковую инструкцию
  */
 export async function generateDiaryInsight(params: {
   logs: DiaryLogInput[];
   tone: Tone;
   language?: string;
+  languageCode?: string;
 }): Promise<DiaryInsightResult> {
-  const { logs, tone, language = "English" } = params;
+  const { logs, tone, language = "English", languageCode } = params;
 
   // Вычисляем диапазон охватываемых дат (min/max по полю date) — кодом, не моделью.
   const sortedDates = logs.map((l) => l.date).sort();
@@ -63,8 +67,13 @@ export async function generateDiaryInsight(params: {
       ? "Be blunt and direct, name patterns honestly, but never insulting."
       : "Be warm, supportive and constructive.";
 
+  // Жёсткая языковая инструкция дублируется в начале (primacy) И в конце
+  // (recency) — см. langDirective.ts.
+  const langLine = languageDirective(language, languageCode);
+
   // Запрещаем пересказ данных; требуем вывод — тренд/корреляцию/совет.
   const system =
+    `${langLine}\n\n` +
     "You are a thoughtful assistant analysing a student's diary (mood scores 1-5 and short notes). " +
     "Your task: identify a NON-OBVIOUS insight — a trend over time, a mood-note correlation, " +
     "or a pattern the student cannot simply read off the raw data. " +
@@ -75,7 +84,7 @@ export async function generateDiaryInsight(params: {
     "2-3 sentences, plain text, no emoji, no quotes. " +
     "Complete every sentence fully — never stop mid-thought. " +
     toneHint +
-    `\n\nIMPORTANT: Write all human-readable text in ${language}. Always finish every sentence completely.`;
+    `\n\nIMPORTANT: ${langLine} Always finish every sentence completely.`;
 
   // Передаём явный диапазон дат, чтобы модель могла на него ссылаться в инсайте.
   const dateRange =

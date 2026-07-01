@@ -12,6 +12,7 @@
 import { z } from "zod";
 import { generateText, stripJsonFences } from "./provider.js";
 import { withAiRetry } from "./retry.js";
+import { languageDirectiveForFields } from "./langDirective.js";
 
 export interface MenuCandidate {
   name: string;
@@ -27,6 +28,16 @@ export interface MenuCandidate {
 
 export interface MenuMeal {
   meal: string;
+  /**
+   * Composed, human-readable name of the meal (e.g. "Chicken breast with
+   * buckwheat and vegetables") — NOT a repeat of `meal` (the slot name like
+   * "lunch") and NOT a semicolon list of raw ingredient names. Model-provided
+   * when available; falls back to a code-generated join of item names
+   * (see `fallbackDishName`) if the model omits it. Bug fix (device testing
+   * 2026-07-01): the model previously had no field to compose a dish name
+   * into, so clients could only render the raw ingredient list.
+   */
+  dishName: string;
   items: { name: string; grams: number }[];
 }
 
@@ -50,10 +61,14 @@ export function normalizeName(s: string): string {
 }
 
 // Модель возвращает приёмы пищи с позициями name+grams; note — одно предложение.
+// dish_name — композитное название блюда (Bug fix: раньше клиент видел только
+// список ингредиентов). Optional для обратной совместимости — если модель его
+// не вернула, callAndClean подставляет code-generated fallback.
 const RawMenuSchema = z.object({
   meals: z.array(
     z.object({
       meal: z.string().min(1),
+      dish_name: z.string().min(1).optional(),
       items: z.array(
         z.object({
           name: z.string().min(1),
@@ -86,7 +101,8 @@ interface MacroTargets {
  * @param fiberMinG - минимум клетчатки, г, опционально
  * @param meals - приёмы пищи (напр. ["breakfast","lunch","dinner"])
  * @param tone - тон заметки (gentle/harsh), без шейминга в обоих
- * @param language - язык заметки (напр. "Russian"), по умолчанию "English"
+ * @param language - язык заметки и названий блюд (напр. "Russian"), по умолчанию "English"
+ * @param languageCode - ISO-код языка (напр. "ru"), опционально — усиливает языковую инструкцию
  * @param healthProfile - необязательный профиль здоровья пользователя (свободный текст):
  *   allergies — аллергии/непереносимости; healing — скорость заживления ран;
  *   deficiencies — известные дефициты витаминов/минералов.
@@ -111,6 +127,7 @@ export async function buildMenu(params: {
   meals: string[];
   tone: "gentle" | "harsh";
   language?: string;
+  languageCode?: string;
   healthProfile?: {
     allergies?: string;
     healing?: string;
@@ -135,6 +152,7 @@ export async function buildMenu(params: {
     meals,
     tone,
     language = "English",
+    languageCode,
     healthProfile,
     foodPrefs,
   } = params;
@@ -166,6 +184,7 @@ export async function buildMenu(params: {
   const system = buildSystemPrompt({
     tone,
     language,
+    languageCode,
     targets,
     mealNames,
     healthProfile,
@@ -235,6 +254,7 @@ export async function buildMenu(params: {
 function buildSystemPrompt(args: {
   tone: "gentle" | "harsh";
   language: string;
+  languageCode?: string;
   targets: MacroTargets;
   mealNames: string[];
   healthProfile?: { allergies?: string; healing?: string; deficiencies?: string };
@@ -246,7 +266,16 @@ function buildSystemPrompt(args: {
     mealsPerDay?: number;
   };
 }): string {
-  const { tone, language, targets, mealNames, healthProfile, foodPrefs } = args;
+  const { tone, language, languageCode, targets, mealNames, healthProfile, foodPrefs } = args;
+
+  // Жёсткая языковая инструкция дублируется в начале (primacy) И в конце
+  // (recency) — см. langDirective.ts. Только note + dish_name — человекочитаемые
+  // поля; meal slot names, food item names, and grams stay in English per contract.
+  const langLine = languageDirectiveForFields(
+    "the note field and each meal's dish_name field",
+    language,
+    languageCode
+  );
 
   // Строки целей — только для переданных значений.
   const targetLines: string[] = [
@@ -267,6 +296,7 @@ function buildSystemPrompt(args: {
   }
 
   let system =
+    `${langLine}\n\n` +
     "You are a nutrition menu composer for a student planner. Compose a one-day " +
     "menu USING ONLY the provided candidate foods (names must match EXACTLY, " +
     "character for character). Do your own arithmetic from the provided per-100g " +
@@ -285,16 +315,29 @@ function buildSystemPrompt(args: {
     "- Each meal must be a sensible combination of foods — do NOT dump everything " +
     "into one meal. Use 2-4 items per meal, grams as multiples of 10 between 30 and 500.\n" +
     "- Each candidate may appear in at most two meals.\n\n" +
+    "DISH NAMING — IMPORTANT (this is what the user actually sees):\n" +
+    "- For EACH meal, also write a 'dish_name': a short, natural, appetizing name " +
+    "for the COMPOSED DISH you built from that meal's items — like a menu item, " +
+    "not a shopping list. Combine the items into a real meal description.\n" +
+    "- dish_name must NOT be the meal slot name (e.g. not just 'Lunch') and must NOT " +
+    "be a bare semicolon/comma list of raw ingredient names (e.g. NOT " +
+    "'chicken breast; buckwheat; vegetables').\n" +
+    "- GOOD example: items are chicken breast, buckwheat, mixed vegetables → " +
+    "dish_name: \"Chicken breast with buckwheat and vegetables\". " +
+    "BAD example: dish_name: \"chicken breast, buckwheat, vegetables\".\n" +
+    "- The underlying 'items' array must still list the exact candidate names and grams " +
+    "(for macro calculation) — dish_name is only the human-facing composed title.\n\n" +
     "Also write 'note': ONE short sentence about the day's menu in a " +
     (tone === "harsh"
       ? "blunt, no-nonsense (but never insulting)"
       : "warm, encouraging") +
     " tone, no food shaming.\n\n" +
     'Return STRICT JSON only (no prose, no markdown fences): {"meals": ' +
-    '[{"meal": string, "items": [{"name": string, "grams": number}]}], ' +
+    '[{"meal": string, "dish_name": string, "items": [{"name": string, "grams": number}]}], ' +
     '"note": string}. The "meal" values must be exactly the requested meal names.' +
-    `\n\nIMPORTANT: Write all human-readable text (the note field) in ${language}. ` +
-    "Keep JSON keys, meal names, food item names, and grams values exactly as specified in English.";
+    `\n\nIMPORTANT: ${langLine}` +
+    " Keep JSON keys, meal slot names (the \"meal\" field), food item names, and grams " +
+    "values exactly as specified in English — only \"note\" and \"dish_name\" change language.";
 
   // Профиль здоровья — фильтрация/смещение (не медицинские рекомендации).
   if (healthProfile) {
@@ -486,9 +529,8 @@ async function callAndClean(args: {
   const requested = new Set(mealNames);
   const cleaned: MenuMeal[] = result.data.meals
     .filter((m) => requested.has(m.meal))
-    .map((m) => ({
-      meal: m.meal,
-      items: m.items
+    .map((m) => {
+      const items = m.items
         .map((it) => {
           const canonical = normToCanon.get(normalizeName(it.name));
           return canonical !== undefined ? { name: canonical, grams: it.grams } : null;
@@ -497,14 +539,30 @@ async function callAndClean(args: {
         .map((it) => ({
           name: it.name,
           grams: Math.min(500, Math.max(30, Math.round(it.grams / 10) * 10)),
-        })),
-    }));
+        }));
+      // dish_name — необязательное поле у модели (обратная совместимость):
+      // если отсутствует/пустое, подставляем code-generated fallback
+      // (Bug fix 2026-07: раньше клиент видел только "raw items", теперь
+      // ВСЕГДА есть composed-имя, даже если модель его не вернула).
+      const dishName = m.dish_name?.trim() || fallbackDishName(items);
+      return { meal: m.meal, dishName, items };
+    });
 
   if (cleaned.every((m) => m.items.length === 0)) {
     throw new Error("AI returned no usable menu.");
   }
 
   return { meals: cleaned, note: result.data.note };
+}
+
+/**
+ * Fallback-название блюда, если модель не вернула dish_name (обратная
+ * совместимость / устойчивость к пропуску поля): просто перечисляет
+ * названия компонентов через запятую. Хуже, чем настоящее композитное
+ * имя от модели, но лучше пустой строки и не ломает клиент.
+ */
+function fallbackDishName(items: { name: string; grams: number }[]): string {
+  return items.map((it) => it.name).join(", ");
 }
 
 // ---------------------------------------------------------------------------

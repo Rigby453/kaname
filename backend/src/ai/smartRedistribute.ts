@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { generateText, stripJsonFences } from "./provider.js";
 import { withAiRetry } from "./retry.js";
+import { languageDirectiveForFields } from "./langDirective.js";
 
 export interface PlanInputItem {
   id: string;
@@ -54,14 +55,23 @@ const RawPlanSchema = z.array(
  * @param occupiedTimes - занятые "HH:MM" слоты целевого дня
  * @param targetDate - 'YYYY-MM-DD'
  * @param language - язык текстовых полей (label, reason), по умолчанию "English"
+ * @param languageCode - ISO-код языка (напр. "ru"), опционально — усиливает
+ *   языковую инструкцию
  */
 export async function generateSmartPlans(params: {
   pendingItems: PlanInputItem[];
   occupiedTimes: string[];
   targetDate: string;
   language?: string;
+  languageCode?: string;
 }): Promise<{ plans: SmartPlan[] }> {
-  const { pendingItems, occupiedTimes, targetDate, language = "English" } = params;
+  const {
+    pendingItems,
+    occupiedTimes,
+    targetDate,
+    language = "English",
+    languageCode,
+  } = params;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
     throw new Error(`targetDate must be YYYY-MM-DD, got "${targetDate}"`);
@@ -70,10 +80,16 @@ export async function generateSmartPlans(params: {
 
   const validIds = new Set(pendingItems.map((i) => i.id));
 
+  // Жёсткая языковая инструкция дублируется в начале (primacy) И в конце
+  // (recency) — см. langDirective.ts. Только label/reason — человекочитаемые
+  // поля; id/time/JSON-ключи должны остаться в английском формате контракта.
+  const langLine = languageDirectiveForFields("the label and reason fields", language, languageCode);
+
   // Промпт требует, чтобы reason был конкретным: называл задачи по title,
   // указывал предложенное время и кратко объяснял каждый ход — иначе модель
   // возвращала бесполезные общие фразы («balanced approach», «stay productive»).
   const system =
+    `${langLine}\n\n` +
     "You are a study-planner assistant. Given a list of unfinished tasks " +
     "(with IDs, titles, priorities, durations), propose 2-3 DISTINCT redistribution plans.\n\n" +
     "Rules:\n" +
@@ -91,8 +107,7 @@ export async function generateSmartPlans(params: {
     "Essay draft (1h) → 12:00 [medium load after break]; Quick reading (30min) → 14:00 [light close].\"\n\n" +
     "Return STRICT JSON only — no prose, no markdown fences:\n" +
     '[{"label": "strategy name", "reason": "task-by-task breakdown", "items": [{"id": "uuid", "time": "HH:MM"}]}]\n\n' +
-    `IMPORTANT: Write all human-readable text (label and reason) in ${language}. ` +
-    "JSON keys, task IDs, and time values must stay in English exactly as shown.";
+    `IMPORTANT: ${langLine}`;
 
   const user = JSON.stringify({
     target_date: targetDate,

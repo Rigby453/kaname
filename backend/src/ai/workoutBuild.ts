@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { generateText, stripJsonFences } from "./provider.js";
 import { withAiRetry } from "./retry.js";
+import { languageDirectiveForFields } from "./langDirective.js";
 
 export type WorkoutGoal =
   | "strength"
@@ -70,6 +71,8 @@ const RawProgramSchema = z.object({
  * @param limitations - травмы/ограничения, которых надо избегать (опционально)
  * @param tone - тон coach-note (gentle/harsh), без оскорблений в обоих
  * @param language - язык человекочитаемого текста (по умолчанию "English")
+ * @param languageCode - ISO-код языка (напр. "ru"), опционально — усиливает
+ *   языковую инструкцию
  * @param profile - опциональный профиль (пол/возраст/вес/рост) для контекста
  *
  * @returns programName, days (title + упражнения), note (coach-note).
@@ -84,6 +87,7 @@ export async function buildWorkoutProgram(params: {
   limitations?: string;
   tone: "gentle" | "harsh";
   language?: string;
+  languageCode?: string;
   profile?: {
     sex?: string;
     age?: number;
@@ -101,6 +105,7 @@ export async function buildWorkoutProgram(params: {
     limitations,
     tone,
     language = "English",
+    languageCode,
     profile,
   } = params;
 
@@ -117,6 +122,7 @@ export async function buildWorkoutProgram(params: {
     limitations,
     tone,
     language,
+    languageCode,
     profile,
   });
 
@@ -167,6 +173,7 @@ function buildSystemPrompt(args: {
   limitations?: string;
   tone: "gentle" | "harsh";
   language: string;
+  languageCode?: string;
   profile?: { sex?: string; age?: number; weightKg?: number; heightCm?: number };
 }): string {
   const {
@@ -179,13 +186,25 @@ function buildSystemPrompt(args: {
     limitations,
     tone,
     language,
+    languageCode,
     profile,
   } = args;
 
   const equipmentList =
     equipment.length > 0 ? equipment.join(", ") : "bodyweight only";
 
+  // Жёсткая языковая инструкция дублируется в начале (primacy) И в конце
+  // (recency) — см. langDirective.ts. Только человекочитаемые поля
+  // (program_name, day titles, exercise names, notes); sets/reps/rest_seconds
+  // остаются числами/короткими кодами по формату контракта.
+  const langLine = languageDirectiveForFields(
+    "the program_name, day titles, exercise names, and notes",
+    language,
+    languageCode
+  );
+
   let system =
+    `${langLine}\n\n` +
     "You are a strength and conditioning coach for a student planner. Design a " +
     "weekly workout program tailored to the athlete's goal, experience, available " +
     "equipment, training days and time per session. Do NOT prescribe weights/loads — " +
@@ -230,8 +249,7 @@ function buildSystemPrompt(args: {
     '"days": [{"title": string, "exercises": [{"name": string, "sets": number, ' +
     '"reps": string, "rest_seconds": number, "note": string}]}], "note": string}. ' +
     "The note field on an exercise is optional — omit it if there's nothing to add." +
-    `\n\nIMPORTANT: Write all human-readable text (program_name, day titles, exercise ` +
-    `names, notes) in ${language}. Keep JSON keys exactly as specified in English.`;
+    `\n\nIMPORTANT: ${langLine}`;
 
   return system;
 }
