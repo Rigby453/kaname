@@ -26,6 +26,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../../core/animations/constants.dart';
 import '../../core/l10n/app_strings.dart';
@@ -138,6 +139,14 @@ class _KaiMascotState extends State<KaiMascot> with TickerProviderStateMixin {
   bool _showBubble = false;
   Timer? _bubbleTimer;
   static const int _kBubbleHoldMs = 2000;
+
+  // --- Защита пузыря от overflow за физический край экрана (bug #23) ---
+  // Ключ на footprint-боксе Kai — чтобы после layout узнать его глобальную
+  // позицию и подвинуть пузырь внутрь экрана, если Kai стоит у самого края.
+  final GlobalKey _footprintKey = GlobalKey();
+  double _bubbleShiftX = 0;
+  double _lastScreenWidth = 0;
+  static const double _kBubbleScreenMargin = 16.0;
 
   // --- Баунс при тапе ---
   late final AnimationController _bounceCtrl;
@@ -271,6 +280,53 @@ class _KaiMascotState extends State<KaiMascot> with TickerProviderStateMixin {
       ..forward();
   }
 
+  /// Безопасная максимальная ширина пузыря: ограничена не только размером Kai
+  /// (widget.size*3, как раньше), но и реальной шириной экрана минус поля —
+  /// иначе на узком экране (320px) пузырь просит больше места, чем есть (#23).
+  /// [screenWidth] передаётся явно (снят с MediaQuery в build()) — читать
+  /// MediaQuery из postFrameCallback (вне build-фазы) избегаем намеренно.
+  double _resolveBubbleMaxWidth(double screenWidth) {
+    final available =
+        (screenWidth - _kBubbleScreenMargin * 2).clamp(80.0, 240.0);
+    final desired = (widget.size * 3).clamp(160.0, 240.0);
+    return math.min(desired, available);
+  }
+
+  /// Пересчитывает горизонтальный сдвиг пузыря так, чтобы он не выходил за
+  /// физические края экрана, когда Kai стоит близко к краю (шапка Today,
+  /// онбординг, paywall). Требует, чтобы footprint-бокс Kai уже прошёл layout
+  /// (вызывается из postFrameCallback) — до этого RenderBox не attached.
+  void _updateBubbleShift() {
+    if (!mounted) return;
+    final renderObject = _footprintKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.attached) return;
+
+    // MediaQuery.sizeOf(context) намеренно не читаем здесь (postFrameCallback —
+    // не build-фаза); используем значение, снятое в build().
+    final screenWidth = _lastScreenWidth;
+    if (screenWidth <= 0) return;
+
+    final globalOrigin = renderObject.localToGlobal(Offset.zero);
+    final centerX = globalOrigin.dx + widget.size / 2;
+    final halfBubble = _resolveBubbleMaxWidth(screenWidth) / 2;
+
+    final desiredLeft = centerX - halfBubble;
+    final desiredRight = centerX + halfBubble;
+
+    // По умолчанию пузырь центрирован (shift=0); сдвигаем внутрь экрана
+    // только если центрирование вытолкнуло его за левый/правый край.
+    double shift = 0;
+    if (desiredLeft < _kBubbleScreenMargin) {
+      shift = _kBubbleScreenMargin - desiredLeft;
+    } else if (desiredRight > screenWidth - _kBubbleScreenMargin) {
+      shift = (screenWidth - _kBubbleScreenMargin) - desiredRight;
+    }
+
+    if ((shift - _bubbleShiftX).abs() > 0.5) {
+      setState(() => _bubbleShiftX = shift);
+    }
+  }
+
   /// Тап: bounce + пузырь + кратковременный neutral-override.
   /// При reduce-motion: только вызывает onTap + показывает пузырь без таймера.
   void _handleTap() {
@@ -282,6 +338,10 @@ class _KaiMascotState extends State<KaiMascot> with TickerProviderStateMixin {
       _tapCount++;
       _showBubble = true;
     });
+
+    // Пересчитываем горизонтальный сдвиг пузыря ПОСЛЕ layout этого кадра —
+    // до этого момента у footprint-бокса ещё нет валидной глобальной позиции.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateBubbleShift());
 
     if (!reduce) {
       _bounceCtrl
@@ -400,35 +460,57 @@ class _KaiMascotState extends State<KaiMascot> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final reduce = reduceMotionOf(context);
     final colorScheme = Theme.of(context).colorScheme;
+    _lastScreenWidth = MediaQuery.sizeOf(context).width;
 
     // Реплика при тапе: ротация по счётчику (детерминированно, воспроизводимо).
     final quipIndex = (_tapCount - 1).clamp(0, _kTapQuipCount - 1) % _kTapQuipCount;
     final quipText = context.s('kai.tap_quip_$quipIndex');
 
+    final bubbleMaxWidth = _resolveBubbleMaxWidth(_lastScreenWidth);
+
     // Речевой пузырь плавает над Kai (Stack + Positioned, clipBehavior: Clip.none).
+    //
+    // ВАЖНО (#23): Positioned(left:0, right:0) даёт ТУГУЮ ширину = ширине
+    // footprint-бокса Kai (widget.size, обычно 22-96px) — без OverflowBox
+    // пузырь сжимался бы до этой ширины и текст уходил вертикально далеко
+    // за экран (перепроверено виджет-тестом). OverflowBox с
+    // fit: deferToChild освобождает пузырь от этой тесноты (даёт ему
+    // bubbleMaxWidth независимо от footprint), но при этом сам остаётся
+    // безопасного конечного размера (без OverflowBoxFit.max — тут высота
+    // сверху неограничена, а .max привёл бы к size.height=infinity).
+    // _bubbleShiftX дополнительно сдвигает пузырь внутрь экрана, если Kai
+    // стоит у самого края (см. _updateBubbleShift).
     final bubbleWidget = Positioned(
       bottom: widget.size + 4,
       left: 0,
       right: 0,
-      child: Align(
+      child: OverflowBox(
+        minWidth: 0,
+        maxWidth: bubbleMaxWidth,
+        minHeight: 0,
+        maxHeight: double.infinity,
         alignment: Alignment.bottomCenter,
-        child: AnimatedSwitcher(
-          duration: reduce ? Duration.zero : kDurationNormal,
-          switchInCurve: kCurveLift,
-          switchOutCurve: kCurveLift,
-          transitionBuilder: (child, anim) => FadeTransition(
-            opacity: anim,
-            child: child,
+        fit: OverflowBoxFit.deferToChild,
+        child: Transform.translate(
+          offset: Offset(_bubbleShiftX, 0),
+          child: AnimatedSwitcher(
+            duration: reduce ? Duration.zero : kDurationNormal,
+            switchInCurve: kCurveLift,
+            switchOutCurve: kCurveLift,
+            transitionBuilder: (child, anim) => FadeTransition(
+              opacity: anim,
+              child: child,
+            ),
+            child: _showBubble
+                ? KaiSpeechBubble(
+                    key: ValueKey(quipIndex),
+                    message: quipText,
+                    animate: !reduce,
+                    tail: KaiBubbleTail.bottomCenter,
+                    maxWidth: bubbleMaxWidth,
+                  )
+                : SizedBox(key: const ValueKey('empty')),
           ),
-          child: _showBubble
-              ? KaiSpeechBubble(
-                  key: ValueKey(quipIndex),
-                  message: quipText,
-                  animate: !reduce,
-                  tail: KaiBubbleTail.bottomCenter,
-                  maxWidth: (widget.size * 3).clamp(160.0, 240.0),
-                )
-              : SizedBox(key: const ValueKey('empty')),
         ),
       ),
     );
@@ -502,6 +584,7 @@ class _KaiMascotState extends State<KaiMascot> with TickerProviderStateMixin {
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
+        key: _footprintKey,
         width: widget.size,
         height: widget.size,
         child: Stack(
