@@ -19,6 +19,7 @@ import '../../../core/widgets/timeline/timeline_entry.dart';
 import '../../../core/widgets/timeline/timeline_list.dart';
 import '../../import/import_sheet.dart';
 import '../../today/widgets/add_task_sheet.dart';
+import '../task_shape.dart';
 import 'plan_providers.dart';
 import 'recurrence_providers.dart';
 import 'week_strip.dart';
@@ -217,7 +218,10 @@ TimelineEntry _toEntry({
     firstTag = '';
   }
 
-  // Обратный отсчёт для экзаменов/дедлайнов — в trailing-виджете справа
+  // Обратный отсчёт для экзаменов/дедлайнов — в trailing-виджете справа.
+  // «Открытая» задача (TaskShape.open, task_shape.dart) без countdown — вместо
+  // него короткий бейдж «Open», чтобы было видно, что конец не задан (момент
+  // не нуждается в бейдже: точка времени в колонке слева уже всё объясняет).
   Widget? trailing;
   if (isUrgent) {
     trailing = Text(
@@ -226,6 +230,13 @@ TimelineEntry _toEntry({
         color: ember,
         fontWeight: FontWeight.w600,
       ),
+    );
+  } else if (taskShapeOf(item.durationMinutes) == TaskShape.open) {
+    final textMuted =
+        Theme.of(context).extension<FocusThemeExtension>()?.textMuted;
+    trailing = Text(
+      context.s('plan.open_ended_badge'),
+      style: textTheme.labelSmall?.copyWith(color: textMuted),
     );
   }
 

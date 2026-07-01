@@ -43,6 +43,7 @@ import '../../../core/utils/nl_datetime.dart';
 import '../../../core/utils/tag_parser.dart';
 import '../../../services/notifications/notification_service.dart';
 import '../../plan/recurrence.dart';
+import '../../plan/task_shape.dart';
 import '../../plan/widgets/recurrence_providers.dart';
 import '../../plan/widgets/recurrence_scope_dialog.dart';
 import '../task_colors.dart';
@@ -177,6 +178,15 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
   late String _priority;
   late DateTime _scheduledAt;
   late int _durationMinutes;
+  // «Форма» задачи (task_shape.dart) — производная от _durationMinutes, но
+  // держим отдельным полем UI-состояния: явный выбор сегмента понятнее, чем
+  // угадывать форму по значению каждый раз, и позволяет восстановить
+  // предыдущую длительность блока при возврате из момента/открытой (ниже).
+  late TaskShape _shape;
+  // Последняя ПОЗИТИВНАЯ длительность (форма «блок») — чтобы при переключении
+  // момент/открытая → обычная вернуть то значение, что было до переключения,
+  // а не всегда сбрасывать на дефолт.
+  int _lastPositiveDuration = _kDefaultDurationMinutes;
   // Цвет-метка задачи: null = нет, или ключ палитры из task_colors.dart (локальное поле)
   String? _color;
   // Место/локация задачи (свободный текст, как в Google Calendar). Локальное
@@ -302,6 +312,8 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     _durationMinutes = existing?.durationMinutes ??
         widget.initialDurationMinutes ??
         _kDefaultDurationMinutes;
+    _shape = taskShapeOf(_durationMinutes);
+    if (_shape == TaskShape.block) _lastPositiveDuration = _durationMinutes;
     // Пользователь явно задал время рисованием на сетке — NL-парсер заголовка
     // не должен его перетирать (как после ручного выбора времени).
     if (existing == null && widget.initialAt != null) {
@@ -797,6 +809,34 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     setState(() {
       _durationMinutes = diffMinutes;
       // Ручной выбор длительности → NL больше не перетирает.
+      _userPickedDuration = true;
+    });
+  }
+
+  /// Переключение «формы» задачи (task_shape.dart) — сегмент Обычная/Момент/
+  /// Открытая. Момент и открытая пишут свои сентинелы прямо в _durationMinutes
+  /// (kMomentDuration/kOpenEndedDuration) — сохранение уже использует это поле
+  /// как есть, без отдельной ветки. При возврате к «обычной» восстанавливаем
+  /// последнюю позитивную длительность ([_lastPositiveDuration]), а не сбрасываем
+  /// на дефолт — если пользователь уже настроил длительность, а потом
+  /// заглянул в момент/открытую и вернулся, выбор не потеряется.
+  void _onShapeChanged(TaskShape shape) {
+    if (_shape == shape) return;
+    setState(() {
+      if (_shape == TaskShape.block) {
+        _lastPositiveDuration = _durationMinutes;
+      }
+      _shape = shape;
+      switch (shape) {
+        case TaskShape.block:
+          _durationMinutes = _lastPositiveDuration;
+        case TaskShape.moment:
+          _durationMinutes = kMomentDuration;
+        case TaskShape.open:
+          _durationMinutes = kOpenEndedDuration;
+      }
+      // Явный выбор формы — как явный выбор длительности вручную: NL-парсер
+      // заголовка больше не должен подставлять свою длительность поверх него.
       _userPickedDuration = true;
     });
   }
@@ -1721,43 +1761,94 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
             ),
             const SizedBox(height: 16),
 
-            // 7. Длительность — пресеты из durationPresetsProvider + «Свой».
-            // Один горизонтально прокручиваемый ряд (не переносится).
-            Text(context.s('today.duration_label'), style: textTheme.labelMedium),
+            // 6b. Форма задачи (task_shape.dart) — Обычная (durationMinutes>0,
+            // блок) / Момент (=0, точка без длительности) / Открытая (=-1,
+            // начало без заданного конца). Один горизонтально прокручиваемый
+            // ряд чипов, тот же паттерн, что у приоритета/длительности/повтора.
+            Text(context.s('today.shape_label'), style: textTheme.labelMedium),
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  for (final d in durationPresets) ...[
-                    ChoiceChip(
-                      label: Text(_durationLabel(d)),
-                      selected: _durationMinutes == d,
-                      onSelected: (_) => setState(() {
-                        _durationMinutes = d;
-                        // Ручной выбор → NL не перетирает длительность.
-                        _userPickedDuration = true;
-                      }),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  // Чип «Свой» — диалог ввода минут / выбора времени окончания.
-                  // Подсвечен, если текущее значение не входит в пресеты.
                   ChoiceChip(
-                    label: Text(
-                      durationPresets.contains(_durationMinutes)
-                          ? context.s('today.custom_chip')
-                          : '${context.s('today.custom_chip')} · '
-                              '${_durationLabel(_durationMinutes)}',
-                    ),
-                    avatar: const Icon(Icons.tune, size: 16),
-                    selected: !durationPresets.contains(_durationMinutes),
-                    onSelected: (_) => _showCustomDurationDialog(),
+                    label: Text(context.s('today.shape_block')),
+                    selected: _shape == TaskShape.block,
+                    onSelected: (_) => _onShapeChanged(TaskShape.block),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text(context.s('today.shape_moment')),
+                    selected: _shape == TaskShape.moment,
+                    onSelected: (_) => _onShapeChanged(TaskShape.moment),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text(context.s('today.shape_open')),
+                    selected: _shape == TaskShape.open,
+                    onSelected: (_) => _onShapeChanged(TaskShape.open),
                   ),
                 ],
               ),
             ),
+            // Короткая подсказка под чипами — только для момент/открытая (для
+            // обычной формы длительность и так видна в секции ниже).
+            if (_shape != TaskShape.block) ...[
+              const SizedBox(height: 6),
+              Text(
+                context.s(_shape == TaskShape.moment
+                    ? 'today.shape_moment_hint'
+                    : 'today.shape_open_hint'),
+                style: textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context)
+                      .extension<FocusThemeExtension>()
+                      ?.textMuted,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
+
+            // 7. Длительность — пресеты из durationPresetsProvider + «Свой».
+            // Только для обычной формы (TaskShape.block) — у момента/открытой
+            // длительности нет вовсе (см. 6b выше).
+            if (_shape == TaskShape.block) ...[
+              // Один горизонтально прокручиваемый ряд (не переносится).
+              Text(context.s('today.duration_label'), style: textTheme.labelMedium),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final d in durationPresets) ...[
+                      ChoiceChip(
+                        label: Text(_durationLabel(d)),
+                        selected: _durationMinutes == d,
+                        onSelected: (_) => setState(() {
+                          _durationMinutes = d;
+                          // Ручной выбор → NL не перетирает длительность.
+                          _userPickedDuration = true;
+                        }),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    // Чип «Свой» — диалог ввода минут / выбора времени окончания.
+                    // Подсвечен, если текущее значение не входит в пресеты.
+                    ChoiceChip(
+                      label: Text(
+                        durationPresets.contains(_durationMinutes)
+                            ? context.s('today.custom_chip')
+                            : '${context.s('today.custom_chip')} · '
+                                '${_durationLabel(_durationMinutes)}',
+                      ),
+                      avatar: const Icon(Icons.tune, size: 16),
+                      selected: !durationPresets.contains(_durationMinutes),
+                      onSelected: (_) => _showCustomDurationDialog(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // 8. Повтор (серия). Для виртуального повтора серии контрол правила не
             // показываем — правки одного дня материализуются, а правило меняется

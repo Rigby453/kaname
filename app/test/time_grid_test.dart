@@ -119,6 +119,27 @@ void main() {
     });
   });
 
+  group('formatItemTimeRange (форма задачи — task_shape.dart)', () {
+    test('block (durationMinutes > 0) — как formatBlockTimeRange', () {
+      expect(
+        formatItemTimeRange(DateTime(2026, 6, 22, 14, 30), 45),
+        '14:30–15:15',
+      );
+    });
+    test('moment (durationMinutes == 0) — только точка, без диапазона', () {
+      expect(
+        formatItemTimeRange(DateTime(2026, 6, 22, 14, 0), 0),
+        '14:00',
+      );
+    });
+    test('open (durationMinutes == -1) — начало с открытым концом', () {
+      expect(
+        formatItemTimeRange(DateTime(2026, 6, 22, 15, 0), -1),
+        '15:00–',
+      );
+    });
+  });
+
   group('blockContentLevel', () {
     test('низкий блок → ТОЛЬКО заголовок (приоритет названию, время на оси)', () {
       expect(blockContentLevel(20), BlockContentLevel.titleOnly);

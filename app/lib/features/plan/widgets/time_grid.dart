@@ -32,6 +32,7 @@ import '../../../core/utils/weekday_label.dart';
 import '../../../core/widgets/kai_loader.dart';
 import '../../today/task_colors.dart';
 import '../../today/widgets/add_task_sheet.dart' show showAddTaskSheet;
+import '../task_shape.dart';
 import 'day_timeline.dart' show dayItemsProvider;
 import 'plan_providers.dart';
 import 'recurrence_providers.dart';
@@ -54,6 +55,11 @@ const _kBlockPickupDelay = Duration(milliseconds: 120);
 
 /// Высота одного часа в логических пикселях (по умолчанию).
 const double kHourHeight = 56.0;
+
+/// Высота маркера задачи-«момента» (TaskShape.moment) — фиксирована, НЕ
+/// масштабируется c hourHeight, т.к. у момента нет протяжённости во времени
+/// (см. task_shape.dart). Используется _MomentMarker.
+const double kMomentMarkerHeight = 22.0;
 
 /// Шаг привязки при drag/resize — 15 минут.
 const int kSnapMinutes = 15;
@@ -126,6 +132,26 @@ String formatBlockTimeRange(DateTime start, int durationMinutes) {
   final startMin = minutesFromMidnight(start);
   final endMin = startMin + durationMinutes;
   return '${formatMinutesOfDay(startMin)}–${formatMinutesOfDay(endMin)}';
+}
+
+/// Диапазон времени задачи С УЧЁТОМ её «формы» (task_shape.dart) — единая
+/// точка входа, которую используют и сетка (_BlockContent), и карточка-деталь
+/// (task_detail_card), вместо того чтобы заново городить ветвление по
+/// durationMinutes на каждом месте:
+///   • [TaskShape.block]  — как [formatBlockTimeRange] («14:30–15:15»);
+///   • [TaskShape.moment] — одна точка («14:00»), диапазона нет — длительности
+///     нет вовсе;
+///   • [TaskShape.open]   — начало с открытым концом («15:00–», без конкретного
+///     времени завершения — намеренно без второй половины диапазона).
+String formatItemTimeRange(DateTime start, int durationMinutes) {
+  switch (taskShapeOf(durationMinutes)) {
+    case TaskShape.moment:
+      return formatMinutesOfDay(minutesFromMidnight(start));
+    case TaskShape.open:
+      return '${formatMinutesOfDay(minutesFromMidnight(start))}–';
+    case TaskShape.block:
+      return formatBlockTimeRange(start, durationMinutes);
+  }
 }
 
 /// Сколько информации помещается в блок данной высоты [height] — чистая
@@ -939,13 +965,39 @@ class _DayColumn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Считаем дорожки перекрытий.
-    final spans = items
-        .map((i) => (
-              startMin: minutesFromMidnight(i.scheduledAt),
-              endMin: minutesFromMidnight(i.scheduledAt) + i.durationMinutes,
-            ))
-        .toList();
+    // Форма задачи (task_shape.dart) решает, как она входит в раскладку:
+    //   • block — как раньше, конец = начало + длительность;
+    //   • open  — «эффективный» конец для раскладки/рендера — до следующего
+    //     события дня (любой формы) или до конца суток, а НЕ item.durationMinutes
+    //     (там сентинел -1 — durationToHeight/спаны никогда не должны получать
+    //     его напрямую, иначе высота/интервал будут отрицательными);
+    //   • moment — исключается из блоков-с-лейнами совсем: рисуется отдельным
+    //     маркером НАД блоками (_MomentMarker), без лейна и без резервирования
+    //     места на сетке.
+    final allStarts =
+        items.map((i) => minutesFromMidnight(i.scheduledAt)).toList();
+
+    final blockLike = <ItemsTableData>[];
+    final moments = <ItemsTableData>[];
+    for (final i in items) {
+      if (taskShapeOf(i.durationMinutes) == TaskShape.moment) {
+        moments.add(i);
+      } else {
+        blockLike.add(i);
+      }
+    }
+
+    final spans = blockLike.map((i) {
+      final startMin = minutesFromMidnight(i.scheduledAt);
+      final endMin = taskShapeOf(i.durationMinutes) == TaskShape.open
+          ? startMin +
+              openEndedDurationMinutes(
+                startMin,
+                nextStartMin: nextStartAfter(startMin, allStarts),
+              )
+          : startMin + i.durationMinutes;
+      return (startMin: startMin, endMin: endMin);
+    }).toList();
     final lanes = computeOverlapLanes(spans);
 
     return LayoutBuilder(
@@ -965,19 +1017,35 @@ class _DayColumn extends ConsumerWidget {
                 hourHeight: hourHeight,
               ),
             ),
-            for (var i = 0; i < items.length; i++)
+            for (var i = 0; i < blockLike.length; i++)
               // Positioned должен быть прямым потомком Stack, поэтому _EventBlock
               // кладётся в Stack напрямую. RepaintBoundary для изоляции
               // перерисовки блока во время drag/resize находится внутри
               // _EventBlock (оборачивает child у Positioned).
               _EventBlock(
-                key: ValueKey(items[i].id),
-                item: items[i],
+                key: ValueKey(blockLike[i].id),
+                item: blockLike[i],
                 day: day,
                 hourHeight: hourHeight,
                 columnWidth: width,
                 lane: lanes[i].lane,
                 laneCount: lanes[i].laneCount,
+                compact: compact,
+                effectiveDurationMinutes: spans[i].endMin - spans[i].startMin,
+              ),
+            // Маркеры-«моменты» — НАД блоками, на полную ширину колонки, без
+            // лейнов (момент не занимает места на сетке — только точка).
+            for (final m in moments)
+              _MomentMarker(
+                key: ValueKey(m.id),
+                item: m,
+                day: day,
+                top: (minutesToOffset(
+                          minutesFromMidnight(m.scheduledAt),
+                          hourHeight,
+                        ) -
+                        kMomentMarkerHeight / 2)
+                    .clamp(0.0, double.infinity),
                 compact: compact,
               ),
           ],
@@ -1343,6 +1411,7 @@ class _EventBlock extends ConsumerStatefulWidget {
     required this.lane,
     required this.laneCount,
     required this.compact,
+    required this.effectiveDurationMinutes,
   });
 
   final ItemsTableData item;
@@ -1352,6 +1421,14 @@ class _EventBlock extends ConsumerStatefulWidget {
   final int lane;
   final int laneCount;
   final bool compact;
+
+  /// Длительность (минут, всегда > 0) для расчёта ВЫСОТЫ блока — НЕ то же
+  /// самое, что item.durationMinutes для формы [TaskShape.open] (там в БД
+  /// лежит сентинел -1). Для [TaskShape.block] совпадает с
+  /// item.durationMinutes; для open — посчитана в _DayColumn через
+  /// [openEndedDurationMinutes] (до следующего события/конца дня). Передаётся
+  /// готовым значением, чтобы durationToHeight никогда не получал -1/0 напрямую.
+  final int effectiveDurationMinutes;
 
   @override
   ConsumerState<_EventBlock> createState() => _EventBlockState();
@@ -1429,8 +1506,13 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
 
     final startMin = minutesFromMidnight(widget.item.scheduledAt);
     final baseTop = minutesToOffset(startMin, widget.hourHeight);
+    // effectiveDurationMinutes — НЕ item.durationMinutes напрямую: для
+    // TaskShape.open там сентинел -1 (см. task_shape.dart), а
+    // effectiveDurationMinutes уже посчитан в _DayColumn (до следующего
+    // события/конца дня) и всегда > 0.
     final baseHeight =
-        durationToHeight(widget.item.durationMinutes, widget.hourHeight);
+        durationToHeight(widget.effectiveDurationMinutes, widget.hourHeight);
+    final shape = taskShapeOf(widget.item.durationMinutes);
 
     // Геометрия дорожек: равные колонки внутри ширины.
     final laneWidth =
@@ -1446,6 +1528,14 @@ class _EventBlockState extends ConsumerState<_EventBlock> {
       colors: colors,
       compact: widget.compact,
       baseHeight: baseHeight,
+      // Ручка ресайза (меняет длительность) имеет смысл только для обычного
+      // блока — у «момента» длительности нет (сюда он и не попадает — см.
+      // _DayColumn), у «открытого» конец сознательно не задан. По решению
+      // владельца продукта ресайз для open временно НЕ поддержан (можно было
+      // бы «перетянуть низ → стал обычным блоком», но это отдельная задача);
+      // просто скрываем ручку, перенос (drag) времени начала работает как обычно.
+      showResizeHandle: shape == TaskShape.block,
+      openEnded: shape == TaskShape.open,
       onResizeStart: () {
         HapticFeedback.selectionClick();
         // Старт жеста: снэп-слот «уже на текущей длительности», чтобы первый тик
@@ -1881,6 +1971,8 @@ class _BlockContent extends StatelessWidget {
     required this.colors,
     required this.compact,
     required this.baseHeight,
+    required this.showResizeHandle,
+    required this.openEnded,
     required this.onResizeStart,
     required this.onResizeUpdate,
     required this.onResizeEnd,
@@ -1892,7 +1984,12 @@ class _BlockContent extends StatelessWidget {
   final bool compact;
   final double baseHeight;
   // Нижняя ручка ресайза (меняет длительность) — единственная ручка блока
-  // (верхняя убрана по решению владельца продукта).
+  // (верхняя убрана по решению владельца продукта). Показывается ТОЛЬКО для
+  // TaskShape.block — у момента нет длительности (и он вообще не рендерится
+  // этим виджетом), у открытого конец сознательно не задан (см. task_shape.dart).
+  final bool showResizeHandle;
+  // TaskShape.open: рисуем открытый низ (стрелка вниз) вместо ручки ресайза.
+  final bool openEnded;
   final VoidCallback onResizeStart;
   final ValueChanged<double> onResizeUpdate;
   final VoidCallback onResizeEnd;
@@ -1901,14 +1998,14 @@ class _BlockContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    // Ручка показывается ВСЕГДА (как в Google Calendar) — даже на самом
-    // коротком блоке. Её высота адаптивно уменьшается на маленьких блоках, но
-    // никогда не съедает тело целиком (см. bottomHandleHeight).
+    // Ручка показывается ВСЕГДА на обычном блоке (как в Google Calendar) —
+    // даже на самом коротком. Её высота адаптивно уменьшается на маленьких
+    // блоках, но никогда не съедает тело целиком (см. bottomHandleHeight).
     final handleHeight = bottomHandleHeight(
       baseHeight,
       handleHitHeight: handleHitHeight,
     );
-    final timeRange = formatBlockTimeRange(item.scheduledAt, item.durationMinutes);
+    final timeRange = formatItemTimeRange(item.scheduledAt, item.durationMinutes);
     final isDone = item.status == 'done';
 
     return Container(
@@ -2003,12 +2100,25 @@ class _BlockContent extends StatelessWidget {
           // long-press/Pan уже на первый потяг — ТАЧ и МЫШЬ одинаково. Вне зоны
           // ручки перенос блока работает как прежде.
           //
-          // Ручка показывается ВСЕГДА (handleHeight > 0 почти всегда — см.
-          // bottomHandleHeight), в т.ч. на самом коротком блоке: там её высота
-          // адаптивно меньше полной [handleHitHeight], но резерв тела
-          // (kHandleBodyReserve) не даёт ей съесть блок целиком — тап/перенос
-          // остаются доступны даже на короткой задаче.
-          if (handleHeight > 0)
+          // Открытый конец (TaskShape.open, task_shape.dart): вместо ручки
+          // ресайза — пунктирная линия у нижнего края («конец не задан», как
+          // просил владелец продукта). Чисто декоративный слой (без гест-
+          // детектора) — не мешает тапу/переносу блока сверху него.
+          if (openEnded)
+            Positioned(
+              left: 4,
+              right: 4,
+              bottom: 0,
+              height: 6,
+              child: _OpenEndedEdge(color: colors.fg.withValues(alpha: 0.55)),
+            ),
+          // Ручка показывается ВСЕГДА на обычном блоке (handleHeight > 0 почти
+          // всегда — см. bottomHandleHeight), в т.ч. на самом коротком блоке:
+          // там её высота адаптивно меньше полной [handleHitHeight], но резерв
+          // тела (kHandleBodyReserve) не даёт ей съесть блок целиком — тап/
+          // перенос остаются доступны даже на короткой задаче. У «открытого»
+          // (openEnded) и «момента» (сюда не попадает совсем) ручки нет.
+          if (showResizeHandle && handleHeight > 0)
             Positioned(
               left: 0,
               right: 0,
@@ -2180,6 +2290,164 @@ class _BlockContent extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// TaskShape.open — индикатор открытого низа (task_shape.dart)
+// ===========================================================================
+
+/// Пунктирная линия у нижнего края блока [TaskShape.open] — визуальная
+/// подсказка «конец не задан» вместо ручки ресайза. Чисто декоративный слой:
+/// без гест-детектора внутри, поэтому не крадёт хиты у тап/переноса блока,
+/// которые обрабатываются выше по дереву (_EventBlockState).
+class _OpenEndedEdge extends StatelessWidget {
+  const _OpenEndedEdge({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 6,
+      child: CustomPaint(painter: _DashedLinePainter(color: color)),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  const _DashedLinePainter({required this.color});
+
+  final Color color;
+
+  static const double _dashWidth = 5.0;
+  static const double _dashGap = 4.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    final y = size.height / 2;
+    var x = 0.0;
+    while (x < size.width) {
+      final end = (x + _dashWidth) > size.width ? size.width : x + _dashWidth;
+      canvas.drawLine(Offset(x, y), Offset(end, y), paint);
+      x += _dashWidth + _dashGap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedLinePainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+// ===========================================================================
+// TaskShape.moment — маркер без длительности (task_shape.dart)
+// ===========================================================================
+
+/// Маркер задачи-«момента» (durationMinutes == 0, [TaskShape.moment]): точка +
+/// время + заголовок в один ряд, БЕЗ длительности и БЕЗ ручек ресайза — просто
+/// метка на сетке (не занимает лейн/место у соседних блоков, см. _DayColumn).
+/// Тап открывает ту же карточку-деталь, что и у обычного блока. Высота
+/// фиксирована ([kMomentMarkerHeight]) и НЕ масштабируется под hourHeight —
+/// у момента нет протяжённости во времени, поэтому её незачем привязывать
+/// к масштабу сетки. Перенос (drag) для момента пока не поддержан — время
+/// правится через карточку-деталь → Edit (то же ограничение, что у ручки
+/// ресайза открытого блока, см. showResizeHandle в _EventBlockState).
+class _MomentMarker extends StatelessWidget {
+  const _MomentMarker({
+    super.key,
+    required this.item,
+    required this.day,
+    required this.top,
+    required this.compact,
+  });
+
+  final ItemsTableData item;
+  final DateTime day;
+  final double top;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    final textTheme = Theme.of(context).textTheme;
+    final colors = _blockColors(item, ext, scheme);
+    final isDone = item.status == 'done';
+
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      height: kMomentMarkerHeight,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        child: Material(
+          color: colors.bg,
+          borderRadius: BorderRadius.circular(999),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => showTaskDetailSheet(context, item: item, day: day),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: colors.fg,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Время скрываем в узких видах (3 дня/неделя) — там место
+                  // экономится тем же принципом, что и у обычных блоков
+                  // (compactBlockContent): приоритет — заголовку. Flexible (а
+                  // НЕ голый Text) — иначе при крупном системном тексте (a11y
+                  // 2.0×) время требует своей полной интринсик-ширины и рвёт
+                  // Row по горизонтали (RenderFlex overflow), даже когда
+                  // заголовок рядом честно сжат через Expanded+ellipsis:
+                  // не-flex дети Row всегда берут натуральный размер вне
+                  // зависимости от того, что рядом есть гибкий сосед.
+                  if (!compact) ...[
+                    Flexible(
+                      child: Text(
+                        formatMinutesOfDay(minutesFromMidnight(item.scheduledAt)),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: colors.fg,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: colors.fg,
+                        decoration: isDone ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

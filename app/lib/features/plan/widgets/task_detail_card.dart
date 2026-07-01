@@ -23,8 +23,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/attachment_view.dart';
 import '../../today/widgets/add_task_sheet.dart';
 import '../recurrence.dart';
+import '../task_shape.dart';
 import 'recurrence_providers.dart';
-import 'time_grid.dart' show formatBlockTimeRange;
+import 'time_grid.dart' show formatItemTimeRange;
 
 /// Открывает карточку-деталь задачи [item] для дня [day] как нижний лист.
 Future<void> showTaskDetailSheet(
@@ -192,10 +193,13 @@ class TaskDetailCard extends ConsumerWidget {
             )
         : '';
 
-    final timeRange = formatBlockTimeRange(item.scheduledAt, item.durationMinutes);
+    final timeRange = formatItemTimeRange(item.scheduledAt, item.durationMinutes);
     final typeLabel = context.s('today.type_${item.type}');
     final priorityLabel = context.s('today.priority_${item.priority}');
     final isDone = item.status == 'done';
+    // «Форма» задачи (task_shape.dart) — момент/открытая показывают короткую
+    // подсказку под временем, чтобы было понятно, почему диапазон не как обычно.
+    final shape = taskShapeOf(item.durationMinutes);
 
     return SafeArea(
       top: false,
@@ -261,6 +265,23 @@ class TaskDetailCard extends ConsumerWidget {
               text: timeRange,
               color: textMuted,
             ),
+            // Момент/открытая — короткая подсказка, почему нет обычного
+            // диапазона времени (task_shape.dart).
+            if (shape == TaskShape.moment) ...[
+              const SizedBox(height: 2),
+              _DetailRow(
+                icon: PhosphorIcons.dotOutline(PhosphorIconsStyle.regular),
+                text: context.s('plan.moment_hint'),
+                color: textMuted,
+              ),
+            ] else if (shape == TaskShape.open) ...[
+              const SizedBox(height: 2),
+              _DetailRow(
+                icon: PhosphorIcons.arrowLineDown(PhosphorIconsStyle.regular),
+                text: context.s('plan.open_ended_hint'),
+                color: textMuted,
+              ),
+            ],
             const SizedBox(height: 6),
             // Тип · приоритет.
             _DetailRow(

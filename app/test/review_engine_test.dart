@@ -195,6 +195,41 @@ void main() {
       expect(inBlock, isFalse,
           reason: 'fill не должна попасть в интервал block (09:00–11:00)');
     });
+
+    // Форма задачи (task_shape.dart): durationMinutes==0 — «момент», не должен
+    // резервировать место на сетке (см. slotsFor в review_engine.dart).
+    test('a moment (durationMinutes == 0) does not block a slot for others',
+        () {
+      final items = [
+        _item('moment',
+            scheduledAt: DateTime(2026, 6, 9, 9, 0), durationMinutes: 0),
+        // Обычная задача хочет тот же слот 09:00 — момент не должен помешать.
+        _item('normal',
+            scheduledAt: DateTime(2026, 6, 9, 9, 0), durationMinutes: 30),
+      ];
+      final assign = distributeToDay(items, day, const []);
+
+      expect(assign['moment'], DateTime(2026, 6, 10, 9, 0));
+      // Обычная задача занимает тот же слот, что и момент — момент не считался
+      // «занятым» слотом.
+      expect(assign['normal'], DateTime(2026, 6, 10, 9, 0));
+    });
+
+    // durationMinutes==-1 («открытая», TaskShape.open) — временно занимает
+    // ровно 1 слот (30 мин), как и старая заглушка для любого d<=0.
+    test('an open-ended task (durationMinutes == -1) reserves one 30-min slot',
+        () {
+      final items = [
+        _item('open',
+            scheduledAt: DateTime(2026, 6, 9, 9, 0), durationMinutes: -1),
+        _item('next', scheduledAt: DateTime(2026, 6, 9), durationMinutes: 30),
+      ];
+      final assign = distributeToDay(items, day, const []);
+
+      expect(assign['open'], DateTime(2026, 6, 10, 9, 0));
+      // 'next' без времени не должна встать поверх открытой (09:00 занят).
+      expect(assign['next'], isNot(DateTime(2026, 6, 10, 9, 0)));
+    });
   });
 
   group('mapAiPlans', () {

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
 import '../../../core/database/database_providers.dart';
+import '../../plan/task_shape.dart';
 
 /// Одна перестановка задачи в AI-плане — для отображения деталей в карточке.
 /// Поля [title] и [priority] могут быть пустыми (старый бэкенд без этих полей).
@@ -162,8 +163,14 @@ Map<String, DateTime> distributeToDay(
       DateTime(day.year, day.month, day.day, t.hour, t.minute < 30 ? 0 : 30);
 
   // Сколько 30-мин слотов перекрывает задача по длительности (минимум 1).
-  // durationMinutes null/0 → 1 слот (30 мин).
+  // Форма задачи (task_shape.dart) уточняет старую заглушку «d<=0 → 1 слот»:
+  //   • момент (durationMinutes == 0) — 0 слотов, места на сетке не занимает
+  //     (это точка во времени, а не интервал);
+  //   • открытый (durationMinutes == -1) — временно 1 слот (30 мин), как и
+  //     раньше для любого d<=0; полноценный расчёт «до следующего дела»
+  //     здесь не нужен — глубокая переработка redistribution вне рамок задачи.
   int slotsFor(ItemsTableData i) {
+    if (taskShapeOf(i.durationMinutes) == TaskShape.moment) return 0;
     final d = i.durationMinutes;
     return d <= 0 ? 1 : (d + 29) ~/ 30;
   }
