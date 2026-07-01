@@ -96,6 +96,8 @@ const loginSchema = z
 // (SharedPreferences), поэтому телефон и веб показывали разные значения.
 const updateMeSchema = z.object({
   onboarding_done: z.boolean().optional(),
+  name: z.string().min(1).max(255).optional(),
+  avatar_preset: z.string().max(64).optional(),
   weight_kg: z.number().min(20).max(400).optional(),
   height_cm: z.number().int().min(50).max(260).optional(),
   age_years: z.number().int().min(5).max(120).optional(),
@@ -268,8 +270,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // AUTH-05: PATCH /api/v1/auth/me (защищённый маршрут)
-  // Обновление серверных флагов профиля. Сейчас — только onboarding_done
-  // (ADR-055: синхронизация завершения онбординга между устройствами/вебом).
+  // Обновление серверных флагов профиля: onboarding_done (ADR-055), антропометрия/
+  // цели питания/воды (ADR-062), name + avatar_preset (ADR-064) — синхронизация
+  // между устройствами/вебом.
   fastify.patch(
     "/api/v1/auth/me",
     { preHandler: requireAuth },
@@ -291,6 +294,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       // Маппинг snake_case (API) → camelCase (Prisma); только переданные поля.
       const data: {
         onboardingDone?: boolean;
+        name?: string;
+        avatarPreset?: string;
         weightKg?: number;
         heightCm?: number;
         ageYears?: number;
@@ -307,6 +312,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       } = {};
       if (parsed.data.onboarding_done !== undefined) {
         data.onboardingDone = parsed.data.onboarding_done;
+      }
+      if (parsed.data.name !== undefined) {
+        data.name = parsed.data.name;
+      }
+      if (parsed.data.avatar_preset !== undefined) {
+        data.avatarPreset = parsed.data.avatar_preset;
       }
       if (parsed.data.weight_kg !== undefined) {
         data.weightKg = parsed.data.weight_kg;

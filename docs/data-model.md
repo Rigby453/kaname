@@ -7,7 +7,7 @@
 | email             | string   | unique, **nullable** (email OR phone required) |
 | phone             | string   | unique, **nullable**; Russian E.164 `+7XXXXXXXXXX` (RF law 406-FZ) |
 | password_hash     | string   | bcrypt                                  |
-| name              | string   |                                         |
+| name              | string   | now accepted by `PATCH /auth/me` (ADR-064) |
 | subscription_tier | enum     | free / premium                          |
 | premium_until     | timestamp| **nullable** (ADR-041); срочная подписка — active if > now |
 | premium_source    | string   | **nullable** (ADR-041); apple\|google\|rustore\|stripe\|yookassa\|dev |
@@ -27,6 +27,7 @@
 | macro_fat_g       | integer  | **nullable** (ADR-062)                  |
 | macro_carbs_g     | integer  | **nullable** (ADR-062)                  |
 | water_goal_ml     | integer  | **nullable** (ADR-062); daily water goal, synced (was device-only) |
+| avatar_preset     | string   | **nullable** (ADR-064); avatar preset id, synced (was device-only) |
 | created_at        | timestamp|                                         |
 | updated_at        | timestamp|                                         |
 
@@ -167,8 +168,8 @@
 > `Streak.lastFreezeAccrualAt`, `User.premiumUntil/premiumSource`,
 > `User.onboardingDone`, ADR-062 профильные поля `User.weightKg/heightCm/ageYears/sex/
 > activityLevel/foodGoal/calorieGoal/macroOverrideEnabled/macroKcalTarget/macroProteinG/
-> macroFatG/macroCarbsG/waterGoalMl`). Полный набор моделей (`Friend`, `CoStudySession`,
-> relation-поля `User`) см. в `schema.prisma`.
+> macroFatG/macroCarbsG/waterGoalMl`, ADR-064 `User.avatarPreset`). Полный набор моделей
+> (`Friend`, `CoStudySession`, relation-поля `User`) см. в `schema.prisma`.
 
 ```prisma
 generator client {
@@ -208,6 +209,7 @@ model User {
   macroFatG            Int?
   macroCarbsG          Int?
   waterGoalMl          Int?
+  avatarPreset         String?  // ADR-064: avatar preset id, synced (was device-only)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   items            Item[]

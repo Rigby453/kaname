@@ -4,6 +4,32 @@
 > *Что обещали* (продукт) — в `docs/SPEC.md`. Архитектурные решения — в `docs/decisions.md`.
 > Статусы задач в журнале ниже: `[ ]` todo · `[~]` в работе · `[x]` сделано · `[!]` заблокировано.
 
+## Feature — имя + аватар-пресет синкаются на сервер, backend-часть (2026-07-01)
+
+Тот же класс бага, что и у профиля/КБЖУ ниже: `profile_identity_provider.dart` хранит имя и
+аватар-пресет **только** в SharedPreferences — телефон и веб/новое устройство показывают разное
+имя/аватар. `User.name` в БД уже был, но `PATCH /auth/me` его не принимал; аватар-пресета в БД не
+было вообще. Backend-часть (ADR-064) готова; **клиент — отдельная задача** (заменить/дополнить
+`profile_identity_provider.dart` синком через `GET/PATCH /auth/me`, см. TODO в шапке файла).
+
+- **[x] `backend/prisma/schema.prisma`** — новое nullable-поле `avatarPreset String?` на `User`
+  (без `@map`, как и все прочие поля `User` в этой схеме — колонка в БД тоже `avatarPreset`).
+- **[x] Миграция `backend/prisma/migrations/20260701150000_add_user_avatar_preset/migration.sql`**
+  — `ALTER TABLE "User" ADD COLUMN "avatarPreset" TEXT;`. НЕ применена к prod вручную — доедет
+  через `prisma migrate deploy` в start command на Render (как и остальные миграции).
+- **[x] `backend/src/routes/auth.ts`** — `updateMeSchema` принимает `name` (string, 1-255) и
+  `avatar_preset` (string, max 64); `PATCH /api/v1/auth/me` мапит оба в `User.name`/`avatarPreset`.
+- **[x] `backend/src/models/user.ts`** — `serializeUser` возвращает `avatar_preset` (snake_case) на
+  `GET` и `PATCH /auth/me` (name уже отдавался).
+- **[x] Контракт**: `docs/api-spec.yaml` (`name`+`avatar_preset` в теле `PATCH /auth/me` и в схеме
+  `User`) и `docs/data-model.md` (таблица Users + embedded prisma-блок) обновлены.
+- **Результат**: `npx prisma validate` — OK; `npx prisma generate` + `npm run build` (tsc) — 0
+  ошибок. Интеграционные тесты `tests/integration/auth*.test.ts` **не запускались** — нет
+  `DATABASE_URL_TEST`, а основной `DATABASE_URL` указывает на prod Neon (см. `backend/CLAUDE.md`);
+  прогон оставлен оркестратору/QA-агенту с тестовой БД.
+- **Следующий шаг (клиент, не в этой задаче):** `profile_identity_provider.dart` — читать/писать
+  `name`/`avatar_preset` через `GET/PATCH /auth/me` вместо/вместе с prefs.
+
 ## Feature — профиль (антропометрия + цели питания/воды) синкается на сервер, backend-часть (2026-07-01)
 
 Баг с устройства: телефон показывал 3000 ккал (введено пользователем), веб/новое устройство — 2000 (дефолт из

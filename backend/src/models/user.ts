@@ -5,11 +5,13 @@ import { resolveEntitlement } from "./entitlement.js";
 // email и phone теперь nullable (406-ФЗ).
 // ADR-041: добавлены is_premium, premium_until, premium_source.
 // ADR-062: добавлены антропометрия + цели питания/воды (синк профиля между устройствами).
+// ADR-064: name теперь принимается через PATCH /auth/me; добавлен avatar_preset.
 export interface SerializedUser {
   id: string;
   email: string | null;
   phone: string | null;
   name: string;
+  avatar_preset: string | null;
   subscription_tier: string;
   is_premium: boolean;
   premium_until: string | null;
@@ -47,6 +49,7 @@ export function serializeUser(user: User): SerializedUser {
     email: user.email ?? null,
     phone: user.phone ?? null,
     name: user.name,
+    avatar_preset: user.avatarPreset ?? null,
     subscription_tier: user.subscriptionTier,
     is_premium: entitlement.isPremium,
     premium_until: entitlement.premiumUntil

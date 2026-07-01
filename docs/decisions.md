@@ -5,6 +5,34 @@
 
 ---
 
+## ADR-064: Name + avatar_preset added to profile sync (PATCH /auth/me)
+**Date:** 2026-07-01
+**Проблема (баг с устройства):** имя пользователя и пресет аватара не синкались между
+устройствами. `User.name` уже существовал в схеме и отдавался в `GET /auth/me`, но
+`PATCH /auth/me` его не принимал (только читался при регистрации), а пресет аватара
+вообще не имел серверной колонки и жил только на устройстве (аналогично болезни из
+ADR-062 для антропометрии/целей).
+**Решение:**
+- `PATCH /api/v1/auth/me` (`updateMeSchema` в `backend/src/routes/auth.ts`) теперь
+  принимает `name` (string, 1-255) и записывает его в существующую колонку `User.name`.
+- Новая nullable-колонка `User.avatarPreset` (`backend/prisma/schema.prisma`, без
+  дефолта — пресет присваивает клиент) добавлена миграцией
+  `prisma/migrations/20260701150000_add_user_avatar_preset/migration.sql`
+  (`ALTER TABLE "User" ADD COLUMN "avatarPreset" TEXT;`). Как и остальные поля `User`
+  в этой схеме, колонка **без** `@map` — Prisma-имя совпадает с именем колонки в БД
+  (в этой схеме `@map` на уровне колонки нигде не используется, только `@@map` на
+  уровне таблиц у Friend/CoStudySession/StudyGroup/StudyGroupMember).
+  `PATCH /api/v1/auth/me` принимает `avatar_preset` (string, max 64) через
+  `updateMeSchema`.
+- `serializeUser` (`backend/src/models/user.ts`) отдаёт `avatar_preset` (snake_case) и
+  на `GET`, и на `PATCH /auth/me`, как и остальные профильные поля.
+- Контракт обновлён: `docs/api-spec.yaml` (тело `PATCH /auth/me` + схема `User`
+  получили `name`/`avatar_preset`) и `docs/data-model.md` (таблица Users + embedded
+  prisma-блок).
+**Клиенту (отдельная задача, не в этом ADR):** при логине/синке читать `name`/
+`avatar_preset` из `GET/PATCH /auth/me` и отправлять локальные значения на PATCH при
+изменении, аналогично остальным ADR-062 полям.
+
 ## ADR-063: Groq added as third AI provider, prioritized above Gemini for dev/test
 **Date:** 2026-07-01
 **Decision:** `backend/src/ai/provider.ts` gains a third provider, `"groq"`, called via Groq's

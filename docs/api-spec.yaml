@@ -108,9 +108,11 @@ paths:
               description: >
                 All fields optional; only sent fields are updated (ADR-062: profile —
                 anthropometry + nutrition/water goals — synced across devices/web,
-                previously stored on-device only).
+                previously stored on-device only. ADR-064: name + avatar_preset added).
               properties:
                 onboarding_done: { type: boolean }
+                name: { type: string, minLength: 1, maxLength: 255 }
+                avatar_preset: { type: string, nullable: true, description: 'Avatar preset id; the app owns the list of valid presets (ADR-064, was device-only)' }
                 weight_kg: { type: number, minimum: 20, maximum: 400 }
                 height_cm: { type: integer, minimum: 50, maximum: 260 }
                 age_years: { type: integer, minimum: 5, maximum: 120 }
@@ -1359,6 +1361,7 @@ components:
         email: { type: string, format: email, nullable: true }
         phone: { type: string, nullable: true, description: 'Russian phone, E.164: +7XXXXXXXXXX' }
         name: { type: string }
+        avatar_preset: { type: string, nullable: true, description: 'ADR-064: avatar preset id, synced (was device-only); the app owns the list of valid presets' }
         subscription_tier: { type: string, enum: [free, premium] }
         is_premium:
           type: boolean

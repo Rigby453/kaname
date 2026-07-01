@@ -39,6 +39,9 @@ model User {
   macroFatG            Int?
   macroCarbsG          Int?
   waterGoalMl          Int?     // дневная цель воды (мл)
+  // ADR-064: имя и аватар синкаются на сервер (name-колонка уже была, но PATCH её
+  // не принимал; avatarPreset — новая колонка, раньше пресет жил только на устройстве).
+  avatarPreset         String?  // id пресета аватара; список пресетов держит клиент
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   items            Item[]
