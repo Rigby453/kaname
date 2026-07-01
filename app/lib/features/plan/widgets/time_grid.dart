@@ -444,11 +444,20 @@ class DayTimeGrid extends ConsumerWidget {
       return const Center(child: KaiLoader());
     }
     final items = itemsAsync.valueOrNull ?? const <ItemsTableData>[];
-    // Фильтр поиска: подстрока заголовка + #хэштег + тип (см. planSearchMatches).
+    // Фильтр по тексту/#тегу/типу (planSearchMatches) + фильтр-панель
+    // приоритет/статус/тип (planFilterMatches) — та же AND-семантика, что
+    // в day_timeline.dart/week_agenda.dart/month_view.dart. Раньше сетка
+    // (блочный вид) применяла только текстовый фильтр — панель приоритет/
+    // статус/тип на неё не действовала (баг).
     final query = ref.watch(planSearchQueryProvider);
-    final filtered = query.trim().isEmpty
+    final filters = ref.watch(planFiltersProvider);
+    final filtered = (query.trim().isEmpty && filters.isEmpty)
         ? items
-        : items.where((i) => planSearchMatches(i, query)).toList();
+        : items.where((i) {
+            final searchOk =
+                query.trim().isEmpty || planSearchMatches(i, query);
+            return searchOk && planFilterMatches(i, filters);
+          }).toList();
 
     return _TimeGridScaffold(
       hourHeight: hourHeight,
@@ -566,11 +575,19 @@ class _NDayTimeGrid extends ConsumerWidget {
       return const Center(child: KaiLoader());
     }
     final allItems = itemsAsync.valueOrNull ?? const <ItemsTableData>[];
-    // Фильтр поиска: подстрока заголовка + #хэштег + тип (см. planSearchMatches).
+    // Фильтр по тексту/#тегу/типу (planSearchMatches) + фильтр-панель
+    // приоритет/статус/тип (planFilterMatches) — та же AND-семантика, что
+    // в day_timeline.dart/week_agenda.dart/month_view.dart (баг: раньше эта
+    // N-дневная сетка — Week/3-day — применяла только текстовый фильтр).
     final query = ref.watch(planSearchQueryProvider);
-    final items = query.trim().isEmpty
+    final filters = ref.watch(planFiltersProvider);
+    final items = (query.trim().isEmpty && filters.isEmpty)
         ? allItems
-        : allItems.where((i) => planSearchMatches(i, query)).toList();
+        : allItems.where((i) {
+            final searchOk =
+                query.trim().isEmpty || planSearchMatches(i, query);
+            return searchOk && planFilterMatches(i, filters);
+          }).toList();
 
     // Группируем по календарному дню (по локальной дате scheduledAt).
     Map<DateTime, List<ItemsTableData>> byDay = {

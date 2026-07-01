@@ -261,12 +261,15 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
                       // переполняет (keyboard rule соблюдён скроллом).
                       Row(
                         children: [
-                          // Нейтральная иконка без акцента (accent discipline)
+                          // Нейтральная иконка без акцента (accent discipline).
+                          // Значок ВОРОНКИ (не лупа) — это фильтр текущего вида
+                          // по тексту/#тегу/типу, а не «поиск» (тот дублировал бы
+                          // глобальную лупу в шапке навбара). Функция не менялась.
                           IconButton(
                             icon: Icon(
                               searchVisible
-                                ? PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill)
-                                : PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+                                ? PhosphorIcons.funnel(PhosphorIconsStyle.fill)
+                                : PhosphorIcons.funnel(PhosphorIconsStyle.regular),
                               color: textMuted,
                             ),
                             tooltip: context.s('plan.search_tooltip'),
@@ -405,13 +408,17 @@ class _PlanScreenState extends ConsumerState<PlanScreen> {
               ),
               child: Text(context.s('plan.today')),
             ),
-          // --- Иконка поиска (во всех видах) — нейтральный цвет. ---
+          // --- Иконка фильтра-по-тексту (во всех видах) — нейтральный цвет.
+          // Воронка, НЕ лупа: лупа уже занята глобальным поиском в шапке
+          // навбара — эта кнопка лишь разворачивает поле фильтра текущего
+          // вида по тексту/#тегу/типу (функция не менялась, только иконка/
+          // подпись — решение владельца продукта). ---
           IconButton(
             visualDensity: VisualDensity.compact,
             icon: Icon(
               searchVisible
-                                ? PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill)
-                                : PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+                                ? PhosphorIcons.funnel(PhosphorIconsStyle.fill)
+                                : PhosphorIcons.funnel(PhosphorIconsStyle.regular),
               color: textMuted,
             ),
             tooltip: context.s('plan.search_tooltip'),
@@ -1031,8 +1038,10 @@ class _SearchFieldState extends State<_SearchField> {
       autofocus: true,
       decoration: InputDecoration(
         hintText: context.s('plan.search_hint'),
+        // Воронка (не лупа) — согласовано с иконкой кнопки-переключателя выше:
+        // это фильтр текущего вида по тексту/#тегу/типу, не глобальный поиск.
         prefixIcon: Icon(
-          PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+          PhosphorIcons.funnel(PhosphorIconsStyle.regular),
           size: 20,
         ),
         suffixIcon: _controller.text.isNotEmpty
