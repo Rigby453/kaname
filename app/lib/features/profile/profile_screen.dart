@@ -1501,6 +1501,9 @@ class _SwipeActionsSetting extends ConsumerWidget {
       required String title,
       required SwipeAction current,
       required ValueChanged<SwipeAction> onChanged,
+      // Канон свайпов: удаление допускается только слева, поэтому правый слот
+      // получает набор без delete (см. swipe_action_provider._sanitizeRight).
+      required List<SwipeAction> options,
     }) {
       return ListTile(
         contentPadding: EdgeInsets.zero,
@@ -1510,7 +1513,7 @@ class _SwipeActionsSetting extends ConsumerWidget {
           value: current,
           underline: const SizedBox.shrink(),
           dropdownColor: ext.surfaceElevated,
-          items: SwipeAction.values
+          items: options
               .map((a) => DropdownMenuItem(
                     value: a,
                     child: Row(
@@ -1537,6 +1540,10 @@ class _SwipeActionsSetting extends ConsumerWidget {
           leadingIconData: PhosphorIcons.arrowRight(),
           title: context.s('profile.swipe_right'),
           current: config.right,
+          // Право = позитив: без «удалить» (удаление только слева).
+          options: SwipeAction.values
+              .where((a) => a != SwipeAction.delete)
+              .toList(),
           onChanged: (a) =>
               ref.read(swipeActionsProvider.notifier).setRight(a),
         ),
@@ -1544,6 +1551,7 @@ class _SwipeActionsSetting extends ConsumerWidget {
           leadingIconData: PhosphorIcons.arrowLeft(),
           title: context.s('profile.swipe_left'),
           current: config.left,
+          options: SwipeAction.values,
           onChanged: (a) =>
               ref.read(swipeActionsProvider.notifier).setLeft(a),
         ),

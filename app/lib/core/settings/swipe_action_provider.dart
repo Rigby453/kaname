@@ -97,13 +97,24 @@ const _kRightKey = 'swipe_right_action';
 const _kLeftKey = 'swipe_left_action';
 
 class SwipeActionsNotifier extends Notifier<SwipeActionsConfig> {
+  /// Канон свайпов: разрушительное УДАЛЕНИЕ допускается ТОЛЬКО на ЛЕВОЙ
+  /// стороне (левый свайп = негатив), правый свайп зарезервирован под позитив
+  /// (выполнено/отложить) и НИКОГДА не удаляет — иначе привычный «смахнуть
+  /// вправо = выполнено» на одном экране означал бы «уничтожить» на другом.
+  /// UI не предлагает delete в правом слоте; это защита от старого prefs и от
+  /// программной установки. delete справа → откат на done.
+  static SwipeAction _sanitizeRight(SwipeAction a) =>
+      a == SwipeAction.delete ? SwipeAction.done : a;
+
   @override
   SwipeActionsConfig build() {
     final prefs = ref.read(sharedPreferencesProvider);
     return SwipeActionsConfig(
-      right: SwipeActionX.fromKey(
-        prefs.getString(_kRightKey),
-        SwipeActionsConfig.defaults.right,
+      right: _sanitizeRight(
+        SwipeActionX.fromKey(
+          prefs.getString(_kRightKey),
+          SwipeActionsConfig.defaults.right,
+        ),
       ),
       left: SwipeActionX.fromKey(
         prefs.getString(_kLeftKey),
@@ -112,10 +123,11 @@ class SwipeActionsNotifier extends Notifier<SwipeActionsConfig> {
     );
   }
 
-  /// Задать действие для свайпа вправо.
+  /// Задать действие для свайпа вправо (delete недопустим — см. _sanitizeRight).
   Future<void> setRight(SwipeAction action) async {
-    await ref.read(sharedPreferencesProvider).setString(_kRightKey, action.name);
-    state = state.copyWith(right: action);
+    final safe = _sanitizeRight(action);
+    await ref.read(sharedPreferencesProvider).setString(_kRightKey, safe.name);
+    state = state.copyWith(right: safe);
   }
 
   /// Задать действие для свайпа влево.
