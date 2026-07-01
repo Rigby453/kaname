@@ -1,11 +1,13 @@
-// Адопция профиля пользователя (антропометрия/цели питания/вода) с сервера
-// в локальные SharedPreferences-ключи (ADR-062).
+// Адопция профиля пользователя (имя/аватар/антропометрия/цели питания/вода)
+// с сервера в локальные SharedPreferences-ключи (ADR-062 + профиль-синк имени/аватара).
 //
 // Диагностика бага: вес/рост/возраст/пол/активность/цель питания/override
 // макросов/норма воды раньше хранились ТОЛЬКО локально (SharedPreferences) —
 // на сервер уходил только флаг онбординга. Каждое устройство одного аккаунта
 // считало КБЖУ по своей ЛОКАЛЬНОЙ антропометрии → расхождение норм между
-// устройствами (например, 3000 ккал на телефоне против 2000 на web).
+// устройствами (например, 3000 ккал на телефоне против 2000 на web). Так же
+// имя/аватар раньше жили только на устройстве — не переезжали при входе на
+// новом устройстве того же аккаунта.
 //
 // Решение: бэкенд теперь хранит эти поля на пользователе (PATCH/GET
 // /api/v1/auth/me, snake_case — см. /docs/api-spec.yaml). [applyServerProfile]
@@ -28,6 +30,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/settings/food_preferences_provider.dart' show kFoodGoalKey;
 import '../../core/settings/macro_override_provider.dart';
 import '../../core/settings/water_goal_provider.dart';
+import '../../features/profile/profile_identity_provider.dart'
+    show kProfileDisplayNameKey, kProfileAvatarPresetKey;
 
 /// Применяет профиль [user] (снапшот с сервера) к [prefs].
 ///
@@ -40,6 +44,16 @@ Future<void> applyServerProfile(
   Map<String, dynamic> user,
   SharedPreferences prefs,
 ) async {
+  final name = user['name'] as String?;
+  if (name != null && name.trim().isNotEmpty) {
+    await prefs.setString(kProfileDisplayNameKey, name.trim());
+  }
+
+  final avatarPreset = user['avatar_preset'] as String?;
+  if (avatarPreset != null && avatarPreset.trim().isNotEmpty) {
+    await prefs.setString(kProfileAvatarPresetKey, avatarPreset.trim());
+  }
+
   final weightKg = (user['weight_kg'] as num?)?.toDouble();
   if (weightKg != null) {
     await prefs.setDouble(kUserWeightKgKey, weightKg);

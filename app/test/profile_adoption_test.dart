@@ -13,6 +13,8 @@ import 'package:app/core/settings/food_preferences_provider.dart'
     show kFoodGoalKey;
 import 'package:app/core/settings/macro_override_provider.dart';
 import 'package:app/core/settings/water_goal_provider.dart';
+import 'package:app/features/profile/profile_identity_provider.dart'
+    show kProfileDisplayNameKey, kProfileAvatarPresetKey;
 import 'package:app/services/sync/profile_adoption_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +35,8 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
 
       final user = <String, dynamic>{
+        'name': 'Sam',
+        'avatar_preset': 'cat',
         'weight_kg': 72.5,
         'height_cm': 180,
         'age_years': 21,
@@ -49,6 +53,8 @@ void main() {
 
       await applyServerProfile(user, prefs);
 
+      expect(prefs.getString(kProfileDisplayNameKey), 'Sam');
+      expect(prefs.getString(kProfileAvatarPresetKey), 'cat');
       expect(prefs.getDouble(_kUserWeightKgKey), 72.5);
       expect(prefs.getInt(_kUserHeightCmKey), 180);
       expect(prefs.getInt(_kUserAgeKey), 21);
@@ -70,6 +76,7 @@ void main() {
         _kUserWeightKgKey: 80.0,
         _kUserHeightCmKey: 175,
         kWaterGoalMlKey: 2400,
+        kProfileDisplayNameKey: 'LocalName',
       });
       final prefs = await SharedPreferences.getInstance();
 
@@ -79,6 +86,7 @@ void main() {
       final user = <String, dynamic>{
         'weight_kg': null,
         'height_cm': null,
+        'name': null,
         // age_years вообще отсутствует в мапе — эквивалентно null.
       };
 
@@ -87,6 +95,7 @@ void main() {
       expect(prefs.getDouble(_kUserWeightKgKey), 80.0);
       expect(prefs.getInt(_kUserHeightCmKey), 175);
       expect(prefs.getInt(kWaterGoalMlKey), 2400);
+      expect(prefs.getString(kProfileDisplayNameKey), 'LocalName');
     });
 
     test('пустой объект user — no-op (ничего не пишет и не бросает)',

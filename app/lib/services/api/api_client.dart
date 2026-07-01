@@ -53,6 +53,8 @@ class ApiException implements Exception {
 /// Чистая функция — тестируется без Dio (см. test/api_client_profile_test.dart).
 Map<String, dynamic> buildProfileUpdateBody({
   bool? onboardingDone,
+  String? name,
+  String? avatarPreset,
   double? weightKg,
   int? heightCm,
   int? ageYears,
@@ -69,6 +71,8 @@ Map<String, dynamic> buildProfileUpdateBody({
 }) {
   final body = <String, dynamic>{};
   if (onboardingDone != null) body['onboarding_done'] = onboardingDone;
+  if (name != null) body['name'] = name;
+  if (avatarPreset != null) body['avatar_preset'] = avatarPreset;
   if (weightKg != null) body['weight_kg'] = weightKg;
   if (heightCm != null) body['height_cm'] = heightCm;
   if (ageYears != null) body['age_years'] = ageYears;
@@ -272,8 +276,12 @@ class ApiClient {
   /// раньше жили только в SharedPreferences устройства, что давало
   /// расхождение посчитанных норм КБЖУ между устройствами одного аккаунта.
   /// Возвращает обновлённого пользователя. snake_case в теле запроса.
+  /// [name]/[avatarPreset] — отображаемое имя и пресет аватара (профиль
+  /// синхронизируется между устройствами одного аккаунта, см. profile_identity_provider.dart).
   Future<Map<String, dynamic>> updateProfile({
     bool? onboardingDone,
+    String? name,
+    String? avatarPreset,
     double? weightKg,
     int? heightCm,
     int? ageYears,
@@ -291,6 +299,8 @@ class ApiClient {
     try {
       final body = buildProfileUpdateBody(
         onboardingDone: onboardingDone,
+        name: name,
+        avatarPreset: avatarPreset,
         weightKg: weightKg,
         heightCm: heightCm,
         ageYears: ageYears,

@@ -1,20 +1,19 @@
 // Локальная "личность" профиля: отображаемое имя + выбранный аватар-пресет.
 //
-// Зачем отдельно от currentUserProvider (api.me()): имя аккаунта приходит с
-// бэкенда и сейчас НЕ редактируется (PATCH /api/v1/auth/me поддерживает только
-// onboarding_done — см. /docs/api-spec.yaml). Поэтому пользовательское
-// переопределение имени и аватар храним локально (SharedPreferences), по
-// образцу остальных core/settings/*_provider.dart (mascot_provider и т.д.).
-//
-// TODO(profile-name-sync): когда в API появится поле `name` в PATCH /auth/me,
-// добавить вызов api.updateProfile(name: ...) в setDisplayName() ниже, чтобы
-// синхронизировать имя между устройствами (сейчас — устройство-локально).
-// Это НЕ блокирует офлайн-режим: переопределение работает без аккаунта.
+// Хранится локально (SharedPreferences), по образцу остальных
+// core/settings/*_provider.dart (mascot_provider и т.д.) — работает и без
+// аккаунта (офлайн/гость). Для реального аккаунта имя и аватар ДОПОЛНИТЕЛЬНО
+// пушатся на сервер (PATCH /api/v1/auth/me: name, avatar_preset — ADR-062-подобный
+// профиль-синк) и подхватываются на новом устройстве через applyServerProfile()
+// (services/sync/profile_adoption_service.dart). Локальная запись — всегда
+// первична и синхронна; серверный пуш — fire-and-forget, не блокирует UI.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/theme/theme_provider.dart'; // sharedPreferencesProvider
+import '../../services/api/api_client.dart';
+import '../auth/auth_controller.dart' show authControllerProvider;
 
 // ---------------------------------------------------------------------------
 // Аватар-пресеты
@@ -88,8 +87,10 @@ class ProfileIdentity {
   int get hashCode => Object.hash(displayName, avatar);
 }
 
-const _kDisplayNameKey = 'profile_display_name';
-const _kAvatarKey = 'profile_avatar_preset';
+/// Публичные ключи SharedPreferences — переиспользуются в
+/// profile_adoption_service.dart при адопции имени/аватара с сервера.
+const kProfileDisplayNameKey = 'profile_display_name';
+const kProfileAvatarPresetKey = 'profile_avatar_preset';
 
 /// Максимальная длина имени (защита от overflow в шапке/строках профиля —
 /// текст всё равно укорачивается ellipsis, но не даём вводить абсурдно длинные
@@ -100,8 +101,8 @@ class ProfileIdentityNotifier extends Notifier<ProfileIdentity> {
   @override
   ProfileIdentity build() {
     final prefs = ref.read(sharedPreferencesProvider);
-    final storedName = prefs.getString(_kDisplayNameKey);
-    final storedAvatar = prefs.getString(_kAvatarKey);
+    final storedName = prefs.getString(kProfileDisplayNameKey);
+    final storedAvatar = prefs.getString(kProfileAvatarPresetKey);
     return ProfileIdentity(
       displayName: (storedName != null && storedName.trim().isNotEmpty)
           ? storedName.trim()
@@ -116,7 +117,7 @@ class ProfileIdentityNotifier extends Notifier<ProfileIdentity> {
     final prefs = ref.read(sharedPreferencesProvider);
     final trimmed = name?.trim();
     if (trimmed == null || trimmed.isEmpty) {
-      await prefs.remove(_kDisplayNameKey);
+      await prefs.remove(kProfileDisplayNameKey);
       // copyWith() трактует null как "не менять", поэтому сброс задаём
       // через прямой конструктор, а не через copyWith(displayName: null).
       state = ProfileIdentity(displayName: null, avatar: state.avatar);
@@ -125,15 +126,28 @@ class ProfileIdentityNotifier extends Notifier<ProfileIdentity> {
     final clipped = trimmed.length > kProfileDisplayNameMaxLength
         ? trimmed.substring(0, kProfileDisplayNameMaxLength)
         : trimmed;
-    await prefs.setString(_kDisplayNameKey, clipped);
+    await prefs.setString(kProfileDisplayNameKey, clipped);
     state = ProfileIdentity(displayName: clipped, avatar: state.avatar);
-    // TODO(profile-name-sync): синк с бэкендом, см. комментарий в шапке файла.
+    _pushToServer(name: clipped);
   }
 
   Future<void> setAvatar(AvatarPreset avatar) async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(_kAvatarKey, avatar.storageKey);
+    await prefs.setString(kProfileAvatarPresetKey, avatar.storageKey);
     state = state.copyWith(avatar: avatar);
+    _pushToServer(avatarPreset: avatar.storageKey);
+  }
+
+  /// Пуш имени/аватара на сервер (PATCH /auth/me) — только для реального
+  /// аккаунта (гость/оффлайн не имеют куда слать). Локальная запись УЖЕ
+  /// выполнена вызывающим методом — сеть не блокирует UI. Fire-and-forget:
+  /// `.ignore()` глушит ошибки сети/сервера, не пробрасывая их в UI.
+  void _pushToServer({String? name, String? avatarPreset}) {
+    if (!ref.read(authControllerProvider.notifier).isAuthenticated) return;
+    ref
+        .read(apiClientProvider)
+        .updateProfile(name: name, avatarPreset: avatarPreset)
+        .ignore();
   }
 }
 
