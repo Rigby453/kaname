@@ -11,6 +11,7 @@ import 'strings/health_b.dart';
 import 'strings/onboarding_quiz.dart';
 import 'strings/workouts_library.dart';
 import 'strings/warmup.dart';
+import 'strings/search.dart';
 
 /// Система переводов приложения.
 ///
@@ -41,6 +42,7 @@ class S {
     ...onboardingQuizStrings,
     ...workoutsLibraryStrings,
     ...warmupStrings,
+    ...searchStrings,
   };
 
   /// Полная карта строк (key → {langTag → текст}) — только для read-only

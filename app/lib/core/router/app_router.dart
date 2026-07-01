@@ -43,6 +43,7 @@ import '../../features/health/meditation_screen.dart';
 import '../../features/health/screen_time_screen.dart';
 import '../../features/auth/forgot_password_screen.dart';
 import '../../features/profile/terms_screen.dart';
+import '../../features/search/global_search_screen.dart';
 import 'scaffold_with_nav_bar.dart';
 
 /// Индексы табов
@@ -352,6 +353,14 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // /terms — пользовательское соглашение и политика конфиденциальности
       GoRoute(path: '/terms', builder: (context, state) => const TermsScreen()),
+
+      // /search — глобальный поиск (#17), вне оболочки. Открывается через
+      // push из иконки лупы в AppBar (scaffold_with_nav_bar.dart), чтобы
+      // возврат вёл обратно на текущий таб.
+      GoRoute(
+        path: '/search',
+        builder: (context, state) => const GlobalSearchScreen(),
+      ),
     ],
   );
 });

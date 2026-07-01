@@ -148,7 +148,7 @@ class ScaffoldWithNavBar extends ConsumerWidget {
         automaticallyImplyLeading: false,
         title: Text(_tabTitle(context, navigationShell.currentIndex)),
         centerTitle: false,
-        actions: _planActions(context, ref),
+        actions: [..._planActions(context, ref), const _SearchButton()],
       ),
       body: Row(
         children: [
@@ -258,7 +258,7 @@ class ScaffoldWithNavBar extends ConsumerWidget {
         leading: const ProfileAvatarButton(),
         title: Text(_tabTitle(context, navigationShell.currentIndex)),
         centerTitle: true,
-        actions: _planActions(context, ref),
+        actions: [..._planActions(context, ref), const _SearchButton()],
       ),
       body: _constrainedBody(navigationShell, constraints),
       // M3 NavigationBar: нативный pill-индикатор
@@ -355,6 +355,26 @@ class ScaffoldWithNavBar extends ConsumerWidget {
         3 => context.s('nav.diary'),
         _ => context.s('nav.fallback'),
       };
+}
+
+/// Кнопка-лупа глобального поиска (#17) в AppBar — общий вход независимо от
+/// активного таба. push (не go) — возврат из /search ведёт обратно на
+/// текущий таб, не сбрасывает его стек.
+class _SearchButton extends StatelessWidget {
+  const _SearchButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FocusThemeExtension>();
+    return IconButton(
+      tooltip: context.s('search.tooltip'),
+      icon: Icon(
+        PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.regular),
+        color: ext?.textMuted,
+      ),
+      onPressed: () => context.push('/search'),
+    );
+  }
 }
 
 /// Кнопка-аватар профиля в leading AppBar.
