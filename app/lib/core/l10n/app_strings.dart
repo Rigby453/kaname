@@ -12,6 +12,7 @@ import 'strings/onboarding_quiz.dart';
 import 'strings/workouts_library.dart';
 import 'strings/warmup.dart';
 import 'strings/search.dart';
+import 'strings/onboarding_ai.dart';
 
 /// Система переводов приложения.
 ///
@@ -43,6 +44,7 @@ class S {
     ...workoutsLibraryStrings,
     ...warmupStrings,
     ...searchStrings,
+    ...onboardingAiStrings,
   };
 
   /// Полная карта строк (key → {langTag → текст}) — только для read-only

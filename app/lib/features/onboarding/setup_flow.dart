@@ -16,6 +16,17 @@
 //   7  первая задача (вставляется в Drift) · 8 демо переноса (no progress bar)
 //   9  время разборов + расписание сна · 10 уведомления · 11 тон · 12 тема
 //   13 откуда узнал (C1) · 14 саммари (последний; CTA → _finish() → /paywall)
+//
+// TODO(brain-dump-invite, Волна 6 этап 3): добавить сюда яркую
+// invite-страницу «Пусть Каи соберёт план» (KaiMascot + CTA → маршрут
+// /onboarding/brain-dump, «Позже» → дальше по флоу) сразу после входа/
+// регистрации. НЕ сделано в этой волне: PageView здесь жёстко индексируется
+// (см. onboarding_steps_test.dart — _notifPage/_tonePage/_themePage/_summaryPage
+// завязаны на точные номера страниц), вставка новой страницы сдвигает все
+// последующие индексы и требует синхронной правки теста. Сейчас брейн-дамп
+// доступен через Profile → «Собрать план с ИИ» (brain_dump_screen.dart,
+// маршрут /onboarding/brain-dump) — функционально работает, но не «на виду»
+// сразу после регистрации.
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';

@@ -325,6 +325,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onTap: () => context.push('/profile/my-data'),
           ),
           const _Hairline(),
+          // Волна 6, этап 3: брейн-дамп-онбординг доступен и после первого
+          // запуска — точка входа сюда, отдельно от /setup (см. TODO в
+          // setup_flow.dart про интеграцию invite-страницей в сам флоу).
+          _NavRow(
+            icon: Icon(PhosphorIcons.sparkle(), size: 20, color: ext.textMuted),
+            title: context.s('onboarding_ai.profile_nav_title'),
+            subtitle: context.s('onboarding_ai.profile_nav_subtitle'),
+            onTap: () => context.push('/onboarding/brain-dump'),
+          ),
+          const _Hairline(),
           _NavRow(
             icon: Icon(PhosphorIcons.slidersHorizontal(), size: 20, color: ext.textMuted),
             title: context.s('profile.section_defaults'),

@@ -13,6 +13,7 @@ import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/onboarding/setup_flow.dart';
+import '../../features/onboarding/brain_dump_screen.dart';
 import '../../features/paywall/paywall_screen.dart';
 import '../../features/today/today_screen.dart';
 import '../../features/plan/plan_screen.dart';
@@ -342,6 +343,15 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // /goals — долгосрочные цели (SPEC C4), push-route вне оболочки
       GoRoute(path: '/goals', builder: (context, state) => const GoalsScreen()),
+
+      // /onboarding/brain-dump — ИИ-онбординг «брейн-дамп» (Волна 6, этап 3):
+      // свободный текст → превью плана (цели+задачи). Вход из Profile
+      // (_NavRow «Собрать план с ИИ»); premium-гейт — внутри экрана (доступен
+      // для набора текста всем, гейтится только сборка плана).
+      GoRoute(
+        path: '/onboarding/brain-dump',
+        builder: (context, state) => const BrainDumpScreen(),
+      ),
 
       // /meditation — текстовые медитации (Ф2), вне оболочки. Прямой
       // deep-link из block_tool_router.dart (задача moduleLink='meditation') —
