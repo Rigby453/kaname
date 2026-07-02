@@ -889,19 +889,20 @@ const Map<String, Map<String, String>> commonStrings = {
     'ko': '엄격하게',
   },
 
-  // Undo-паттерн (showUndoSnackBar): общая кнопка отмены
-  'common.undo': {
-    'en': 'Undo',
-    'ru': 'Отмена',
-    'de': 'Rückgängig',
-    'fr': 'Annuler',
-    'it': 'Annulla',
-    'pt': 'Desfazer',
-    'es': 'Deshacer',
-    'id': 'Batalkan',
-    'hi': 'पूर्ववत करें',
-    'ja': '元に戻す',
-    'ko': '실행 취소',
+  // Confirm-диалог перед необратимым удалением «дорогого» контента (2026-07,
+  // замена убранной кнопки Undo) — SwipeToDelete.confirmMessage / кнопки-корзины.
+  'dialog.delete_confirm_title': {
+    'en': 'Delete?',
+    'ru': 'Удалить?',
+    'de': 'Löschen?',
+    'fr': 'Supprimer ?',
+    'it': 'Eliminare?',
+    'pt': 'Excluir?',
+    'es': '¿Eliminar?',
+    'id': 'Hapus?',
+    'hi': 'हटाएं?',
+    'ja': '削除しますか？',
+    'ko': '삭제할까요?',
   },
 
   // Обобщённые ошибки загрузки данных (Error: {err} — {err} не переводится).

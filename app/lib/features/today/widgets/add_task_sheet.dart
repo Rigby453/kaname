@@ -1266,23 +1266,14 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
       await ref
           .read(itemAttachmentsDaoProvider)
           .reassignItemId(_pendingAttachmentItemId, newId);
-      // Undo-тост (единый механизм, §3.3 ANIMATIONS.md) — раньше создание
-      // писало только в постоянный undo-FAB (провайдер удалён). Показываем
-      // ДО pop: OverlayEntry живёт в корневом Overlay навигатора и переживает
+      // Тост «задача создана» (§3.3 ANIMATIONS.md). Показываем ДО pop:
+      // OverlayEntry живёт в корневом Overlay навигатора и переживает
       // закрытие шита (тот же паттерн, что у _confirmDelete ниже).
       if (mounted) {
         showAppToast(
           context,
           variant: AppToastVariant.done,
           message: context.s('today.task_created'),
-          // ВАЖНО: используем УЖЕ ЗАХВАЧЕННЫЙ выше `dao` (переменная в начале
-          // _save()), а НЕ ref.read(...) внутри closure — лист закрывается
-          // (Navigator.pop) сразу после показа тоста, State диспозится, и
-          // повторный ref.read() из disposed ConsumerState бросает
-          // "Cannot use ref after the widget was disposed" при тапе Undo.
-          onUndo: () async {
-            await dao.deleteItem(newId);
-          },
         );
       }
       // Напоминание планируем только для не-серийной задачи (newRuleString==null).
@@ -1427,68 +1418,23 @@ class _AddTaskSheetState extends ConsumerState<AddTaskSheet> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  /// Удаление задачи (режим редактирования) — оптимистичное, БЕЗ блокирующего
-  /// AlertDialog-подтверждения: тот же паттерн, что у swipe-delete на Today
-  /// (удаляем сразу, отмена — через undo-тост, §2.2/§3.3 ANIMATIONS.md).
+  /// Удаление задачи (режим редактирования) — немедленное, без confirm-
+  /// диалога: тот же паттерн, что у swipe-delete на Today (task не входит в
+  /// список «дорогого» контента, требующего confirm, см. §8 плана удаления).
   Future<void> _confirmDelete() async {
     final existing = widget.existing;
     if (existing == null) return;
     final dao = ref.read(itemsDaoProvider);
-    final subtasksDao = ref.read(subtasksDaoProvider);
-    // Полный снимок ДО удаления: подзадачи (deleteItem удаляет их каскадно —
-    // без снимка Undo вернул бы задачу без чеклиста, баг 4).
-    final subtasksSnapshot = await subtasksDao.getSubtasks(existing.id);
     await dao.deleteItem(existing.id);
     // Снимаем запланированное напоминание удаляемой задачи (если было).
     await ref.read(notificationServiceProvider).cancelTaskReminder(existing.id);
     if (!mounted) return;
-    // §3.3: тост «Task removed» с Undo. Показываем до pop — OverlayEntry живёт
+    // §3.3: тост «Task removed». Показываем до pop — OverlayEntry живёт
     // в корневом Overlay навигатора и переживает закрытие шита.
-    // Undo вставляет КОПИЮ с новым id: старый id затумбстоунен для синка
-    // (ADR-021), повторная вставка того же id вернула бы конфликт удаления.
     showAppToast(
       context,
       variant: AppToastVariant.removed,
       message: context.s('today.task_removed'),
-      onUndo: () async {
-        final now = DateTime.now();
-        final newId = uuidV4();
-        // Полный companion (включая reminderMinutesBefore/moduleLink/color,
-        // которые раньше терялись, баг 4). Восстанавливаем под НОВЫЙ id.
-        await dao.insertItem(
-          ItemsTableCompanion(
-            id: Value(newId),
-            userId: Value(existing.userId),
-            title: Value(existing.title),
-            type: Value(existing.type),
-            priority: Value(existing.priority),
-            status: Value(existing.status),
-            scheduledAt: Value(existing.scheduledAt),
-            durationMinutes: Value(existing.durationMinutes),
-            isProtected: Value(existing.isProtected),
-            recurrenceRule: Value(existing.recurrenceRule),
-            reminderMinutesBefore: Value(existing.reminderMinutesBefore),
-            moduleLink: Value(existing.moduleLink),
-            color: Value(existing.color),
-            location: Value(existing.location),
-            createdAt: Value(now),
-            updatedAt: Value(now),
-          ),
-        );
-        // Восстанавливаем подзадачи под новый itemId (новые uuid).
-        await subtasksDao.replaceForItem(
-          newId,
-          subtasksSnapshot
-              .map((s) => SubtasksTableCompanion(
-                    id: Value(uuidV4()),
-                    itemId: Value(newId),
-                    title: Value(s.title),
-                    done: Value(s.done),
-                    sortOrder: Value(s.sortOrder),
-                  ))
-              .toList(),
-        );
-      },
     );
     Navigator.of(context).pop();
   }

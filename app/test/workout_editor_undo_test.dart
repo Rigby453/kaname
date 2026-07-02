@@ -1,20 +1,20 @@
 // workout_editor_undo_test.dart
-// Регресс-тест Defect 2: «Undo-снэкбар после удаления упражнения».
+// Регресс-тест Defect 2: «удаление упражнения из редактора тренировки».
+//
+// Wave 4 (2026-07) убрала Undo-снэкбар во всём приложении и заменила его
+// confirm-диалогом перед деструктивным удалением (см. docs/decisions.md,
+// core/widgets/swipe_to_delete.dart::showDeleteConfirmDialog).
+// Файл переписан под НОВОЕ поведение — тестируем confirm-flow, а не Undo.
 //
 // Verifies:
-//   a) Snackbar appears after exercise deletion (with Undo button).
-//   b) Tapping Undo restores the deleted exercise.
+//   a) Тап по кнопке-корзине открывает блокирующий confirm-диалог
+//      (dialog.delete_confirm_title), а НЕ Undo-снэкбар — упражнение пока
+//      не удалено.
+//   b) Cancel в диалоге сохраняет упражнение (удаления не произошло).
+//   c) Delete в диалоге удаляет упражнение (без Undo).
 //
-// Auto-dismiss (4s) НЕ тестируется здесь:
-//   В headless-тесте showUndoSnackBar вызывается из async-кода, который
-//   выполняется в real-async зоне (через tester.runAsync). Таймер SnackBar
-//   также создаётся в real-async зоне и НЕ подчиняется fake-async тикеру
-//   (tester.pump(5s)). Это ограничение инфраструктуры теста, а не баг.
-//
-//   Зафиксированная проблема MIUI («висит бесконечно») — вендорский баг
-//   системного оверлея, не связанный с кодом Flutter. Статус: docs/STATUS.md.
-//
-// Тест накачивает 5 секунд в конце, чтобы не оставлять pending timers.
+// Таймер тоста (showAppToast) после подтверждённого удаления прокачивается
+// в конце теста (3), чтобы не оставлять pending timers — как раньше.
 
 import 'package:app/core/database/database.dart';
 import 'package:app/core/database/database_providers.dart';
@@ -122,10 +122,11 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Defect 2(a): SnackBar появляется после удаления упражнения
+  // Defect 2(a): confirm-диалог появляется после тапа по корзине,
+  // Undo-снэкбара больше нет.
   // ─────────────────────────────────────────────────────────────────────────
   testWidgets(
-      'Undo SnackBar появляется после удаления упражнения',
+      'delete shows confirm dialog, not an Undo snackbar',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -139,38 +140,35 @@ void main() {
     // Упражнение должно отображаться.
     expect(find.text('Push-up'), findsOneWidget);
 
-    // Тапаем кнопку удаления (trailing IconButton с Icons.delete_outline).
-    // Icons.delete_outline единственен при одном упражнении.
-    //
-    // Используем только pump (без runAsync): NativeDatabase.memory() возвращает
-    // Future.value() — это немедленно-resolved Future, которое завершается как
-    // microtask при pump(). Это сохраняет AnimationController SnackBar в
-    // fake-async зоне и позволяет pump(duration) двигать анимацию.
+    // Тапаем кнопку удаления (trailing IconButton с PhosphorIcons.trash()).
+    // Trash-иконка единственна при одном упражнении (history-иконка другая).
     await tester.tap(find.byIcon(PhosphorIcons.trash()).last);
-    await tester.pump(); // start _deleteExercise; suspend at await removeExercise
-    await tester.pump(); // microtask: removeExercise resolves; _deleteExercise resumes → showUndoSnackBar
-    await tester.pump(const Duration(milliseconds: 300)); // SnackBar enter animation (~250ms)
+    await tester.pump(); // открывается showDialog
+    await tester.pump(const Duration(milliseconds: 300)); // dialog enter animation
 
-    // SnackBar должен появиться с кнопкой Undo.
+    // Confirm-диалог должен появиться (AlertDialog с title/Cancel/Delete),
+    // Undo-снэкбара НЕТ.
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Delete?'), findsOneWidget); // dialog.delete_confirm_title (en)
+    expect(find.widgetWithText(TextButton, 'Cancel'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Delete'), findsOneWidget);
     expect(
       find.text('Undo'),
-      findsOneWidget,
-      reason: 'SnackBar с Undo должен появляться после удаления упражнения',
+      findsNothing,
+      reason: 'Undo-снэкбар убран (wave 4) — теперь блокирующий confirm-диалог',
     );
 
-    // Прокачиваем 5 секунд чтобы не оставлять pending timers.
-    // (auto-dismiss не тестируется — см. комментарий в шапке файла)
-    await tester.pump(const Duration(seconds: 5));
+    // Диалог блокирует — упражнение ещё не удалено.
+    expect(find.text('Push-up'), findsOneWidget);
 
-    expect(tester.takeException(), isNull);
     await _unmount(tester);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Defect 2(b): Undo восстанавливает удалённое упражнение
+  // Defect 2(b): Cancel в диалоге сохраняет упражнение.
   // ─────────────────────────────────────────────────────────────────────────
   testWidgets(
-      'нажатие Undo восстанавливает удалённое упражнение',
+      'cancel keeps the exercise',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -183,30 +181,67 @@ void main() {
 
     expect(find.text('Push-up'), findsOneWidget);
 
-    // Удаляем упражнение (pump-only: NativeDatabase.memory() = Future.value()).
     await tester.tap(find.byIcon(PhosphorIcons.trash()).last);
-    await tester.pump(); // suspend at await removeExercise
-    await tester.pump(); // microtask: remove done → showUndoSnackBar
-    await tester.pump(const Duration(milliseconds: 300)); // SnackBar animation
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    // SnackBar появился.
-    expect(find.text('Undo'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Cancel'), findsOneWidget);
 
-    // Нажимаем Undo — restoreExercise тоже pump-only.
-    await tester.tap(find.text('Undo'));
-    await tester.pump(); // suspend at await restoreExercise
-    await tester.pump(); // microtask: restore done
-    await _settle(tester); // stream emits → exercises list обновляется
+    // Отменяем удаление.
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pump(); // dialog pop
+    await tester.pump(const Duration(milliseconds: 300)); // dialog exit animation
 
-    // Упражнение должно снова отображаться.
+    // Диалог закрылся, упражнение по-прежнему на месте (ничего не удалено).
+    expect(find.byType(AlertDialog), findsNothing);
     expect(
       find.text('Push-up'),
       findsOneWidget,
-      reason: 'Undo должен восстановить удалённое упражнение',
+      reason: 'Cancel не должен удалять упражнение',
     );
 
-    // Прокачиваем таймер автоскрытия тоста (4с) — иначе Timer still pending
-    // (showUndoSnackBar теперь форвардит на showAppToast, core/animations/app_toast.dart).
+    await _unmount(tester);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Defect 2(c): Delete в диалоге удаляет упражнение (без Undo).
+  // ─────────────────────────────────────────────────────────────────────────
+  testWidgets(
+      'confirm deletes the exercise',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final workoutId = await _seedWorkout(tester, db);
+
+    await tester.pumpWidget(
+        _harness(WorkoutEditorScreen(workoutId: workoutId), db, prefs));
+    await _settle(tester);
+
+    expect(find.text('Push-up'), findsOneWidget);
+
+    // Открываем confirm-диалог заново.
+    await tester.tap(find.byIcon(PhosphorIcons.trash()).last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.widgetWithText(FilledButton, 'Delete'), findsOneWidget);
+
+    // Подтверждаем удаление.
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pump(); // dialog pop → suspend at await removeExercise
+    await tester.pump(); // microtask: removeExercise resolves → showAppToast
+    await _settle(tester); // Drift stream emits → exercises list обновляется
+
+    // Упражнение должно исчезнуть, без Undo.
+    expect(
+      find.text('Push-up'),
+      findsNothing,
+      reason: 'Delete должен удалить упражнение окончательно',
+    );
+    expect(find.text('Undo'), findsNothing);
+
+    // Прокачиваем таймер автоскрытия тоста, чтобы не оставлять pending timers.
     await tester.pump(const Duration(seconds: 5));
 
     expect(tester.takeException(), isNull);

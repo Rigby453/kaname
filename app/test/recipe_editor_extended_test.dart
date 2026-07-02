@@ -177,10 +177,13 @@ void main() {
   );
 
   // ---------------------------------------------------------------------------
-  // #25 — шаги приготовления: добавление, отображение, удаление + Undo
+  // #25 — шаги приготовления: добавление, отображение, удаление снимает его
+  // через подтверждение (Wave 4: Undo убран app-wide, «дорогой» контент —
+  // шаги рецепта — теперь удаляется через блокирующий confirm-диалог, см.
+  // recipe_editor_screen.dart::_confirmDeleteStep / showDeleteConfirmDialog).
   // ---------------------------------------------------------------------------
   testWidgets(
-    'шаг приготовления: добавление отображает текст; удаление снимает его, Undo возвращает',
+    'шаг приготовления: добавление отображает текст; удаление снимает его через подтверждение',
     (tester) async {
       await tester.runAsync(() async {
         final id = await dao.createRecipe('Fried rice');
@@ -202,19 +205,23 @@ void main() {
         expect(stepsAfterAdd, hasLength(1));
 
         // Trash первой строки в дереве — шаг (Steps-секция рендерится перед
-        // Ingredients-секцией, где тоже есть кнопка «Delete»).
+        // Ingredients-секцией, где тоже есть кнопка «Delete») — открывает
+        // блокирующий confirm-диалог, а не удаляет сразу.
         await tester.tap(find.byTooltip('Delete').first);
+        await tester.pumpAndSettle();
+
+        // Диалог блокирует удаление до подтверждения — шаг ещё на месте.
+        expect(find.text('Delete?'), findsOneWidget); // dialog.delete_confirm_title (en)
+        expect(find.text('Boil the rice'), findsOneWidget);
+        expect(await dao.watchSteps(id).first, hasLength(1));
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
         await tester.pumpAndSettle();
 
         expect(find.text('Boil the rice'), findsNothing);
         expect(find.text('Step removed'), findsOneWidget);
         expect(await dao.watchSteps(id).first, isEmpty);
-
-        await tester.tap(find.text('Undo'));
-        await tester.pumpAndSettle();
-
-        expect(find.text('Boil the rice'), findsOneWidget);
-        expect(await dao.watchSteps(id).first, hasLength(1));
+        expect(find.text('Undo'), findsNothing);
       });
       await flush(tester);
     },

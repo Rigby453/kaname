@@ -7,10 +7,8 @@
 //   onDelete: () async {
 //     await dao.removeItem(item.id);  // собственно удаление из БД
 //     if (context.mounted) {
-//       showUndoSnackBar(context,
-//         message: '"${item.name}" removed',
-//         onUndo: () => dao.reinsertItem(snapshot), // восстановление
-//       );
+//       showAppToast(context, variant: AppToastVariant.removed,
+//         message: '"${item.name}" removed');
 //     }
 //   },
 //   child: MyItemTile(item: item),
@@ -19,29 +17,77 @@
 // Фон свайпа: ember (0.15 alpha) + Phosphor trash (ember-цвет).
 // direction: endToStart (свайп влево = удалить).
 // Reduce-motion: Dismissible сам корректно работает с disableAnimations.
+//
+// УДАЛЕНИЕ БЕЗ UNDO (2026-07): кнопки Undo в приложении больше нет (см.
+// docs/decisions.md). Для «дешёвого»/частого контента (food log, shopping
+// list, задачи Today) удаление остаётся немедленным — confirmMessage не
+// передаём. Для «дорогого» пользовательского контента (рецепты, тренировки,
+// привычки, цели, пресеты медитации/дыхания, шаги рецепта/тренировки/цели)
+// передаём confirmMessage — тогда перед удалением показывается блокирующий
+// confirm-диалог (см. [showDeleteConfirmDialog]), отмена возвращает свайп
+// на место.
 // ---------------------------------------------------------------------------
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../l10n/app_strings.dart';
 import '../theme/app_theme.dart';
 
-/// Обёртка над [Dismissible] — свайп влево немедленно вызывает [onDelete].
+/// Общий confirm-диалог перед необратимым удалением «дорогого» контента.
+/// Переиспользуется [SwipeToDelete.confirmMessage] (жест свайпа) И одиночными
+/// кнопками-корзинами в карточках (тот же путь удаления — без дублирования
+/// диалога, см. вызовы `_confirmDelete*` в feature-экранах).
+/// Возвращает true, если пользователь подтвердил удаление (нажал btn.delete).
+Future<bool> showDeleteConfirmDialog(
+  BuildContext context, {
+  required String message,
+}) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(ctx.s('dialog.delete_confirm_title')),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: Text(ctx.s('btn.cancel')),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(ctx).colorScheme.error,
+          ),
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(ctx.s('btn.delete')),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
+/// Обёртка над [Dismissible] — свайп влево вызывает [onDelete].
 ///
-/// Диалога подтверждения нет.
-/// Вызывающий код показывает Undo-snackbar через [showUndoSnackBar].
+/// Если [confirmMessage] != null — перед удалением показывает блокирующий
+/// confirm-диалог ([showDeleteConfirmDialog]); отмена снимает свайп на место.
+/// Если null — немедленное удаление, как раньше (без диалога).
 class SwipeToDelete extends StatelessWidget {
   const SwipeToDelete({
     required super.key,
     required this.onDelete,
     required this.child,
+    this.confirmMessage,
   });
 
-  /// Удаление + (опционально) показ Undo-snackbar.
-  /// Вызывается после завершения свайпа.
+  /// Удаление. Вызывается после завершения свайпа (и, если задан
+  /// [confirmMessage], после подтверждения в диалоге).
   final VoidCallback onDelete;
 
   final Widget child;
+
+  /// Текст confirm-диалога (обычно `'"${item.name}"'`) для «дорогого»
+  /// контента. null = без диалога (немедленное удаление).
+  final String? confirmMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +98,9 @@ class SwipeToDelete extends StatelessWidget {
     return Dismissible(
       key: key!,
       direction: DismissDirection.endToStart,
+      confirmDismiss: confirmMessage == null
+          ? null
+          : (_) => showDeleteConfirmDialog(context, message: confirmMessage!),
       // Фон: ember-тинт + Phosphor trash (ember-цвет)
       background: Container(
         alignment: Alignment.centerRight,

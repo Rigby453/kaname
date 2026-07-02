@@ -6,13 +6,15 @@
 // Phosphor icons, KaiMascot empty state. §4.3: ONE primary (FilledButton «log»),
 // второстепенное — OutlinedButton «add ingredient».
 //
-// Паттерн безопасного удаления ингредиентов (ADR-delete-safe):
+// Удаление ингредиентов (2026-07, без Undo — см. docs/decisions.md):
 //   - Свайп влево (SwipeToDelete) ИЛИ кнопка-корзина trailing IconButton
-//   - Оба пути идут через _deleteIngredient(), который показывает Undo-snackbar.
+//   - Оба пути идут через _deleteIngredient(), немедленное удаление (без
+//     confirm — ингредиент не входит в список «дорогого» контента, §8).
 //
 // #25 расширенный редактор (schemaVersion 23): описание (свободный текст),
 // шаги приготовления (текст + опц. фото, image_picker), ссылка на видео
-// (url_launcher). Те же шаблоны (диалог + Undo-snackbar), что у ингредиентов.
+// (url_launcher). Шаги — «дорогой» контент: удаление требует confirm-диалог
+// (SwipeToDelete.confirmMessage / _confirmDeleteStep), в отличие от ингредиентов.
 // Фото шагов хранятся как в today/widgets/add_task_sheet.dart: на мобильных —
 // копия файла в documents/attachments/, на web — base64 data-URI; рендер через
 // общий хелпер core/widgets/attachment_view.dart::attachmentImage().
@@ -34,6 +36,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/animations/app_sheet.dart';
+import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/database/database_providers.dart';
@@ -42,7 +45,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/attachment_view.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../features/mascot/kai_mascot.dart';
 import '../../services/api/api_client.dart';
 import 'food_nutrition.dart';
@@ -174,23 +176,19 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
     }
   }
 
-  // --- Единый путь удаления ингредиента + Undo --------------------------------
+  // --- Единый путь удаления ингредиента (немедленное, без confirm) -----------
 
   Future<void> _deleteIngredient(RecipeIngredientsTableData ing) async {
-    final snapshot = ing;
     final dao = ref.read(recipesDaoProvider);
 
-    await dao.removeIngredient(snapshot.id);
+    await dao.removeIngredient(ing.id);
 
     if (!mounted) return;
 
-    final message = '"${snapshot.name}" — ${context.s('food.ingredient_removed')}';
-    showUndoSnackBar(
+    showAppToast(
       context,
-      message: message,
-      onUndo: () async {
-        await dao.restoreIngredient(snapshot);
-      },
+      variant: AppToastVariant.removed,
+      message: '"${ing.name}" — ${context.s('food.ingredient_removed')}',
     );
   }
 
@@ -261,15 +259,29 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
         );
   }
 
+  /// Удаление шага рецепта из БД + тост. Вызывается ПОСЛЕ подтверждения —
+  /// свайп уже подтверждён через [SwipeToDelete.confirmMessage], кнопка-
+  /// корзина — через [_confirmDeleteStep] (без двойного диалога). Шаг —
+  /// «дорогой» контент (текст + опц. фото), требует confirm, §8.
   Future<void> _deleteStep(RecipeStepsTableData step) async {
     final dao = ref.read(recipesDaoProvider);
     await dao.removeStep(step.id);
     if (!mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: context.s('food.step_removed'),
-      onUndo: () => dao.restoreStep(step),
     );
+  }
+
+  /// Confirm-диалог перед удалением шага — путь кнопки-корзины (мимо свайпа).
+  Future<void> _confirmDeleteStep(RecipeStepsTableData step) async {
+    final ok = await showDeleteConfirmDialog(
+      context,
+      message: '"${step.stepText}"',
+    );
+    if (!ok || !mounted) return;
+    await _deleteStep(step);
   }
 
   // --- UI -------------------------------------------------------------------
@@ -356,12 +368,13 @@ class _RecipeEditorScreenState extends ConsumerState<RecipeEditorScreen> {
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: SwipeToDelete(
                                   key: ValueKey('step_${e.value.id}'),
+                                  confirmMessage: '"${e.value.stepText}"',
                                   onDelete: () => _deleteStep(e.value),
                                   child: _StepRow(
                                     index: e.key + 1,
                                     step: e.value,
                                     onEdit: () => _editStep(e.value),
-                                    onDelete: () => _deleteStep(e.value),
+                                    onDelete: () => _confirmDeleteStep(e.value),
                                   ),
                                 ),
                               ),

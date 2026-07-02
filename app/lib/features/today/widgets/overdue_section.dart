@@ -181,7 +181,7 @@ class _RowActions extends ConsumerWidget {
     );
   }
 
-  /// done: markDone + тост с Undo (соответствует поведению основного списка).
+  /// done: markDone + тост (соответствует поведению основного списка).
   Future<void> _markDone(
       BuildContext context, WidgetRef ref, ItemsTableData item) async {
     final dao = ref.read(itemsDaoProvider);
@@ -191,12 +191,6 @@ class _RowActions extends ConsumerWidget {
         context,
         variant: AppToastVariant.done,
         message: '"${item.title}" ${context.s('today.marked_done')}',
-        onUndo: () async {
-          await ref.read(itemsDaoProvider).updateItem(
-                item.id,
-                const ItemsTableCompanion(status: Value('pending')),
-              );
-        },
       );
     }
   }

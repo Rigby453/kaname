@@ -372,38 +372,12 @@ class _TaskListState extends ConsumerState<TaskList>
       await ref.read(notificationServiceProvider).cancelTaskReminder(item.id);
     }
 
-    // §3.1: тост «задача выполнена» с кнопкой Undo (отмена завершения).
+    // §3.1: тост «задача выполнена».
     if (context.mounted && targetId != null) {
-      final undoId = targetId;
-      final capturedAnchorId = virtualAnchorId;
-      final capturedDate = virtualDate;
-
       showAppToast(
         context,
         variant: AppToastVariant.done,
         message: '"${item.title}" ${context.s('today.marked_done')}',
-        onUndo: () async {
-          final d = ref.read(itemsDaoProvider);
-          if (capturedAnchorId != null && capturedDate != null) {
-            // Виртуальный повтор: удаляем материализованную строку и снимаем
-            // дату из EXDATE — виртуальное вхождение снова появится в списке.
-            await d.undoMaterializeOccurrence(
-              anchorId: capturedAnchorId,
-              date: capturedDate,
-              concreteId: undoId,
-            );
-          } else {
-            // Обычная задача: возвращаем в pending с обновлением updatedAt
-            // (важно для LWW-синхронизации — prevents server overwriting local undo).
-            await d.updateItem(
-              undoId,
-              ItemsTableCompanion(
-                status: const Value('pending'),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-          }
-        },
       );
     }
   }
@@ -478,8 +452,9 @@ class _TaskListState extends ConsumerState<TaskList>
     }
   }
 
-  /// delete: реально удаляет задачу через DAO.deleteItem + тост с Undo,
-  /// который восстанавливает строку (re-insert тех же полей).
+  /// delete: реально удаляет задачу через DAO.deleteItem (немедленно, без
+  /// confirm-диалога — свайп-удаление задачи, тот же паттерн что и раньше;
+  /// task не входит в список «дорогого» контента, требующего confirm, §8).
   /// Для виртуального повтора сначала материализуем concrete-строку, затем
   /// удаляем её (день анкера всё равно получает EXDATE — повтор не вернётся).
   Future<void> _doDelete(BuildContext context, ItemsTableData item) async {
@@ -492,37 +467,15 @@ class _TaskListState extends ConsumerState<TaskList>
       );
     }
     if (deletedId == null) return;
-    // Полный снимок для Undo: строка (toCompanion(false) включает
-    // reminderMinutesBefore/moduleLink/color) + подзадачи (deleteItem удаляет их
-    // каскадно — без снимка Undo вернул бы задачу без чеклиста, баг 4).
-    final snapshot = await dao.getItemById(deletedId);
-    final subtasksDao = ref.read(subtasksDaoProvider);
-    final subtasksSnapshot = await subtasksDao.getSubtasks(deletedId);
     await dao.deleteItem(deletedId);
     // Снимаем запланированное напоминание удалённой задачи (если было).
     await ref.read(notificationServiceProvider).cancelTaskReminder(deletedId);
-    // §3.3: тост «удалено» с кнопкой Undo.
+    // §3.3: тост «удалено».
     if (context.mounted) {
       showAppToast(
         context,
         variant: AppToastVariant.removed,
         message: '"${item.title}" ${context.s('today.deleted')}',
-        onUndo: snapshot == null
-            ? null
-            : () async {
-                // Восстанавливаем строку с тем же id (она затумбстоунена, но
-                // повторная вставка вернёт её локально; синк разрулит LWW).
-                await ref.read(itemsDaoProvider).insertItem(
-                      snapshot.toCompanion(false),
-                    );
-                // Восстанавливаем подзадачи под тот же itemId.
-                await subtasksDao.replaceForItem(
-                  snapshot.id,
-                  subtasksSnapshot
-                      .map((s) => s.toCompanion(false))
-                      .toList(),
-                );
-              },
       );
     }
   }

@@ -78,7 +78,8 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
     await ref.read(shoppingDaoProvider).insertItem(name: text);
   }
 
-  /// Свайп-удаление: тост «removed» + Undo.
+  /// Свайп-удаление: тост «removed» (немедленное — shopping list остаётся
+  /// без confirm, тап-редукция ADR-033).
   Future<bool> _onDismiss(
     BuildContext context,
     ShoppingItemsTableData item,
@@ -91,12 +92,6 @@ class _ShoppingListScreenState extends ConsumerState<ShoppingListScreen> {
       message: context
           .s('food.shopping_item_removed')
           .replaceFirst('{name}', item.name),
-      onUndo: () {
-        ref.read(shoppingDaoProvider).insertItem(
-              name: item.name,
-              quantity: item.quantity,
-            );
-      },
     );
     return true;
   }
@@ -368,7 +363,7 @@ class _SuggestedSection extends ConsumerWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
             itemCount: suggestions.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final name = suggestions[index];
               return _SuggestionChip(name: name);

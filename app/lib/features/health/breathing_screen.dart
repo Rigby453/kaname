@@ -13,12 +13,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/animations/app_toast.dart';
 import '../../core/animations/constants.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/undo_snack_bar.dart';
+import '../../core/widgets/swipe_to_delete.dart' show showDeleteConfirmDialog;
 import 'breathing_custom_providers.dart';
 import 'breathing_editor_screen.dart';
 import 'breathing_engine.dart';
@@ -176,20 +177,22 @@ class _BreathingSessionBodyState extends ConsumerState<BreathingSessionBody>
     );
   }
 
-  /// Удаление пользовательской техники с Undo.
+  /// Удаление пользовательской техники — единственный путь (кнопка-корзина
+  /// на чипе, без SwipeToDelete), поэтому confirm встроен прямо сюда (не
+  /// нужно разделять на raw/confirm-обёртку, как для dual-path экранов).
   Future<void> _deleteCustom(CustomTechnique t) async {
+    final ok = await showDeleteConfirmDialog(context, message: '"${t.name}"');
+    if (!ok || !mounted) return;
     final dao = ref.read(customBreathingDaoProvider);
-    final snapshot = await dao.getById(t.id);
-    if (snapshot == null) return;
     await dao.deleteTechnique(t.id);
     if (_selectedId == t.id) {
       setState(() => _selectedId = 'builtin:0');
     }
     if (!mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${t.name}" ${context.s('breathing.removed')}',
-      onUndo: () async => dao.restore(snapshot),
     );
   }
 

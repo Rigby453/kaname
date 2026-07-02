@@ -883,37 +883,10 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
     }
 
     if (context.mounted && targetId != null) {
-      final undoId = targetId;
-      final capturedAnchorId = virtualAnchorId;
-      final capturedDate = virtualDate;
-
       showAppToast(
         context,
         variant: AppToastVariant.done,
         message: '"${item.title}" ${context.s('today.marked_done')}',
-        // ВАЖНО: используем УЖЕ ЗАХВАЧЕННЫЙ выше `dao` (Provider, не autoDispose —
-        // живёт весь app lifecycle), а НЕ ref.read(...) внутри closure. Между
-        // свайпом и тапом Undo экран уходит через кратковременный AsyncLoading
-        // (todayItemsProvider/expandedDayItemsProvider пересобираются), из-за
-        // чего ConsumerStatefulElement этого State успевает disposed+recreate —
-        // повторный ref.read() здесь бросал "Cannot use ref after disposed".
-        onUndo: () async {
-          if (capturedAnchorId != null && capturedDate != null) {
-            await dao.undoMaterializeOccurrence(
-              anchorId: capturedAnchorId,
-              date: capturedDate,
-              concreteId: undoId,
-            );
-          } else {
-            await dao.updateItem(
-              undoId,
-              ItemsTableCompanion(
-                status: const Value('pending'),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-          }
-        },
       );
     }
   }
@@ -938,36 +911,11 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
       await ref.read(notificationServiceProvider).cancelTaskReminder(item.id);
     }
 
-    // Undo-тост (единый механизм, §3.3 ANIMATIONS.md) — раньше skip был БЕЗ
-    // отмены вовсе. Симметрично _doDone: виртуальный повтор откатывается через
-    // undoMaterializeOccurrence, обычная задача — возвратом status в pending.
     if (context.mounted && targetId != null) {
-      final undoId = targetId;
-      final capturedAnchorId = virtualAnchorId;
-      final capturedDate = virtualDate;
-
       showAppToast(
         context,
         variant: AppToastVariant.done,
         message: '"${item.title}" ${context.s('today.skipped')}',
-        // dao захвачен ВЫШЕ (см. комментарий в _doDone) — не ref.read() внутри.
-        onUndo: () async {
-          if (capturedAnchorId != null && capturedDate != null) {
-            await dao.undoMaterializeOccurrence(
-              anchorId: capturedAnchorId,
-              date: capturedDate,
-              concreteId: undoId,
-            );
-          } else {
-            await dao.updateItem(
-              undoId,
-              ItemsTableCompanion(
-                status: const Value('pending'),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-          }
-        },
       );
     }
   }
@@ -976,7 +924,6 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
     final dao = ref.read(itemsDaoProvider);
     final notifications = ref.read(notificationServiceProvider);
     final tomorrow = item.scheduledAt.add(const Duration(days: 1));
-    final originalScheduledAt = item.scheduledAt;
     String? rescheduledId;
     final isVirtual = isVirtualOccurrenceId(item.id);
     String? virtualAnchorId;
@@ -1012,36 +959,11 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
       }
     }
 
-    // Undo-тост: раньше здесь показывался тост БЕЗ кнопки Undo. Отмена
-    // возвращает исходный scheduledAt (виртуальный повтор — через
-    // undoMaterializeOccurrence, симметрично _doDone/_doSkip).
     if (context.mounted && rescheduledId != null) {
-      final undoId = rescheduledId;
-      final capturedAnchorId = virtualAnchorId;
-      final capturedDate = virtualDate;
-
       showAppToast(
         context,
         variant: AppToastVariant.done,
         message: '"${item.title}" ${context.s('today.snoozed_tomorrow')}',
-        // dao захвачен ВЫШЕ (см. комментарий в _doDone) — не ref.read() внутри.
-        onUndo: () async {
-          if (capturedAnchorId != null && capturedDate != null) {
-            await dao.undoMaterializeOccurrence(
-              anchorId: capturedAnchorId,
-              date: capturedDate,
-              concreteId: undoId,
-            );
-          } else {
-            await dao.updateItem(
-              undoId,
-              ItemsTableCompanion(
-                scheduledAt: Value(originalScheduledAt),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-          }
-        },
       );
     }
   }
@@ -1058,10 +980,6 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
     }
     if (deletedId == null) return;
 
-    final snapshot = await dao.getItemById(deletedId);
-    final subtasksDao = ref.read(subtasksDaoProvider);
-    final subtasksSnapshot = await subtasksDao.getSubtasks(deletedId);
-
     await dao.deleteItem(deletedId);
     await ref.read(notificationServiceProvider).cancelTaskReminder(deletedId);
 
@@ -1070,17 +988,6 @@ class _TodayTimelineState extends ConsumerState<_TodayTimeline> {
         context,
         variant: AppToastVariant.removed,
         message: '"${item.title}" ${context.s('today.deleted')}',
-        // dao/subtasksDao захвачены ВЫШЕ (см. комментарий в _doDone) —
-        // не ref.read() внутри onUndo.
-        onUndo: snapshot == null
-            ? null
-            : () async {
-                await dao.insertItem(snapshot.toCompanion(false));
-                await subtasksDao.replaceForItem(
-                  snapshot.id,
-                  subtasksSnapshot.map((s) => s.toCompanion(false)).toList(),
-                );
-              },
       );
     }
   }

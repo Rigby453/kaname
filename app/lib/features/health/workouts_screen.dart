@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/database/daos/workouts_dao.dart' show ExerciseWithLogs;
@@ -18,7 +19,6 @@ import '../../core/l10n/plurals.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../features/mascot/kai_mascot.dart';
 import 'ai_workout_sheet.dart';
 import 'exercise_muscle_groups.dart';
@@ -87,23 +87,33 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     if (context.mounted) context.push('/workouts/$id');
   }
 
+  /// Удаление тренировки из БД + тост. Вызывается ПОСЛЕ подтверждения —
+  /// свайп уже подтверждён через [SwipeToDelete.confirmMessage], кнопка-
+  /// корзина — через [_confirmDeleteWorkout] (без двойного диалога).
   Future<void> _deleteWorkout(
     BuildContext context,
     WorkoutsTableData workout,
   ) async {
     final dao = ref.read(workoutsDaoProvider);
-    final exerciseSnapshot =
-        ref.read(workoutExercisesProvider(workout.id)).valueOrNull ??
-            const <WorkoutExercisesTableData>[];
     await dao.deleteWorkout(workout.id);
     if (!context.mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${workout.name}" — ${context.s('workout.removed')}',
-      onUndo: () async {
-        await dao.restoreWorkout(workout, exerciseSnapshot);
-      },
     );
+  }
+
+  /// Confirm-диалог перед удалением тренировки — путь кнопки-корзины
+  /// (мимо свайпа).
+  Future<void> _confirmDeleteWorkout(
+    BuildContext context,
+    WorkoutsTableData workout,
+  ) async {
+    final ok =
+        await showDeleteConfirmDialog(context, message: '"${workout.name}"');
+    if (!ok || !context.mounted) return;
+    await _deleteWorkout(context, workout);
   }
 
   @override
@@ -146,7 +156,10 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           ),
           Expanded(
             child: isWorkoutsTab
-                ? _WorkoutsTabView(onDelete: _deleteWorkout)
+                ? _WorkoutsTabView(
+                    onDelete: _deleteWorkout,
+                    onConfirmDelete: _confirmDeleteWorkout,
+                  )
                 : const _DiaryTabView(),
           ),
         ],
@@ -264,9 +277,12 @@ class _SegmentItem extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _WorkoutsTabView extends ConsumerWidget {
-  const _WorkoutsTabView({required this.onDelete});
+  const _WorkoutsTabView({required this.onDelete, required this.onConfirmDelete});
 
   final Future<void> Function(BuildContext, WorkoutsTableData) onDelete;
+
+  /// Путь кнопки-корзины (мимо свайпа) — показывает confirm-диалог сначала.
+  final Future<void> Function(BuildContext, WorkoutsTableData) onConfirmDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -294,11 +310,12 @@ class _WorkoutsTabView extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: SwipeToDelete(
                   key: ValueKey('workout_${w.id}'),
+                  confirmMessage: '"${w.name}"',
                   onDelete: () => onDelete(context, w),
                   child: _WorkoutCard(
                     key: ValueKey(w.id),
                     workout: w,
-                    onDelete: () => onDelete(context, w),
+                    onDelete: () => onConfirmDelete(context, w),
                   ),
                 ),
               ),
@@ -664,7 +681,6 @@ class _EmptyState extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final ext = Theme.of(context).extension<FocusThemeExtension>()!;
-    final colorScheme = Theme.of(context).colorScheme;
 
     return Center(
       child: Padding(

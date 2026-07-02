@@ -16,12 +16,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/animations/app_sheet.dart';
+import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../services/api/api_client.dart';
 import 'food_icons.dart';
 
@@ -211,16 +211,15 @@ class _LightFoodSheetState extends ConsumerState<_LightFoodSheet> {
     );
   }
 
-  /// Удалить с возможностью Undo (паттерн проекта).
+  /// Удаление записи (немедленное — food log остаётся без confirm, ADR-033).
   Future<void> _deleteWithUndo(FoodLogsTableData log) async {
     final dao = ref.read(foodLogsDaoProvider);
-    final snapshot = log;
     await dao.deleteLog(log.id);
     if (!mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${log.name}" ${context.s('food.log_removed')}',
-      onUndo: () => dao.restoreLog(snapshot),
     );
   }
 

@@ -5,6 +5,40 @@
 
 ---
 
+## ADR-066: Undo affordance removed app-wide; destructive deletes of durable content gated by a confirm dialog
+**Date:** 2026-07-02
+**Decision:**
+- The tap-to-Undo toast is removed everywhere. `showAppToast` no longer has an
+  `onUndo` param, the "removed" toast no longer renders an Undo button, and
+  `lib/core/widgets/undo_snack_bar.dart` (the `showUndoSnackBar` forwarder) is
+  deleted. l10n key `common.undo` removed; the passive "«X» removed" toast stays
+  as an action-confirmation (no button). All ~22 former undo call sites
+  (food/health/plan/today) drop the snapshot+restore closures.
+- To replace the lost safety net, destructive deletes of **durable user-created
+  content** now show a blocking confirm dialog before deleting: shared helper
+  `showDeleteConfirmDialog(context, {message})` in
+  `lib/core/widgets/swipe_to_delete.dart` (title `dialog.delete_confirm_title`,
+  actions `btn.cancel` / `btn.delete`, new key `dialog.delete_confirm_title`).
+  `SwipeToDelete` gains an optional `confirmMessage` (wires `confirmDismiss`);
+  single-tap trash buttons call the same helper (split into `_deleteX` +
+  `_confirmDeleteX` so swipe and tap never double-prompt). Applied to: recipes,
+  recipe steps, workouts, workout exercises, habits, goals (steps), meditation &
+  breathing presets.
+- **Transient / high-frequency data stays immediate** (no confirm, respecting
+  tap-reduction ADR-033): food log rows, shopping-list items, and all Today task
+  actions (done/skip/snooze/delete). Deleting these just shows the passive toast.
+**Reason:** Owner decision (2026-07-02) — Undo was inconsistent (originally
+Today-only) and clashed with the unified toast structure. A confirm-on-durable
+model gives predictable safety without the hidden-state of Undo, while keeping
+the frequent, low-stakes daily-log deletions friction-free.
+**Notes / follow-ups:** DAO `restore*`/`reinsert*` methods are left in place
+(now unused, harmless). Owner to reconsider whether recipe *ingredients* (kept
+immediate, like shopping list) should also confirm. Obsolete Undo regression
+tests were rewritten to the confirm flow; the old Today swipe integration tests
+in `interaction_smoke_test.dart` have a **pre-existing** `tester.runAsync` +
+full-`TodayScreen` deadlock (unrelated to this change) and are quarantined —
+behavior is covered by `today_undo_test.dart` + `undo_removal_test.dart`.
+
 ## ADR-065: Themes trimmed 4->2 (Black/Calm removed); accents expanded 6->11 with adaptive on-fill text + WCAG guarantee
 **Date:** 2026-07-02
 **Decision:**

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
@@ -20,7 +21,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/id.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../mascot/kai_mascot.dart';
 import 'goal_progress.dart';
 
@@ -305,21 +305,27 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
     await ref.read(goalsDaoProvider).addStep(widget.goal.id, title);
   }
 
-  /// Безопасное удаление шага:
-  /// 1. Снапшот ДО удаления
-  /// 2. Удаление из БД
-  /// 3. Undo snackbar
-  /// 4. По Undo — restoreStep (тот же id, sortOrder)
+  /// Удаление шага из БД + тост. Вызывается ПОСЛЕ подтверждения — свайп уже
+  /// подтверждён через [SwipeToDelete.confirmMessage], кнопка-корзина — через
+  /// [_confirmDeleteStep] (без двойного диалога).
   Future<void> _deleteStep(BuildContext context, GoalStepsTableData step) async {
     final dao = ref.read(goalsDaoProvider);
-    final snapshot = step;
     await dao.removeStep(step.id);
     if (!context.mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${step.title}" — ${context.s('plan.step_removed')}',
-      onUndo: () => dao.restoreStep(snapshot),
     );
+  }
+
+  /// Confirm-диалог перед удалением шага — путь кнопки-корзины (мимо свайпа).
+  Future<void> _confirmDeleteStep(
+      BuildContext context, GoalStepsTableData step) async {
+    final ok =
+        await showDeleteConfirmDialog(context, message: '"${step.title}"');
+    if (!ok || !context.mounted) return;
+    await _deleteStep(context, step);
   }
 
   @override
@@ -441,6 +447,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
                 for (final step in steps)
                   SwipeToDelete(
                     key: ValueKey('step_${step.id}'),
+                    confirmMessage: '"${step.title}"',
                     onDelete: () => _deleteStep(context, step),
                     child: _StepRow(
                       step: step,
@@ -452,7 +459,7 @@ class _GoalCardState extends ConsumerState<_GoalCard> {
                           .read(goalsDaoProvider)
                           .setStepDone(step.id, val ?? false),
                       onPlanToday: () => _planToday(context, step),
-                      onDelete: () => _deleteStep(context, step),
+                      onDelete: () => _confirmDeleteStep(context, step),
                       planTodayTooltip:
                           context.s('plan.goals_plan_today_tooltip'),
                       deleteTooltip:

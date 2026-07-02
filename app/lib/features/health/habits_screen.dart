@@ -1,12 +1,16 @@
 // Трекер привычек (бэклог): хорошие с прогрессом + счётчик плохих.
 // Локально-первый, без синхронизации.
-// Удаление: SwipeToDelete (свайп влево) + кнопка в popup → Undo через snackbar.
+// Удаление (2026-07, без Undo — см. docs/decisions.md): SwipeToDelete (свайп
+// влево) + пункт «delete» в popup-меню — оба пути ведут к [_deleteHabit], но
+// подтверждение разное (свайп через confirmMessage, popup через
+// _confirmDeleteHabit) — привычка «дорогая» (имя+тип+частота+цель).
 // Прогресс (HabitLogsTable) сохраняется при удалении — логи остаются в БД,
-// привязаны по habitId. После Undo тот же id возвращается и логи снова видны.
+// привязаны по habitId.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/animations/app_toast.dart';
 import '../../core/database/daos/habits_dao.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
@@ -14,7 +18,6 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../services/notifications/notification_service.dart';
 
 final _habitsProvider = StreamProvider.autoDispose<List<HabitsTableData>>((ref) {
@@ -148,10 +151,11 @@ class HabitsScreen extends ConsumerWidget {
                 ...good.map(
                   (h) => SwipeToDelete(
                     key: ValueKey('habit_${h.id}'),
+                    confirmMessage: '"${h.name}"',
                     onDelete: () => _deleteHabit(context, ref, h),
                     child: _GoodHabitCard(
                       habit: h,
-                      onDelete: () => _deleteHabit(context, ref, h),
+                      onDelete: () => _confirmDeleteHabit(context, ref, h),
                     ),
                   ),
                 ),
@@ -163,10 +167,11 @@ class HabitsScreen extends ConsumerWidget {
                 ...bad.map(
                   (h) => SwipeToDelete(
                     key: ValueKey('habit_${h.id}'),
+                    confirmMessage: '"${h.name}"',
                     onDelete: () => _deleteHabit(context, ref, h),
                     child: _BadHabitCard(
                       habit: h,
-                      onDelete: () => _deleteHabit(context, ref, h),
+                      onDelete: () => _confirmDeleteHabit(context, ref, h),
                     ),
                   ),
                 ),
@@ -178,41 +183,36 @@ class HabitsScreen extends ConsumerWidget {
     );
   }
 
-  /// Паттерн безопасного удаления:
-  /// 1. Делаем снапшот данных привычки ДО удаления
-  /// 2. Удаляем из БД (HabitLogsTable не трогаем — прогресс сохраняется по habitId)
-  /// 3. Показываем Undo snackbar
-  /// 4. По Undo — восстанавливаем через insertOnConflictUpdate снапшота (тот же id)
+  /// Удаление привычки (HabitLogsTable не трогаем — прогресс сохраняется по
+  /// habitId) + тост. Вызывается ПОСЛЕ подтверждения — свайп уже подтверждён
+  /// через [SwipeToDelete.confirmMessage], пункт popup-меню — через
+  /// [_confirmDeleteHabit] (без двойного диалога).
   Future<void> _deleteHabit(
     BuildContext context,
     WidgetRef ref,
     HabitsTableData habit,
   ) async {
     final dao = ref.read(habitsDaoProvider);
-    // Снапшот сделан до удаления (habit уже пришёл из stream — это актуальная запись)
-    final snapshot = habit;
     await dao.deleteHabit(habit.id);
     // Снимаем все слоты напоминаний удалённой привычки.
     await ref.read(notificationServiceProvider).cancelHabitReminders(habit.id);
     if (!context.mounted) return;
-    final body = context.s('habits.reminder_body');
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${habit.name}" ${context.s('habits.removed')}',
-      onUndo: () async {
-        await dao.restoreHabit(snapshot);
-        // Восстановили привычку → возвращаем её напоминание.
-        await _rescheduleHabitReminder(
-          ref,
-          habitId: snapshot.id,
-          reminderMinutes: snapshot.reminderMinutes,
-          frequencyType: snapshot.frequencyType,
-          weekdayMask: snapshot.weekdayMask,
-          title: snapshot.name,
-          body: body,
-        );
-      },
     );
+  }
+
+  /// Confirm-диалог перед удалением привычки — путь popup-меню (мимо свайпа).
+  Future<void> _confirmDeleteHabit(
+    BuildContext context,
+    WidgetRef ref,
+    HabitsTableData habit,
+  ) async {
+    final ok = await showDeleteConfirmDialog(context, message: '"${habit.name}"');
+    if (!ok || !context.mounted) return;
+    await _deleteHabit(context, ref, habit);
   }
 
   Future<void> _showAddDialog(BuildContext context, WidgetRef ref) async {
@@ -687,7 +687,7 @@ class _GoodHabitCard extends ConsumerWidget {
                           value: 'archive',
                           child: Text(context.s('habits.archive')),
                         ),
-                        // Пункт удаления с Undo (ember цвет — деструктивное действие)
+                        // Пункт удаления — ember цвет, с confirm-диалогом (деструктивное действие)
                         PopupMenuItem(
                           value: 'delete',
                           child: Text(
@@ -839,7 +839,7 @@ class _BadHabitCard extends ConsumerWidget {
                       value: 'archive',
                       child: Text(context.s('habits.archive')),
                     ),
-                    // Пункт удаления с Undo (ember цвет — деструктивное действие)
+                    // Пункт удаления — ember цвет, с confirm-диалогом (деструктивное действие)
                     PopupMenuItem(
                       value: 'delete',
                       child: Text(

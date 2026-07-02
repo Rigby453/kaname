@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/animations/app_toast.dart';
 import '../../core/animations/constants.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
@@ -20,7 +21,6 @@ import '../../core/mood/meditation_mood_log.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import 'meditation_audio.dart';
 import 'meditation_custom_providers.dart';
 import 'meditation_editor_screen.dart';
@@ -335,21 +335,34 @@ class MeditationLibraryBody extends ConsumerWidget {
     );
   }
 
+  /// Удаление пользовательской сессии из БД + тост. Вызывается ПОСЛЕ
+  /// подтверждения — свайп уже подтверждён через
+  /// [SwipeToDelete.confirmMessage], кнопка-корзина — через
+  /// [_confirmDeleteCustom] (без двойного диалога).
   Future<void> _deleteCustom(
     BuildContext context,
     WidgetRef ref,
     CustomMeditation m,
   ) async {
     final dao = ref.read(customMeditationDaoProvider);
-    final snapshot = await dao.getById(m.id);
-    if (snapshot == null) return;
     await dao.deleteSession(m.id);
     if (!context.mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${m.name}" ${context.s('meditation.removed')}',
-      onUndo: () async => dao.restore(snapshot),
     );
+  }
+
+  /// Confirm-диалог перед удалением сессии — путь кнопки-корзины (мимо свайпа).
+  Future<void> _confirmDeleteCustom(
+    BuildContext context,
+    WidgetRef ref,
+    CustomMeditation m,
+  ) async {
+    final ok = await showDeleteConfirmDialog(context, message: '"${m.name}"');
+    if (!ok || !context.mounted) return;
+    await _deleteCustom(context, ref, m);
   }
 
   @override
@@ -372,12 +385,13 @@ class MeditationLibraryBody extends ConsumerWidget {
         for (final m in custom) ...[
           SwipeToDelete(
             key: ValueKey('swipe_custom_med_${m.id}'),
+            confirmMessage: '"${m.name}"',
             onDelete: () => _deleteCustom(context, ref, m),
             child: _CustomSessionCard(
               session: m,
               ext: ext,
               textTheme: textTheme,
-              onDelete: () => _deleteCustom(context, ref, m),
+              onDelete: () => _confirmDeleteCustom(context, ref, m),
             ),
           ),
           const SizedBox(height: 8),

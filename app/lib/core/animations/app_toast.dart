@@ -1,6 +1,9 @@
 // Тосты приложения — ANIMATIONS.md §3.
-// API: showAppToast(context, variant: ..., message: '...', onUndo: ...).
+// API: showAppToast(context, variant: ..., message: '...').
 // Максимум 1 тост одновременно; новый вызов мгновенно убирает предыдущий.
+// Undo-кнопка убрана (см. docs/decisions.md) — вместо неё для необратимого
+// удаления «дорогого» контента используется confirm-диалог ДО удаления
+// (SwipeToDelete.confirmMessage / showDeleteConfirmDialog).
 //
 // Иконки: Phosphor (check / clock / trash).
 // Цвета: ext.success / ext.ember / surface — из FocusThemeExtension.
@@ -12,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'constants.dart';
-import '../l10n/app_strings.dart';
 import '../theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -27,7 +29,7 @@ enum AppToastVariant {
   /// §3.2 Напоминание о дедлайне — ember-цвет из темы
   deadline,
 
-  /// §3.3 Задача удалена — поверхность темы + рамка + кнопка Undo
+  /// §3.3 Задача удалена — поверхность темы + рамка
   removed,
 }
 
@@ -37,12 +39,11 @@ enum AppToastVariant {
 
 /// Показывает тост снизу экрана (§3 ANIMATIONS.md).
 /// Максимум 1 тост одновременно — предыдущий убирается немедленно.
-/// [onUndo] — только для варианта [AppToastVariant.removed]; таймер = 4 сек.
+/// Таймер автоскрытия = 3.5 сек для всех вариантов.
 void showAppToast(
   BuildContext context, {
   required AppToastVariant variant,
   required String message,
-  VoidCallback? onUndo,
 }) {
   _AppToastManager._dismiss();
 
@@ -55,7 +56,6 @@ void showAppToast(
     builder: (_) => _AppToastOverlay(
       variant: variant,
       message: message,
-      onUndo: onUndo,
       onDismiss: dismiss,
     ),
   );
@@ -88,13 +88,11 @@ class _AppToastOverlay extends StatefulWidget {
     required this.variant,
     required this.message,
     required this.onDismiss,
-    this.onUndo,
   });
 
   final AppToastVariant variant;
   final String message;
   final VoidCallback onDismiss;
-  final VoidCallback? onUndo;
 
   @override
   State<_AppToastOverlay> createState() => _AppToastOverlayState();
@@ -111,7 +109,7 @@ class _AppToastOverlayState extends State<_AppToastOverlay>
   static const double _slidePixels = 80.0;
 
   // Таймер автоскрытия — храним как Timer (не «голый» Future.delayed), чтобы
-  // ГАРАНТИРОВАННО отменить его в dispose(). Ручное закрытие (тап Undo, замена
+  // ГАРАНТИРОВАННО отменить его в dispose(). Ручное закрытие (замена
   // новым тостом) удаляет OverlayEntry раньше срабатывания таймера; без cancel()
   // таймер оставался бы «pending» до конца теста/после ухода с экрана
   // ("A Timer is still pending" в widget-тестах — известный гэп до этого фикса).
@@ -127,9 +125,10 @@ class _AppToastOverlayState extends State<_AppToastOverlay>
     _ctrl.forward().then((_) => _scheduleAuto());
   }
 
+  static const int _hangMs = 3500;
+
   void _scheduleAuto() {
-    final hangMs = widget.onUndo != null ? 4000 : 3500;
-    _autoTimer = Timer(Duration(milliseconds: hangMs), () {
+    _autoTimer = Timer(const Duration(milliseconds: _hangMs), () {
       if (mounted) _startExit();
     });
   }
@@ -256,22 +255,6 @@ class _AppToastOverlayState extends State<_AppToastOverlay>
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (widget.onUndo != null) ...[
-                  const SizedBox(width: 8),
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      foregroundColor: fg,
-                      minimumSize: Size.zero,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () {
-                      widget.onUndo!();
-                      widget.onDismiss();
-                    },
-                    child: Text(context.s('common.undo')),
-                  ),
-                ],
               ],
             ),
           ),

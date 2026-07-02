@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
@@ -16,7 +17,6 @@ import '../../core/l10n/plurals.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../features/mascot/kai_mascot.dart';
 import 'recipe_nutrition.dart';
 
@@ -62,30 +62,36 @@ class RecipesScreen extends ConsumerWidget {
     if (context.mounted) context.push('/recipes/$id');
   }
 
-  /// Удалить рецепт с возможностью Undo. Снапшот ДО удаления → восстановление.
+  /// Удаление рецепта из БД + тост. Вызывается ПОСЛЕ подтверждения — свайп
+  /// уже подтверждён через [SwipeToDelete.confirmMessage], кнопка-корзина —
+  /// через [_confirmDeleteRecipe] (без двойного диалога).
   Future<void> _deleteRecipe(
     BuildContext context,
     WidgetRef ref,
     RecipesTableData recipe,
   ) async {
     final dao = ref.read(recipesDaoProvider);
-    final ingredientSnapshot =
-        ref.read(recipeIngredientsProvider(recipe.id)).valueOrNull ??
-            const <RecipeIngredientsTableData>[];
-    final stepSnapshot =
-        ref.read(recipeStepsProvider(recipe.id)).valueOrNull ??
-            const <RecipeStepsTableData>[];
-
     await dao.deleteRecipe(recipe.id);
 
     if (!context.mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${recipe.name}" — ${context.s('food.recipe_removed')}',
-      onUndo: () async {
-        await dao.restoreRecipe(recipe, ingredientSnapshot, steps: stepSnapshot);
-      },
     );
+  }
+
+  /// Confirm-диалог перед удалением рецепта — путь кнопки-корзины
+  /// (мимо свайпа), рецепт — «дорогой» пользовательский контент.
+  Future<void> _confirmDeleteRecipe(
+    BuildContext context,
+    WidgetRef ref,
+    RecipesTableData recipe,
+  ) async {
+    final ok =
+        await showDeleteConfirmDialog(context, message: '"${recipe.name}"');
+    if (!ok || !context.mounted) return;
+    await _deleteRecipe(context, ref, recipe);
   }
 
   @override
@@ -112,13 +118,14 @@ class RecipesScreen extends ConsumerWidget {
                 final r = recipes[i];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  // SwipeToDelete: свайп влево → удаление + Undo-snackbar
+                  // SwipeToDelete: свайп влево → confirm-диалог → удаление.
                   child: SwipeToDelete(
                     key: ValueKey('recipe_${r.id}'),
+                    confirmMessage: '"${r.name}"',
                     onDelete: () => _deleteRecipe(context, ref, r),
                     child: _RecipeTile(
                       recipe: r,
-                      onDelete: () => _deleteRecipe(context, ref, r),
+                      onDelete: () => _confirmDeleteRecipe(context, ref, r),
                     ),
                   ),
                 );

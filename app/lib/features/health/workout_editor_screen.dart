@@ -4,13 +4,13 @@
 // «Start workout» → /workouts/:id/train (режим «тренер»).
 // Cards §4.2: surface1 + 0.5dp hairline + R14. Phosphor icons.
 //
-// Паттерн безопасного удаления упражнений (ADR-delete-safe):
+// Удаление упражнений (2026-07, без Undo — см. docs/decisions.md):
 //   - Свайп влево (SwipeToDelete) ИЛИ кнопка-корзина trailing IconButton
-//   - Оба пути идут через _deleteExercise(), который:
-//     1. Сохраняет снапшот ДО удаления
-//     2. Удаляет через DAO
-//     3. Показывает Undo-snackbar через showUndoSnackBar
-//     4. По нажатию Undo: вызывает dao.restoreExercise(snapshot)
+//   - Оба пути ведут к [_deleteExercise] (удаление + тост), но подтверждение
+//     разное: свайп гейтится через SwipeToDelete.confirmMessage, кнопка —
+//     через _confirmDeleteExercise (чтобы не показывать confirm дважды).
+//     Упражнение — «дорогой» структурированный контент (имя+сеты+веса+отдых),
+//     требует confirm (§8 плана удаления Undo).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/animations/app_toast.dart';
 import '../../core/database/database.dart';
 import '../../core/database/database_providers.dart';
 import '../../core/l10n/app_strings.dart';
@@ -25,7 +26,6 @@ import '../../core/settings/rest_default_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../features/mascot/kai_mascot.dart';
 import 'workouts_screen.dart'
     show promptWorkoutName, workoutExercisesProvider, workoutProvider;
@@ -99,17 +99,22 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
   }
 
   Future<void> _deleteExercise(WorkoutExercisesTableData ex) async {
-    final snapshot = ex;
     final dao = ref.read(workoutsDaoProvider);
-    await dao.removeExercise(snapshot.id);
+    await dao.removeExercise(ex.id);
     if (!mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
-      message: '"${snapshot.name}" — ${context.s('workout.exercise_removed')}',
-      onUndo: () async {
-        await dao.restoreExercise(snapshot);
-      },
+      variant: AppToastVariant.removed,
+      message: '"${ex.name}" — ${context.s('workout.exercise_removed')}',
     );
+  }
+
+  /// Confirm-диалог перед удалением упражнения — путь кнопки-корзины
+  /// (мимо свайпа).
+  Future<void> _confirmDeleteExercise(WorkoutExercisesTableData ex) async {
+    final ok = await showDeleteConfirmDialog(context, message: '"${ex.name}"');
+    if (!ok || !mounted) return;
+    await _deleteExercise(ex);
   }
 
   @override
@@ -163,11 +168,12 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: SwipeToDelete(
                           key: ValueKey(ex.id),
+                          confirmMessage: '"${ex.name}"',
                           onDelete: () => _deleteExercise(ex),
                           child: _ExerciseCard(
                             exercise: ex,
                             onTap: () => _editExercise(ex),
-                            onDelete: () => _deleteExercise(ex),
+                            onDelete: () => _confirmDeleteExercise(ex),
                             onHistory: () => context.push(
                               '/workouts/exercise/${ex.id}/history'
                               '?name=${Uri.encodeQueryComponent(ex.name)}',

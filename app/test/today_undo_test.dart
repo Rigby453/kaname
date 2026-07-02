@@ -1,11 +1,12 @@
 // today_undo_test.dart
-// Регресс-тест Defect 1: «Undo после выполнения задачи не возвращает задачу в список».
+// Было: регресс-тест Defect 1 «Undo после выполнения задачи не возвращает
+// задачу в список». Кнопка Undo убрана из приложения целиком (2026-07, см.
+// docs/decisions.md) — вместо неё для необратимого удаления «дорогого»
+// контента используется confirm-диалог ДО удаления (см. test/undo_removal_test.dart).
 //
-// Проверяет два сценария:
-//   A) Обычная задача: done → Undo → статус снова pending.
-//   B) Виртуальный повтор серии: done (materialize) → Undo →
-//      concrete-строка удалена + EXDATE снят с якоря.
-//   C) AppToast: кнопка Undo использует локализованный ключ common.undo.
+// Этот файл теперь проверяет базовый happy-path свайпа (done/skip), который
+// раньше был обёрнут в те же сценарии: свайп вправо → тост «done» БЕЗ кнопки
+// Undo, статус в БД становится done — и остаётся done (отменить нечем).
 //
 // Паттерн свайпа и тайминга — точная копия interaction_smoke_test.dart
 // (drag → pump → runAsync(100ms) → pump(300ms)).
@@ -14,7 +15,6 @@
 //
 // Без pumpAndSettle (deadlock guard).
 
-import 'package:app/core/animations/app_toast.dart';
 import 'package:app/core/database/database.dart';
 import 'package:app/core/database/database_providers.dart';
 import 'package:app/core/theme/app_theme.dart';
@@ -218,11 +218,11 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // A. Обычная задача: done → Undo → pending
+  // A. Обычная задача: done → тост БЕЗ Undo → статус остаётся done
   // ─────────────────────────────────────────────────────────────────────────
-  group('Undo done — обычная задача', () {
+  group('Swipe done — обычная задача (без Undo)', () {
     testWidgets(
-        'задача возвращается в pending после нажатия Undo в тосте',
+        'после свайпа задача становится done, тост без кнопки Undo, статус не откатывается',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -248,23 +248,17 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 100)));
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Тост с Undo должен появиться.
-      expect(find.text('Undo'), findsOneWidget);
+      // Тост появляется, БЕЗ кнопки Undo (убрана — 2026-07).
+      expect(find.text('Undo'), findsNothing);
 
-      // Нажимаем Undo.
-      await tester.tap(find.text('Undo'));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 120)));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // DB: задача снова pending.
+      // DB: задача done (отменить нечем — Undo убран).
       final rows = await tester.runAsync(
           () async => db.select(db.itemsTable).get());
       final task = rows!.singleWhere((r) => r.title == 'Regular Task');
-      expect(task.status, 'pending', reason: 'Undo должен вернуть задачу в pending');
+      expect(task.status, 'done');
 
-      // Прокачиваем таймер автоскрытия тоста (4с) — иначе Timer still pending.
-      await tester.pump(const Duration(seconds: 5));
+      // Прокачиваем таймер автоскрытия тоста (3.5с).
+      await tester.pump(const Duration(seconds: 4));
 
       expect(tester.takeException(), isNull);
       await _unmount(tester);
@@ -272,11 +266,11 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // B. Виртуальный повтор серии: done → Undo → concrete удалена + EXDATE снят
+  // B. Виртуальный повтор серии: done материализует concrete-строку
   // ─────────────────────────────────────────────────────────────────────────
-  group('Undo done — виртуальный повтор', () {
+  group('Swipe done — виртуальный повтор (без Undo)', () {
     testWidgets(
-        'concrete-строка удалена + EXDATE снят → якорь восстановлен',
+        'виртуальное вхождение материализуется в done, EXDATE не трогается (нет отката)',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -306,100 +300,25 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 100)));
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Тост с Undo.
-      expect(find.text('Undo'), findsOneWidget);
+      // Тост без кнопки Undo.
+      expect(find.text('Undo'), findsNothing);
 
-      // Tap Undo → undoMaterializeOccurrence (delete concrete + removeExDate).
-      await tester.tap(find.text('Undo'));
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 120)));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // DB: concrete-строка удалена, только якорь остался.
+      // DB: якорь + материализованная done-строка (EXDATE проставлен, так как
+      // материализация всегда ставит EXDATE — Undo, который бы его снимал,
+      // больше не существует).
       final allRows = await tester.runAsync(
           () async => db.select(db.itemsTable).get());
-      expect(allRows!.length, 1, reason: 'Только якорь в DB после Undo');
+      expect(allRows!.length, 2, reason: 'Якорь + материализованная строка');
 
-      final anchor = allRows.single;
-      expect(anchor.id, anchorId);
-
-      // EXDATE снят — recurrenceRule не содержит 'EXDATE'.
+      final anchor = allRows.singleWhere((r) => r.id == anchorId);
       expect(anchor.recurrenceRule, isNotNull);
-      expect(
-        anchor.recurrenceRule!.contains('EXDATE'),
-        isFalse,
-        reason: 'EXDATE для testDay должен быть снят после Undo',
-      );
+      expect(anchor.recurrenceRule!.contains('EXDATE'), isTrue);
+
+      final materialized = allRows.singleWhere((r) => r.id != anchorId);
+      expect(materialized.status, 'done');
 
       // Прокачиваем таймер тоста.
-      await tester.pump(const Duration(seconds: 5));
-
-      expect(tester.takeException(), isNull);
-      await _unmount(tester);
-    });
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // C. AppToast: кнопка Undo локализована (Defect 3)
-  // ─────────────────────────────────────────────────────────────────────────
-  group('AppToast — локализованная кнопка Undo', () {
-    testWidgets(
-        'showAppToast с onUndo показывает кнопку common.undo (en=Undo)',
-        (tester) async {
-      await tester.binding.setSurfaceSize(const Size(390, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-
-      bool undoCalled = false;
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appDatabaseProvider.overrideWithValue(db),
-            sharedPreferencesProvider.overrideWithValue(prefs),
-          ],
-          child: MediaQuery(
-            data: const MediaQueryData(size: Size(390, 800)),
-            child: MaterialApp(
-              theme: _testTheme(),
-              localizationsDelegates: const [
-                DefaultMaterialLocalizations.delegate,
-                DefaultWidgetsLocalizations.delegate,
-              ],
-              supportedLocales: const [Locale('en')],
-              home: Builder(
-                builder: (context) => Scaffold(
-                  body: ElevatedButton(
-                    onPressed: () => showAppToast(
-                      context,
-                      variant: AppToastVariant.removed,
-                      message: 'Item deleted',
-                      onUndo: () => undoCalled = true,
-                    ),
-                    child: const Text('Show Toast'),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // Открываем тост.
-      await tester.tap(find.text('Show Toast'));
-      await tester.pump(const Duration(milliseconds: 320));
-
-      // Кнопка должна называться 'Undo' (ключ common.undo, en-локаль).
-      expect(find.text('Undo'), findsOneWidget);
-
-      // Нажимаем Undo.
-      await tester.tap(find.text('Undo'));
-      await tester.pump();
-
-      expect(undoCalled, isTrue);
-
-      // Прокачиваем таймер автоскрытия.
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 4));
 
       expect(tester.takeException(), isNull);
       await _unmount(tester);

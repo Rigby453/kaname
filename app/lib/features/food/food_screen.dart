@@ -35,9 +35,9 @@ import '../../core/settings/mascot_provider.dart';
 import '../../core/settings/nutrition_targets.dart';
 import '../../core/settings/tone_provider.dart';
 import '../../core/utils/id.dart';
+import '../../core/animations/app_toast.dart';
 import '../../core/widgets/kai_loader.dart';
 import '../../core/widgets/swipe_to_delete.dart';
-import '../../core/widgets/undo_snack_bar.dart';
 import '../../features/mascot/kai_mascot.dart';
 import '../../services/api/api_client.dart';
 import '../auth/auth_controller.dart';
@@ -123,13 +123,16 @@ Future<void> _repeatLastWeek(
 
   final dayName = _weekdayName(context, sourceDate.weekday);
   final n = insertedIds.length;
-  showUndoSnackBar(
+  showAppToast(
     context,
+    // «Повторить неделю» — это КОПИРОВАНИЕ приёмов еды (успех), а не удаление.
+    // Ранее показывался removed-вариант (с кнопкой Undo); после её удаления
+    // trash-стиль вводил бы в заблуждение → используем done (успех).
+    variant: AppToastVariant.done,
     message: context
         .s('food.repeat_week_done')
         .replaceFirst('{n}', '$n')
         .replaceFirst('{day}', dayName),
-    onUndo: () => dao.deleteLogsById(insertedIds),
   );
 }
 
@@ -676,13 +679,12 @@ class _FoodRow extends ConsumerWidget {
 
   Future<void> _deleteWithUndo(BuildContext context, WidgetRef ref) async {
     final dao = ref.read(foodLogsDaoProvider);
-    final snapshot = log;
     await dao.deleteLog(log.id);
     if (!context.mounted) return;
-    showUndoSnackBar(
+    showAppToast(
       context,
+      variant: AppToastVariant.removed,
       message: '"${log.name}" ${context.s('food.log_removed')}',
-      onUndo: () => dao.restoreLog(snapshot),
     );
   }
 
