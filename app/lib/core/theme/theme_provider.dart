@@ -42,12 +42,14 @@ class ThemeNotifier extends Notifier<AppThemeKey> {
     state = key;
   }
 
-  /// Переводит старые prefs-ключи v3 в новые v4.
+  /// Переводит старые prefs-ключи (v3 и Kaname v4) в актуальные (2 темы).
   static AppThemeKey _migrateKey(String raw) => switch (raw) {
         'focus' => AppThemeKey.night,    // Focus (тёплый тёмный) → Night
         'white' => AppThemeKey.day,      // White (светлая)       → Day
         'contrast' => AppThemeKey.day,   // Contrast (доступность) → Day + highContrast
         'custom' => AppThemeKey.day,     // My Theme               → Day (Phase 4)
+        'black' => AppThemeKey.night,    // Black (OLED, v4)        → Night (2026-07 trim)
+        'calm' => AppThemeKey.day,       // Calm (v4)               → Day (2026-07 trim)
         _ => AppThemeKey.values.firstWhere(
             (k) => k.prefsKey == raw,
             orElse: () => AppThemeKey.day,

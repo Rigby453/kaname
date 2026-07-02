@@ -1,9 +1,14 @@
-// Темы приложения Kaizen — «Kaname» redesign v4.
+// Темы приложения Kaizen — «Kaname» redesign v4 (+ 2026-07 accent/theme trim).
 // Источник правды: /docs/design-tokens.json v4 + /docs/REDESIGN-KANAME.md
 //
 // Ключевые изменения относительно v3:
-//   • Тема = поверхности + текст + border ONLY. 4 темы: day/night/black/calm.
-//   • Акцент ОТВЯЗАН от темы: 6 пользовательских акцентов (AccentKey).
+//   • Тема = поверхности + текст + border ONLY. 2 темы: day/night (black/calm
+//     мигрированы в theme_provider.dart, см. ADR в /docs/decisions.md).
+//   • Акцент ОТВЯЗАН от темы: 11 кураторских акцентов (AccentKey).
+//   • Текст поверх акцентной заливки (`on`) АДАПТИВЕН по контрасту: выбирается
+//     белый или почти-чёрный — какой даёт больший WCAG CR — и, если оба варианта
+//     всё ещё < 4.5, светлота заливки слегка корректируется бинарным поиском
+//     (см. _resolveOnAccent + CustomThemePalette._adjustLightnessForContrast).
 //   • ОДИН шрифт (HankenGrotesk; TODO: Geist) для display и body, всех тем.
 //   • Высокий контраст — НАСТРОЙКА (highContrast: bool), не отдельная тема.
 //   • FocusThemeExtension: имя и все старые поля СОХРАНЕНЫ (106 файлов),
@@ -21,29 +26,45 @@ import 'custom_theme_provider.dart' show CustomThemeConfig;
 part 'custom_theme_palette.dart';
 
 // ---------------------------------------------------------------------------
-// Ключи акцентов (6 кураторских вариантов, выбираются пользователем)
+// Ключи акцентов (11 кураторских вариантов, выбираются пользователем)
 // ---------------------------------------------------------------------------
 
-/// 6 кураторских акцентов. Пользователь выбирает один, независимо от темы.
-enum AccentKey { indigo, emerald, violet, ochre, rose, slate }
+/// 11 кураторских акцентов. Пользователь выбирает один, независимо от темы.
+/// Исходные 6 (indigo..slate) сохранены как есть (совместимость сохранённого
+/// выбора существующих пользователей); 5 добавлены в 2026-07 (см. ADR):
+/// amber, lime, teal, magenta, crimson.
+enum AccentKey {
+  indigo,
+  emerald,
+  violet,
+  ochre,
+  rose,
+  slate,
+  amber,
+  lime,
+  teal,
+  magenta,
+  crimson,
+}
 
 // ---------------------------------------------------------------------------
-// Новые ключи тем (4 вместо 6 — v4 redesign)
+// Ключи тем (2 вместо 4 — 2026-07 trim: black/calm убраны, см. ADR)
 // ---------------------------------------------------------------------------
 
-/// Ключи тем Kaname v4. Значение по умолчанию = day.
-enum AppThemeKey { day, night, black, calm }
+/// Ключи тем. Значение по умолчанию = day.
+/// Kaname v4 держал 4 темы (day/night/black/calm); в 2026-07 black и calm
+/// убраны как излишние варианты — см. /docs/decisions.md.
+/// Старые prefs-значения мигрируются в theme_provider.dart (_migrateKey).
+enum AppThemeKey { day, night }
 
 /// Читаемые метки и ключи SharedPreferences.
 extension AppThemeKeyLabel on AppThemeKey {
   String get label => switch (this) {
         AppThemeKey.day => 'Day',
         AppThemeKey.night => 'Night',
-        AppThemeKey.black => 'Black',
-        AppThemeKey.calm => 'Calm',
       };
 
-  String get prefsKey => name; // 'day', 'night', 'black', 'calm'
+  String get prefsKey => name; // 'day', 'night'
 }
 
 // ---------------------------------------------------------------------------
@@ -122,145 +143,184 @@ const _nightSurfaces = _Surfaces(
   borderStrong: Color(0xFF3A352B),
 );
 
-const _blackSurfaces = _Surfaces(
-  brightness: Brightness.dark,
-  bg: Color(0xFF000000),
-  surface1: Color(0xFF0D0D0D),
-  surface2: Color(0xFF141414),
-  ink: Color(0xFFFFFFFF),
-  textSecondary: Color(0xFFB4B4B4),
-  textMuted: Color(0xFF8A8A8A),
-  textFaint: Color(0xFF555555),
-  border: Color(0xFF1E1E1E),
-  borderStrong: Color(0xFF2E2E2E),
-);
-
-const _calmSurfaces = _Surfaces(
-  brightness: Brightness.light,
-  bg: Color(0xFFEEF3F2),
-  surface1: Color(0xFFFBFDFC),
-  surface2: Color(0xFFF2F7F6),
-  ink: Color(0xFF1A2422),
-  textSecondary: Color(0xFF4F5E5B),
-  textMuted: Color(0xFF6B7A77),
-  textFaint: Color(0xFF9DACA9),
-  border: Color(0xFFDCE6E4),
-  borderStrong: Color(0xFFC7D4D1),
-);
-
 // ---------------------------------------------------------------------------
 // Акцентный резолвер (design-tokens.json §accents)
 // ---------------------------------------------------------------------------
 
+/// Светлая (day) палитра одного акцента: заливка + мягкий фон + текст на нём.
+/// Для тёмной (night) темы `tint`/`ink` вычисляются на месте из `dark`
+/// (алгоритм не меняется с v4 — см. `_accentFor`).
+class _AccentLightSet {
+  const _AccentLightSet({
+    required this.accent,
+    required this.tint,
+    required this.ink,
+  });
+
+  final Color accent; // заливка на светлой теме
+  final Color tint;   // мягкий underlay на светлой теме
+  final Color ink;    // текст поверх tint на светлой теме
+}
+
+/// Полное определение одного курируемого акцента: day-палитра + сырая
+/// заливка для night. `on` (текст поверх заливки) больше НЕ хранится тут —
+/// вычисляется адаптивно в `_resolveOnAccent` для обеих тем.
+class _AccentDef {
+  const _AccentDef({required this.light, required this.dark});
+
+  final _AccentLightSet light;
+  final Color dark; // сырая заливка на тёмной теме (до WCAG-коррекции)
+}
+
+/// Таблица всех курируемых акцентов — ЕДИНСТВЕННЫЙ источник правды для
+/// цветов внутри app_theme.dart. Держать в синхроне с:
+///   - profile_screen.dart (_AccentPicker._colors + _labelKey)
+///   - custom_theme_editor_screen.dart (_kAccentKeyColors)
+///   - docs/design-tokens.json (§accents)
+///   - core/l10n/strings/profile_paywall.dart (`accent.<name>` для всех языков)
+/// (см. app/test/theme_accent_test.dart — ловит рассинхрон.)
+const Map<AccentKey, _AccentDef> _accentDefs = {
+  AccentKey.indigo: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFF4B57C9),
+      tint: Color(0xFFECEDFA),
+      ink: Color(0xFF3A45A8),
+    ),
+    dark: Color(0xFF7E89E0),
+  ),
+  AccentKey.emerald: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFF1D9E75),
+      tint: Color(0xFFE1F5EE),
+      ink: Color(0xFF0F6E56),
+    ),
+    dark: Color(0xFF3FBF93),
+  ),
+  AccentKey.violet: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFF7A4FC9),
+      tint: Color(0xFFEFE9FB),
+      ink: Color(0xFF5A33A8),
+    ),
+    dark: Color(0xFFA488E6),
+  ),
+  AccentKey.ochre: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFFB5772A),
+      tint: Color(0xFFF7EEDD),
+      ink: Color(0xFF7E4F10),
+    ),
+    dark: Color(0xFFD9A04A),
+  ),
+  AccentKey.rose: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFFC24E78),
+      tint: Color(0xFFFBE9F0),
+      ink: Color(0xFF923556),
+    ),
+    dark: Color(0xFFE07AA0),
+  ),
+  AccentKey.slate: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFF3F6E9E),
+      tint: Color(0xFFE7EFF7),
+      ink: Color(0xFF214B73),
+    ),
+    dark: Color(0xFF6F9BC4),
+  ),
+  // --- Добавлены 2026-07 (см. ADR в /docs/decisions.md) ---
+  AccentKey.amber: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFFC19F15),
+      tint: Color(0xFFF8F3E3),
+      ink: Color(0xFF745E06),
+    ),
+    dark: Color(0xFFE4C444),
+  ),
+  AccentKey.lime: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFF58962C),
+      tint: Color(0xFFEBF8E3),
+      ink: Color(0xFF396916),
+    ),
+    dark: Color(0xFF78C144),
+  ),
+  AccentKey.teal: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFF249BA8),
+      tint: Color(0xFFE3F5F8),
+      ink: Color(0xFF116E78),
+    ),
+    dark: Color(0xFF45BCC9),
+  ),
+  AccentKey.magenta: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFFB234B2),
+      tint: Color(0xFFF8E3F8),
+      ink: Color(0xFF871D87),
+    ),
+    dark: Color(0xFFD369D3),
+  ),
+  AccentKey.crimson: _AccentDef(
+    light: _AccentLightSet(
+      accent: Color(0xFFB1252F),
+      tint: Color(0xFFF8E3E4),
+      ink: Color(0xFF81121A),
+    ),
+    dark: Color(0xFFD65C64),
+  ),
+};
+
+/// Кандидаты текста поверх акцентной заливки (см. `_resolveOnAccent`).
+const Color _accentOnWhite = Color(0xFFFFFFFF);
+const Color _accentOnBlack = Color(0xFF15140F);
+
+/// Выбирает читаемый текст поверх заливки [fill] — белый или почти-чёрный,
+/// какой из двух даёт больший WCAG-контраст — и ГАРАНТИРУЕТ CR >= 4.5: если
+/// оба варианта всё ещё ниже порога, слегка корректирует светлоту заливки
+/// биполярным поиском (переиспользуем `CustomThemePalette._adjustLightnessForContrast`,
+/// не изобретаем WCAG-математику заново).
+({Color on, Color accent}) _resolveOnAccent(Color fill) {
+  final crWhite = CustomThemePalette._contrastRatio(_accentOnWhite, fill);
+  final crBlack = CustomThemePalette._contrastRatio(_accentOnBlack, fill);
+  final useWhite = crWhite >= crBlack;
+  final on = useWhite ? _accentOnWhite : _accentOnBlack;
+  final bestCr = useWhite ? crWhite : crBlack;
+  if (bestCr >= 4.5) return (on: on, accent: fill);
+
+  // Текст белый (светлый) → заливку нужно затемнить (isDark: false).
+  // Текст почти-чёрный (тёмный) → заливку нужно осветлить (isDark: true).
+  final adjusted = CustomThemePalette._adjustLightnessForContrast(
+      !useWhite, fill, on, 4.5);
+  return (on: on, accent: adjusted);
+}
+
 /// Вычисляет _Accent для заданного ключа и яркости темы.
-/// Для светлых тем — значения из токенов напрямую.
-/// Для тёмных тем — tint и ink вычисляются на месте.
+/// Для светлых тем — значения из токенов напрямую (tint/ink курированы).
+/// Для тёмных тем — tint и ink вычисляются на месте из сырой заливки.
+/// `on` в обоих случаях — адаптивный (см. `_resolveOnAccent`).
 _Accent _accentFor(AccentKey key, Brightness brightness, Color surface1) {
   final isDark = brightness == Brightness.dark;
+  final def = _accentDefs[key]!;
 
-  switch (key) {
-    case AccentKey.indigo:
-      if (!isDark) {
-        return const _Accent(
-          accent: Color(0xFF4B57C9),
-          tint: Color(0xFFECEDFA),
-          ink: Color(0xFF3A45A8),
-          on: Color(0xFFFFFFFF),
-        );
-      }
-      const accent = Color(0xFF7E89E0);
-      return _Accent(
-        accent: accent,
-        tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
-        ink: accent,
-        on: const Color(0xFF15140F),
-      );
-
-    case AccentKey.emerald:
-      if (!isDark) {
-        return const _Accent(
-          accent: Color(0xFF1D9E75),
-          tint: Color(0xFFE1F5EE),
-          ink: Color(0xFF0F6E56),
-          on: Color(0xFFFFFFFF),
-        );
-      }
-      const accent = Color(0xFF3FBF93);
-      return _Accent(
-        accent: accent,
-        tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
-        ink: accent,
-        on: const Color(0xFF15140F),
-      );
-
-    case AccentKey.violet:
-      if (!isDark) {
-        return const _Accent(
-          accent: Color(0xFF7A4FC9),
-          tint: Color(0xFFEFE9FB),
-          ink: Color(0xFF5A33A8),
-          on: Color(0xFFFFFFFF),
-        );
-      }
-      const accent = Color(0xFFA488E6);
-      return _Accent(
-        accent: accent,
-        tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
-        ink: accent,
-        on: const Color(0xFF15140F),
-      );
-
-    case AccentKey.ochre:
-      if (!isDark) {
-        return const _Accent(
-          accent: Color(0xFFB5772A),
-          tint: Color(0xFFF7EEDD),
-          ink: Color(0xFF7E4F10),
-          on: Color(0xFFFFFFFF),
-        );
-      }
-      const accent = Color(0xFFD9A04A);
-      return _Accent(
-        accent: accent,
-        tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
-        ink: accent,
-        on: const Color(0xFF15140F),
-      );
-
-    case AccentKey.rose:
-      if (!isDark) {
-        return const _Accent(
-          accent: Color(0xFFC24E78),
-          tint: Color(0xFFFBE9F0),
-          ink: Color(0xFF923556),
-          on: Color(0xFFFFFFFF),
-        );
-      }
-      const accent = Color(0xFFE07AA0);
-      return _Accent(
-        accent: accent,
-        tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
-        ink: accent,
-        on: const Color(0xFF15140F),
-      );
-
-    case AccentKey.slate:
-      if (!isDark) {
-        return const _Accent(
-          accent: Color(0xFF3F6E9E),
-          tint: Color(0xFFE7EFF7),
-          ink: Color(0xFF214B73),
-          on: Color(0xFFFFFFFF),
-        );
-      }
-      const accent = Color(0xFF6F9BC4);
-      return _Accent(
-        accent: accent,
-        tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
-        ink: accent,
-        on: const Color(0xFF15140F),
-      );
+  if (!isDark) {
+    final resolved = _resolveOnAccent(def.light.accent);
+    return _Accent(
+      accent: resolved.accent,
+      tint: def.light.tint,
+      ink: def.light.ink,
+      on: resolved.on,
+    );
   }
+
+  final resolved = _resolveOnAccent(def.dark);
+  final accent = resolved.accent;
+  return _Accent(
+    accent: accent,
+    tint: Color.alphaBlend(accent.withValues(alpha: 0.16), surface1),
+    ink: accent,
+    on: resolved.on,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -316,8 +376,8 @@ class AppTheme {
 
   /// Строит ThemeData из поверхностей темы + акцента + настроек доступности.
   ///
-  /// [theme]       — одна из 4 тем (day/night/black/calm).
-  /// [accent]      — один из 6 акцентов (по умолчанию indigo).
+  /// [theme]       — одна из 2 тем (day/night).
+  /// [accent]      — один из 11 акцентов (по умолчанию indigo).
   /// [highContrast]— применяет шрифт Atkinson + увеличенный межстрочный интервал.
   /// [harshness]   — 0.0..1.0; при > 0 акцент плавно смещается в сторону ember.
   static ThemeData build({
@@ -343,22 +403,22 @@ class AppTheme {
   static ThemeData whiteTheme({double harshness = 0.0}) =>
       build(theme: AppThemeKey.day, harshness: harshness);
 
-  /// Black (OLED) → black.
-  @Deprecated('Kaname redesign — use AppTheme.build(theme: AppThemeKey.black)')
+  /// Black (OLED) → упразднена 2026-07, маппится в night (см. ADR).
+  @Deprecated('Kaname redesign — Black theme removed, use AppTheme.build(theme: AppThemeKey.night)')
   static ThemeData blackTheme({double harshness = 0.0}) =>
-      build(theme: AppThemeKey.black, harshness: harshness);
+      build(theme: AppThemeKey.night, harshness: harshness);
 
-  /// Calm → calm.
-  @Deprecated('Kaname redesign — use AppTheme.build(theme: AppThemeKey.calm)')
+  /// Calm → упразднена 2026-07, маппится в day (см. ADR).
+  @Deprecated('Kaname redesign — Calm theme removed, use AppTheme.build(theme: AppThemeKey.day)')
   static ThemeData calmTheme({double harshness = 0.0}) =>
-      build(theme: AppThemeKey.calm, harshness: harshness);
+      build(theme: AppThemeKey.day, harshness: harshness);
 
   /// Contrast (доступность) → day + highContrast: true.
   @Deprecated('Kaname redesign — use AppTheme.build(theme: AppThemeKey.day, highContrast: true)')
   static ThemeData contrastTheme({double harshness = 0.0}) =>
       build(theme: AppThemeKey.day, highContrast: true, harshness: harshness);
 
-  /// Получить ThemeData по ключу (все 4 новые темы + compat для тестов/виджет-сервиса).
+  /// Получить ThemeData по ключу (2 темы + compat для тестов/виджет-сервиса).
   @Deprecated('Kaname redesign — use AppTheme.build(theme: key)')
   static ThemeData forKey(AppThemeKey key, {double harshness = 0.0}) =>
       build(theme: key, harshness: harshness);
@@ -377,8 +437,6 @@ class AppTheme {
   static _Surfaces _surfacesFor(AppThemeKey key) => switch (key) {
         AppThemeKey.day => _daySurfaces,
         AppThemeKey.night => _nightSurfaces,
-        AppThemeKey.black => _blackSurfaces,
-        AppThemeKey.calm => _calmSurfaces,
       };
 
   // ---------------------------------------------------------------------------

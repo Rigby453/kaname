@@ -135,18 +135,19 @@ void main() {
     await goToPage(tester, _themePage);
     expect(tester.takeException(), isNull);
     expect(find.text('Day'), findsOneWidget);   // Kaname v4: Focus → Day
-    expect(find.text('Calm'), findsOneWidget);
+    expect(find.text('Night'), findsOneWidget);
 
-    // Выбор «Calm» — пишется в themeNotifierProvider (так же асинхронно).
-    await tester.ensureVisible(find.text('Calm'));
+    // Выбор «Night» — пишется в themeNotifierProvider (так же асинхронно).
+    // 2026-07: Black/Calm themes removed — only Day/Night remain (see ADR).
+    await tester.ensureVisible(find.text('Night'));
     await tester.pump();
     await tester.runAsync(() async {
-      await tester.tap(find.text('Calm'));
+      await tester.tap(find.text('Night'));
       await Future<void>.delayed(const Duration(milliseconds: 10));
     });
     await tester.pump();
     expect(tester.takeException(), isNull);
-    expect(prefs.getString('app_theme_key'), 'calm');
+    expect(prefs.getString('app_theme_key'), 'night');
 
     // --- Сводка (index 14): запускает 400ms таймер готовности ---
     await goToPage(tester, _summaryPage);
@@ -156,7 +157,7 @@ void main() {
     expect(find.text('Tone'), findsOneWidget);
     expect(find.text('Theme'), findsOneWidget);
     expect(find.text('Honest & blunt'), findsOneWidget);
-    expect(find.text('Calm'), findsOneWidget);
+    expect(find.text('Night'), findsOneWidget);
 
     // Размонтируем, чтобы сбросить отложенные таймеры в теле теста.
     await tester.pumpWidget(const SizedBox.shrink());

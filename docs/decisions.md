@@ -5,6 +5,76 @@
 
 ---
 
+## ADR-065: Themes trimmed 4->2 (Black/Calm removed); accents expanded 6->11 with adaptive on-fill text + WCAG guarantee
+**Date:** 2026-07-02
+**Decision:**
+- **Themes:** `AppThemeKey` reduced from `{day, night, black, calm}` to `{day, night}`
+  (`app/lib/core/theme/app_theme.dart`). Black (OLED) and Calm were judged redundant
+  once accent is fully decoupled from theme (Kaname v4, ADR-058) — a user who wants an
+  OLED-black or cool-green feel can already get most of that via Night/Day + one of the
+  11 accents below, without the maintenance cost of 2 extra surface tables. Day stays
+  default.
+  - **Migration:** `ThemeNotifier._migrateKey` (`theme_provider.dart`) and the mirrored
+    `_resolveWidgetThemeKey` (`services/widget/widget_service.dart`, used by the home
+    widget) both map stale prefs values `'black' -> night`, `'calm' -> day`, on top of
+    the existing v3 migrations (`focus/white/contrast/custom`). No forced reset —
+    existing users land on the closest surviving theme automatically. The `.values
+    .firstWhere(orElse: AppThemeKey.day)` safety net is unchanged.
+  - `AppTheme.blackTheme()`/`calmTheme()` (deprecated compat wrappers, kept for the 106
+    files still referencing the old static API per Kaname v4) now redirect to
+    `night`/`day` respectively instead of a removed enum value.
+- **Accents:** `AccentKey` expanded from 6 (`indigo, emerald, violet, ochre, rose,
+  slate` — unchanged, so existing users' saved accent choice stays valid) to 11, adding
+  `amber, lime, teal, magenta, crimson`. Candidates `blue`/`cyan`/`coral` were
+  considered and dropped: `blue`/`cyan` would have sat within ~10-15° hue of the
+  existing `slate`/`emerald` (a `teal` at hue 186 already fills that gap, roughly
+  matching the ~24-27° spacing the original 6 already used between `slate`/`indigo`/
+  `violet`); `coral` would have crowded the `ochre`/`crimson` red-orange corner. Fewer,
+  clearly-distinct colours beat a padded-out list.
+- **KEY FIX — adaptive on-fill text:** the text/icon colour drawn ON the accent fill
+  (`_Accent.on`) is no longer a theme-hardcoded white (light) / near-black (dark, Color
+  `0xFF15140F`). `_resolveOnAccent()` in `app_theme.dart` computes the WCAG contrast
+  ratio of BOTH candidates against the actual fill and picks whichever wins, for BOTH
+  themes. This alone fixed the two accents that failed the old white-only rule per the
+  design review: `ochre` light (was CR~3.7 with forced white; picking near-black gives
+  CR 4.95) and `emerald` light (was CR~3.05; near-black gives CR 5.44) — no hex change
+  needed for either, just the text-colour choice. If neither candidate reaches 4.5 (not
+  needed for the final 11, but kept as a guarantee for any future addition),
+  `_resolveOnAccent` nudges the fill's lightness via the **existing** binary-search
+  helper `CustomThemePalette._adjustLightnessForContrast` (reused, not reimplemented —
+  same helper the custom-theme derivation already used for text/ember/success).
+  Measured CR(on, accent) for all 11 x 2 themes ranges 4.51-10.78 (min: `rose` light at
+  4.51); see `app/test/theme_accent_test.dart` for the enforced floor.
+- **Refactor:** `_accentFor`'s per-key `switch` (6 hand-written cases, `on` hardcoded in
+  each) became a data table `_accentDefs: Map<AccentKey, _AccentDef>` (day accent/tint/
+  ink + a raw night accent hex) plus one generic resolver function. This is what made
+  adding 5 accents a ~15-line table addition instead of 5 duplicated switch arms — but
+  it trades the compiler's exhaustive-`switch` safety net for a runtime `!` map lookup,
+  so a key missing from the table now fails at runtime, not at compile time. The new
+  test's per-key `AppTheme.build()` sweep exists specifically to catch that.
+- **Sync points updated** (one accent added in only *some* of these = picker/theme
+  mismatch bug): `app_theme.dart` (`_accentDefs`, source of truth) ·
+  `profile_screen.dart` (`_AccentPicker._colors` + `_labelKey`) ·
+  `custom_theme_editor_screen.dart` (`_kAccentKeyColors`) ·
+  `core/l10n/strings/profile_paywall.dart` (`accent.<name>`, all 11 active languages) ·
+  `docs/design-tokens.json` §accents (now 11, `on` removed from the schema — it's
+  runtime-computed, not baked) and §themes (now day/night only) · onboarding
+  `setup_flow.dart` theme step (`_kThemeSwatch`, 2 entries) · `profile_screen.dart`
+  `_ThemePicker._available` (2 entries).
+- **Test:** `app/test/theme_accent_test.dart` is the safety net for all of the above —
+  asserts `AppThemeKey.values == {day, night}`, the black/calm migration, that every
+  `AccentKey` builds without crashing on both themes with CR(on, accent) >= 4.5, that
+  every accent has a non-empty `en`+`ru` l10n name, and that every accent is present in
+  both UI-picker colour maps (exposed for testing via `@visibleForTesting` aliases
+  `kAccentPickerColorsForTest`/`kAccentEditorColorsForTest`, since the real maps are
+  file-private). `onboarding_steps_test.dart`'s theme-step assertions were updated from
+  the now-removed `'Calm'` to `'Night'`.
+**Reason:** user request — themes felt redundant (4 near-identical light/dark
+variants when accent already carries the personality), while the accent palette was
+too thin (6) for a "curated but broad" pick, and 2 of the original 6 were flagged as
+borderline-unreadable in a design review. Consolidating both into one pass avoids
+re-touching the same `_Accent`/`_Surfaces` plumbing twice.
+
 ## ADR-064: Name + avatar_preset added to profile sync (PATCH /auth/me)
 **Date:** 2026-07-01
 **Проблема (баг с устройства):** имя пользователя и пресет аватара не синкались между

@@ -54,12 +54,15 @@ String _colorToHex(Color c) {
       '${b.toRadixString(16).padLeft(2, '0')}';
 }
 
-/// Мигрирует старые prefs-ключи темы (v3) в новые v4 для виджета.
+/// Мигрирует старые prefs-ключи темы (v3, Kaname v4) в актуальные (2 темы)
+/// для виджета — зеркалит ThemeNotifier._migrateKey в theme_provider.dart.
 AppThemeKey _resolveWidgetThemeKey(String? raw) => switch (raw) {
       'focus' => AppThemeKey.night,
       'white' => AppThemeKey.day,
       'contrast' => AppThemeKey.day,
       'custom' => AppThemeKey.day,
+      'black' => AppThemeKey.night,
+      'calm' => AppThemeKey.day,
       _ => AppThemeKey.values.firstWhere(
           (k) => k.prefsKey == raw,
           orElse: () => AppThemeKey.day,

@@ -2376,8 +2376,6 @@ class _ThemePicker extends ConsumerWidget {
   static const _available = [
     (AppThemeKey.day, 'profile.theme_day'),
     (AppThemeKey.night, 'profile.theme_night'),
-    (AppThemeKey.black, 'profile.theme_black'),
-    (AppThemeKey.calm, 'profile.theme_calm'),
   ];
 
   @override
@@ -2401,14 +2399,23 @@ class _ThemePicker extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Выбор акцента (Phase 4 — 6 AccentKey свотчей)
+// Выбор акцента (11 AccentKey свотчей — см. app_theme.dart _accentDefs)
 // ---------------------------------------------------------------------------
 
-/// Пикер акцентного цвета: 6 цветных кружков, по тапу устанавливает акцент.
+/// [ТОЛЬКО ДЛЯ ТЕСТОВ] Алиас на приватную `_AccentPicker._colors`, чтобы
+/// app/test/theme_accent_test.dart мог проверить, что каждый AccentKey
+/// реально присутствует в UI-пикере (а не только в enum + app_theme.dart).
+@visibleForTesting
+const Map<AccentKey, Color> kAccentPickerColorsForTest = _AccentPicker._colors;
+
+/// Пикер акцентного цвета: 11 цветных кружков, по тапу устанавливает акцент.
 class _AccentPicker extends ConsumerWidget {
   const _AccentPicker();
 
   // Канонические цвета акцентов (light/day из design-tokens.json §accents).
+  // ДЕРЖАТЬ В СИНХРОНЕ с app_theme.dart _accentDefs (light.accent) и
+  // custom_theme_editor_screen.dart _kAccentKeyColors — см.
+  // app/test/theme_accent_test.dart.
   static const Map<AccentKey, Color> _colors = {
     AccentKey.indigo:  Color(0xFF4B57C9),
     AccentKey.emerald: Color(0xFF1D9E75),
@@ -2416,6 +2423,11 @@ class _AccentPicker extends ConsumerWidget {
     AccentKey.ochre:   Color(0xFFB5772A),
     AccentKey.rose:    Color(0xFFC24E78),
     AccentKey.slate:   Color(0xFF3F6E9E),
+    AccentKey.amber:   Color(0xFFC19F15),
+    AccentKey.lime:    Color(0xFF58962C),
+    AccentKey.teal:    Color(0xFF249BA8),
+    AccentKey.magenta: Color(0xFFB234B2),
+    AccentKey.crimson: Color(0xFFB1252F),
   };
 
   static String _labelKey(AccentKey key) => switch (key) {
@@ -2425,6 +2437,11 @@ class _AccentPicker extends ConsumerWidget {
         AccentKey.ochre   => 'accent.ochre',
         AccentKey.rose    => 'accent.rose',
         AccentKey.slate   => 'accent.slate',
+        AccentKey.amber   => 'accent.amber',
+        AccentKey.lime    => 'accent.lime',
+        AccentKey.teal    => 'accent.teal',
+        AccentKey.magenta => 'accent.magenta',
+        AccentKey.crimson => 'accent.crimson',
       };
 
   // Выбирает чёрный или белый контрастный цвет для галочки

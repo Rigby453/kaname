@@ -97,12 +97,10 @@ const _planMinutesMap = {
 };
 
 // Превью-свотчи тем: (bg, accent). Зеркалят design-tokens.json v4.
-// Kaname v4: 4 темы; акцент по умолчанию = indigo.
+// 2026-07: 2 темы (day/night); акцент по умолчанию = indigo.
 const _kThemeSwatch = <AppThemeKey, (Color, Color)>{
   AppThemeKey.day: (Color(0xFFF6F5F2), Color(0xFF4B57C9)),   // day bg + indigo light
   AppThemeKey.night: (Color(0xFF16140F), Color(0xFF7E89E0)), // night bg + indigo dark
-  AppThemeKey.black: (Color(0xFF000000), Color(0xFF7E89E0)), // black bg + indigo dark
-  AppThemeKey.calm: (Color(0xFFEEF3F2), Color(0xFF4B57C9)),  // calm bg + indigo light
 };
 
 // ---------------------------------------------------------------------------
@@ -1599,7 +1597,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Шаг (индекс 12): Тема оформления (4 темы Kaname v4)
+  // Шаг (индекс 12): Тема оформления (2 темы)
   // ---------------------------------------------------------------------------
   // Выбор пишется сразу в themeNotifierProvider (живо), с цветным свотчем.
 
@@ -1608,8 +1606,6 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     const themes = [
       AppThemeKey.day,
       AppThemeKey.night,
-      AppThemeKey.black,
-      AppThemeKey.calm,
     ];
     return _stepFrame(
       kaiEmotion: KaiEmotion.neutral,
@@ -1629,12 +1625,10 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen> {
     );
   }
 
-  /// Ключ локализованного названия темы (Kaname v4: 4 темы).
+  /// Ключ локализованного названия темы (2026-07: 2 темы).
   String _themeLabelKey(AppThemeKey key) => switch (key) {
         AppThemeKey.day => 'onboarding_quiz.theme_day',
         AppThemeKey.night => 'onboarding_quiz.theme_night',
-        AppThemeKey.black => 'onboarding_quiz.theme_black',
-        AppThemeKey.calm => 'onboarding_quiz.theme_calm',
       };
 
   /// Маленький круглый свотч-превью темы (bg + accent-точка). Цвета зеркалят

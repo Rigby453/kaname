@@ -1,7 +1,7 @@
 // Экран редактора пользовательской темы.
 // Маршрут: /profile/custom-theme (05-custom-theme.md §2).
 // Kaname v4: HSV-пикер (Hue/Saturation/Brightness слайдеры) удалён;
-// выбор акцента заменён на 6 курируемых AccentKey (Phase 4).
+// выбор акцента заменён на 11 курируемых AccentKey (Phase 4 + 2026-07 расширение).
 
 import 'dart:math' as math;
 
@@ -20,6 +20,8 @@ import '../../core/theme/theme_provider.dart';
 // ---------------------------------------------------------------------------
 
 /// Канонические цвета акцентов для свотчей (light/day из design-tokens.json §accents).
+/// ДЕРЖАТЬ В СИНХРОНЕ с app_theme.dart _accentDefs (light.accent) и
+/// profile_screen.dart _AccentPicker._colors — см. app/test/theme_accent_test.dart.
 const Map<AccentKey, Color> _kAccentKeyColors = {
   AccentKey.indigo:  Color(0xFF4B57C9),
   AccentKey.emerald: Color(0xFF1D9E75),
@@ -27,7 +29,18 @@ const Map<AccentKey, Color> _kAccentKeyColors = {
   AccentKey.ochre:   Color(0xFFB5772A),
   AccentKey.rose:    Color(0xFFC24E78),
   AccentKey.slate:   Color(0xFF3F6E9E),
+  AccentKey.amber:   Color(0xFFC19F15),
+  AccentKey.lime:    Color(0xFF58962C),
+  AccentKey.teal:    Color(0xFF249BA8),
+  AccentKey.magenta: Color(0xFFB234B2),
+  AccentKey.crimson: Color(0xFFB1252F),
 };
+
+/// [ТОЛЬКО ДЛЯ ТЕСТОВ] Публичный алиас на `_kAccentKeyColors`, чтобы
+/// app/test/theme_accent_test.dart мог проверить, что каждый AccentKey
+/// реально присутствует в редакторе custom-темы.
+@visibleForTesting
+const Map<AccentKey, Color> kAccentEditorColorsForTest = _kAccentKeyColors;
 
 // ---------------------------------------------------------------------------
 // Контрастный цвет (чёрный или белый) для иконки поверх цветного свотча
@@ -261,7 +274,7 @@ class _CustomThemeEditorScreenState
             ),
 
             // ----------------------------------------------------------------
-            // 3. Акцент — 6 AccentKey свотчей (заменяет HSV-пикер)
+            // 3. Акцент — 11 AccentKey свотчей (заменяет HSV-пикер)
             // ----------------------------------------------------------------
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
@@ -487,10 +500,10 @@ class _TaskPill extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Ряд из 6 AccentKey свотчей (заменяет HSV-пикер и сетку 16 цветов)
+// Ряд из 11 AccentKey свотчей (заменяет HSV-пикер и сетку 16 цветов)
 // ---------------------------------------------------------------------------
 
-/// Горизонтальный Wrap из 6 курируемых свотчей акцентов.
+/// Горизонтальный Wrap из 11 курируемых свотчей акцентов.
 /// Используется в CustomThemeEditorScreen вместо HSV-слайдеров.
 class _AccentKeyRow extends StatelessWidget {
   const _AccentKeyRow({

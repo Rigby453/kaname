@@ -1,6 +1,6 @@
 {
-  "$schema-note": "Design tokens for Kaizen — REDESIGN 'Kaname' v1.0 (2026-06-28). Single source of truth for colour/type/space. Flutter hardcodes these into app/lib/core/theme/. Key change vs v3: ACCENT is decoupled from THEME (6 accents chosen by user, any theme); ONE font (Geist) for the whole app and all themes; accessibility (high-contrast + text-size) are SETTINGS, not themes. Icons = Phosphor. Implementation spec + per-screen tracker: docs/REDESIGN-KANAME.md. Animations: docs/ANIMATIONS.md. Old v3 (5 baked-accent themes) is superseded.",
-  "version": 4,
+  "$schema-note": "Design tokens for Kaizen — REDESIGN 'Kaname' v1.0 (2026-06-28), trimmed 2026-07 (themes 4->2, accents 6->11 — see ADR in decisions.md). Single source of truth for colour/type/space. Flutter hardcodes these into app/lib/core/theme/. Key change vs v3: ACCENT is decoupled from THEME (11 curated accents chosen by user, either theme); ONE font (Geist) for the whole app and all themes; accessibility (high-contrast + text-size) are SETTINGS, not themes. Icons = Phosphor. Implementation spec + per-screen tracker: docs/REDESIGN-KANAME.md. Animations: docs/ANIMATIONS.md. Old v3 (5 baked-accent themes) is superseded.",
+  "version": 5,
   "icons": {
     "family": "Phosphor",
     "rule": "default = regular (outline); active/selected = fill + accent. Sizes: 20 navbar/inline, 16 captions, 24 decorative ceiling. No Material defaults, no mixed sets."
@@ -47,13 +47,18 @@
     "labelSmall":     { "fontSize": 11, "height": 1.30, "fontWeight": 500, "letterSpacing": 0.3, "_tz": "micro" }
   },
   "accents": {
-    "_note": "6 curated accents. User picks one (onboarding + Profile->Appearance), independent of theme. light = for Day/Calm (light themes); dark = for Night/Black. tint = soft underlay, ink = text on tint, on = text/icon ON the accent fill. For DARK themes: tint and ink are DERIVED at build time (tint = alphaBlend(accentDark @16%, surface); ink = accentDark), on = theme bg ink.",
-    "indigo":  { "default": true, "light": { "accent": "#4B57C9", "tint": "#ECEDFA", "ink": "#3A45A8", "on": "#FFFFFF" }, "dark": { "accent": "#7E89E0", "on": "#15140F" } },
-    "emerald": { "light": { "accent": "#1D9E75", "tint": "#E1F5EE", "ink": "#0F6E56", "on": "#FFFFFF" }, "dark": { "accent": "#3FBF93", "on": "#15140F" } },
-    "violet":  { "light": { "accent": "#7A4FC9", "tint": "#EFE9FB", "ink": "#5A33A8", "on": "#FFFFFF" }, "dark": { "accent": "#A488E6", "on": "#15140F" } },
-    "ochre":   { "light": { "accent": "#B5772A", "tint": "#F7EEDD", "ink": "#7E4F10", "on": "#FFFFFF" }, "dark": { "accent": "#D9A04A", "on": "#15140F" } },
-    "rose":    { "light": { "accent": "#C24E78", "tint": "#FBE9F0", "ink": "#923556", "on": "#FFFFFF" }, "dark": { "accent": "#E07AA0", "on": "#15140F" } },
-    "slate":   { "light": { "accent": "#3F6E9E", "tint": "#E7EFF7", "ink": "#214B73", "on": "#FFFFFF" }, "dark": { "accent": "#6F9BC4", "on": "#15140F" } }
+    "_note": "11 curated accents (2026-07: expanded from 6 — see ADR in decisions.md). User picks one (onboarding + Profile->Appearance), independent of theme. light = for Day theme; dark = for Night theme. tint = soft underlay, ink = text on tint, on = text/icon ON the accent fill. `on` is ADAPTIVE at build time (app/lib/core/theme/app_theme.dart _resolveOnAccent): whichever of white/near-black (#15140F) gives the higher WCAG contrast against the accent fill, with a guaranteed floor of CR>=4.5 (fill lightness is nudged via binary search if neither candidate reaches it — same helper as CustomThemePalette). For DARK themes: tint and ink are DERIVED at build time (tint = alphaBlend(accentDark @16%, surface); ink = accentDark).",
+    "indigo":  { "default": true, "light": { "accent": "#4B57C9", "tint": "#ECEDFA", "ink": "#3A45A8" }, "dark": { "accent": "#7E89E0" } },
+    "emerald": { "light": { "accent": "#1D9E75", "tint": "#E1F5EE", "ink": "#0F6E56" }, "dark": { "accent": "#3FBF93" } },
+    "violet":  { "light": { "accent": "#7A4FC9", "tint": "#EFE9FB", "ink": "#5A33A8" }, "dark": { "accent": "#A488E6" } },
+    "ochre":   { "light": { "accent": "#B5772A", "tint": "#F7EEDD", "ink": "#7E4F10" }, "dark": { "accent": "#D9A04A" } },
+    "rose":    { "light": { "accent": "#C24E78", "tint": "#FBE9F0", "ink": "#923556" }, "dark": { "accent": "#E07AA0" } },
+    "slate":   { "light": { "accent": "#3F6E9E", "tint": "#E7EFF7", "ink": "#214B73" }, "dark": { "accent": "#6F9BC4" } },
+    "amber":   { "light": { "accent": "#C19F15", "tint": "#F8F3E3", "ink": "#745E06" }, "dark": { "accent": "#E4C444" } },
+    "lime":    { "light": { "accent": "#58962C", "tint": "#EBF8E3", "ink": "#396916" }, "dark": { "accent": "#78C144" } },
+    "teal":    { "light": { "accent": "#249BA8", "tint": "#E3F5F8", "ink": "#116E78" }, "dark": { "accent": "#45BCC9" } },
+    "magenta": { "light": { "accent": "#B234B2", "tint": "#F8E3F8", "ink": "#871D87" }, "dark": { "accent": "#D369D3" } },
+    "crimson": { "light": { "accent": "#B1252F", "tint": "#F8E3E4", "ink": "#81121A" }, "dark": { "accent": "#D65C64" } }
   },
   "categories": {
     "_note": "Fixed 8-colour palette for category dots/tags ONLY (10dp dot or thin chip). Theme-independent. Reuses the existing tag/subject concept (no schema change). Optional, OFF by default.",
@@ -66,7 +71,7 @@
     "dark":  { "success": "#46C08C", "ember": "#F0894B", "danger": "#E8685C" }
   },
   "themes": {
-    "_note": "Theme = surfaces + text + border ONLY. NO accent, NO font baked in. 4 themes. Day is DEFAULT.",
+    "_note": "Theme = surfaces + text + border ONLY. NO accent, NO font baked in. 2 themes (2026-07: Black/Calm removed as redundant with Night/Day + a curated accent — see ADR in decisions.md; old prefs values migrate via ThemeNotifier._migrateKey). Day is DEFAULT.",
     "day": {
       "label": "Day", "mode": "light", "default": true,
       "colors": {
@@ -81,22 +86,6 @@
         "bg": "#16140F", "surface1": "#201D17", "surface2": "#262219",
         "ink": "#F2EFE9", "text_secondary": "#A8A39A", "text_muted": "#827D74", "text_faint": "#5A554E",
         "border": "#2C2820", "border_strong": "#3A352B"
-      }
-    },
-    "black": {
-      "label": "Black", "mode": "dark",
-      "colors": {
-        "bg": "#000000", "surface1": "#0D0D0D", "surface2": "#141414",
-        "ink": "#FFFFFF", "text_secondary": "#B4B4B4", "text_muted": "#8A8A8A", "text_faint": "#555555",
-        "border": "#1E1E1E", "border_strong": "#2E2E2E"
-      }
-    },
-    "calm": {
-      "label": "Calm", "mode": "light",
-      "colors": {
-        "bg": "#EEF3F2", "surface1": "#FBFDFC", "surface2": "#F2F7F6",
-        "ink": "#1A2422", "text_secondary": "#4F5E5B", "text_muted": "#6B7A77", "text_faint": "#9DACA9",
-        "border": "#DCE6E4", "border_strong": "#C7D4D1"
       }
     }
   },
