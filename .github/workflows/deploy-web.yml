@@ -74,7 +74,7 @@ jobs:
         working-directory: app
         run: |
           flutter build web --release \
-            --base-href /glavnoe/app/ \
+            --base-href /kaname/app/ \
             --dart-define=API_BASE_URL=${{ steps.api.outputs.base }}
 
       # 6. Собираем каталог публикации public/.

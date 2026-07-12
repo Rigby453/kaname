@@ -1,11 +1,11 @@
-# Kaizen («Главное»)
+# Kaname («Главное»)
 
 A planner for students that re-assembles the day around what actually matters —
 and helps you understand *why* plans fail. Unfinished tasks auto-carry over and
 get re-prioritised **with your confirmation** (rule-based and free; AI-smarter on
 the paid tier).
 
-> Working title: **«Главное»** (RU). **Kaizen** is the codename used in code and packages.
+> Working title: **«Главное»** (RU). **Kaname** is the codename used in code and packages.
 
 ## Stack
 - **App** — Flutter 3 / Dart 3 (iOS · Android · Web), offline-first via Drift (SQLite),
